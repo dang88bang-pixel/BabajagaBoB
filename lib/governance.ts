@@ -1,4 +1,4 @@
-import {audit} from "./audit";
+import {recordAudit} from "./audit";
 export type KillScope="SYSTEM"|"AGENT"|"TASK"|"EXPERIMENT"|"SANDBOX"|"DEPLOYMENT";
 export type KillSwitch={scope:KillScope;targetId:string;active:boolean;reason:string;updatedAt:string};
 export type Delegation={id:string;from:string;to:string;capabilities:string[];taskId?:string;sandboxId?:string;expiresAt:string;status:"ACTIVE"|"REVOKED"};
@@ -11,4 +11,4 @@ export function createDelegation(d:Omit<Delegation,"id"|"status">){if(d.from===d
 export function revokeDelegation(id:string){const d=delegations.find(x=>x.id===id);if(!d)throw new Error("delegation not found");d.status="REVOKED";return clone(d)}
 export function validateDelegation(id:string,capability:string){const d=delegations.find(x=>x.id===id);if(!d||d.status!=="ACTIVE"||new Date(d.expiresAt)<=new Date()||!d.capabilities.some(c=>c==="*"||c===capability||c.endsWith(":*")&&capability.startsWith(c.slice(0,-1))))return null;return clone(d)}
 export function listDelegations(){return clone(delegations)}
-export function auditGovernance(action:string,resource:string,result:string){return audit({actor:"system",action,resource,result})}
+export function auditGovernance(action:string,resource:string,result:string){return recordAudit({actor:"system",action,resource,decision:"ALLOW"},result)}
