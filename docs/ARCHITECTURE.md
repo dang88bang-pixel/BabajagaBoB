@@ -15,6 +15,7 @@ The browser never executes shell commands or receives raw secrets.
 - Event fabric
 - Emergency lockdown
 - Network DENY-by-default indicator
+- Server-side execution queue with job state, lease, retry budget and cancellation boundary
 - No analytics, tracking, advertising or third-party data sharing in the application foundation
 
 ## Authority model
@@ -25,7 +26,7 @@ Technical capability and delegated authority remain separate concerns. A future 
 
 Mission → Objective → Task → Run → Sandbox → Experiment/Test → Artifact → Deployment
 
-Every execution transition should emit an immutable event and preserve provenance.
+Every execution transition should emit an append-only event and preserve provenance. The current event fabric is an in-memory foundation; durable storage is a separate persistence boundary and must not be simulated as durable until a real store is connected.
 
 ## Knowledge and causality
 
