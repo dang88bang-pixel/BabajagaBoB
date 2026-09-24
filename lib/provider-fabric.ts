@@ -2,15 +2,16 @@ import crypto from "node:crypto";
 import {observe} from "./observability";
 import {recordAudit} from "./audit";
 import {approvalGranted} from "./approvals";
+import {assertNoProtectedDataForThirdParty,type ProtectedDataClass} from "./data-boundary";
 
 export type ProviderCategory="AGENT_RUNTIME"|"SANDBOX"|"WORKFLOW"|"CODE_AGENT"|"BUILD"|"COMPUTER"|"DEPLOYMENT"|"KNOWLEDGE"|"OTHER";
 export type ProviderLifecycle="DISCOVERED"|"EVALUATING"|"AUTHORIZED"|"CONNECTING"|"CONNECTED"|"DEGRADED"|"BLOCKED"|"DISCONNECTED"|"REVOKED";
 export type ProviderHealth="UNKNOWN"|"HEALTHY"|"DEGRADED"|"UNHEALTHY";
-export type ProviderDefinition={id:string;name:string;category:ProviderCategory;version:string;adapter:string;capabilities:string[];environments:string[];network:"DENY"|"ALLOWLIST"|"INTERNET";lifecycle:ProviderLifecycle;health:ProviderHealth;endpoint?:string;credentialRef?:string;lastHeartbeat?:string;lastError?:string;enabled:boolean;autonomousManagement:boolean;requiresApproval:boolean};
+export type ProviderDefinition={id:string;name:string;category:ProviderCategory;version:string;adapter:string;capabilities:string[];environments:string[];network:"DENY"|"ALLOWLIST"|"INTERNET";lifecycle:ProviderLifecycle;health:ProviderHealth;endpoint?:string;credentialRef?:string;lastHeartbeat?:string;lastError?:string;enabled:boolean;autonomousManagement:boolean;requiresApproval:boolean;dataPolicy:"METADATA_ONLY"};
 export type ProviderBinding={id:string;providerId:string;scope:"SYSTEM"|"AGENT"|"TASK"|"SANDBOX";scopeId:string;capabilities:string[];createdAt:string;active:boolean};
 
 const catalog:ProviderDefinition[]=[
-{id:"prov-openhands",name:"OpenHands",category:"AGENT_RUNTIME",version:"adapter-1",adapter:"openhands",capabilities:["code","terminal","browser","files","agent-actions"],environments:["sandbox","development","experiment"],network:"ALLOWLIST",lifecycle:"DISCOVERED",health:"UNKNOWN",enabled:false,autonomousManagement:true,requiresApproval:true},
+{id:"prov-openhands",name:"OpenHands",category:"AGENT_RUNTIME",version:"adapter-1",adapter:"openhands",capabilities:["code","terminal","browser","files","agent-actions"],environments:["sandbox","development","experiment"],network:"ALLOWLIST",lifecycle:"DISCOVERED",health:"UNKNOWN",enabled:false,autonomousManagement:true,requiresApproval:true,dataPolicy:"METADATA_ONLY"},
 {id:"prov-daytona",name:"Daytona",category:"SANDBOX",version:"adapter-1",adapter:"daytona",capabilities:["sandbox","snapshot","restore","filesystem","network-policy"],environments:["development","experiment","test"],network:"ALLOWLIST",lifecycle:"DISCOVERED",health:"UNKNOWN",enabled:false,autonomousManagement:true,requiresApproval:true},
 {id:"prov-e2b",name:"E2B",category:"SANDBOX",version:"adapter-1",adapter:"e2b",capabilities:["sandbox","isolated-vm","snapshot","computer"],environments:["experiment","test"],network:"ALLOWLIST",lifecycle:"DISCOVERED",health:"UNKNOWN",enabled:false,autonomousManagement:true,requiresApproval:true},
 {id:"prov-temporal",name:"Temporal",category:"WORKFLOW",version:"adapter-1",adapter:"temporal",capabilities:["durable-execution","retry","resume","signals","timers"],environments:["control-plane"],network:"ALLOWLIST",lifecycle:"DISCOVERED",health:"UNKNOWN",enabled:false,autonomousManagement:true,requiresApproval:true},
@@ -22,6 +23,11 @@ const catalog:ProviderDefinition[]=[
 const bindings:ProviderBinding[]=[];
 const telemetry=new Map<string,{time:string;health:ProviderHealth;latencyMs?:number;message?:string}>();
 
+export function assertProviderPayloadAllowed(providerId:string,dataClass:ProtectedDataClass){
+ const p=getProvider(providerId);if(!p)throw new Error("provider not found");
+ if(p.dataPolicy==="METADATA_ONLY")assertNoProtectedDataForThirdParty(dataClass);
+ return true;
+}
 export function listProviders(){return structuredClone(catalog)}
 export function getProvider(id:string){return catalog.find(p=>p.id===id)??null}
 export function bindProvider(providerId:string,scope:ProviderBinding["scope"],scopeId:string,capabilities:string[]){
