@@ -13,7 +13,7 @@ const root=()=>process.env.BOB_STORAGE_DIR??path.join(process.cwd(),".bob-data")
 const file=()=>path.join(root(),"oci-runtime.json");
 const handles=new Map<string,{handle:RuntimeHandle;image:string}>();
 
-function assertSafeImage(image:string){if(!/^[a-zA-Z0-9][a-zA-Z0-9._\\-/:@]+$/.test(image))throw new Error("Invalid OCI image reference")}
+function assertSafeImage(image:string){if(!/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]+$/.test(image))throw new Error("Invalid OCI image reference")}
 function assertSafeName(name:string){if(!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(name))throw new Error("Invalid OCI container name")}
 function load(){try{const raw=JSON.parse(fs.readFileSync(file(),"utf8")) as Persisted[];for(const item of raw)handles.set(item.handle.sandboxId,item)}catch{}}
 function save(){fs.mkdirSync(root(),{recursive:true});const tmp=file()+".tmp";fs.writeFileSync(tmp,JSON.stringify([...handles.values()],null,2),{mode:0o600});fs.renameSync(tmp,file())}
