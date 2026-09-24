@@ -13,3 +13,5 @@ export function revokeDelegation(id:string){const d=delegations.find(x=>x.id===i
 export function validateDelegation(id:string,capability:string){const d=delegations.find(x=>x.id===id);if(!d||d.status!=="ACTIVE"||new Date(d.expiresAt)<=new Date()||!d.capabilities.some(c=>c==="*"||c===capability||c.endsWith(":*")&&capability.startsWith(c.slice(0,-1))))return null;return clone(d)}
 export function listDelegations(){return clone(delegations)}
 export function auditGovernance(action:string,resource:string,result:string){return recordAudit({actor:"system",action,resource,decision:"ALLOW"},result)}
+
+export function delegationIntegrity(){return {count:delegations.length,active:delegations.filter(x=>x.status==="ACTIVE").length,expired:delegations.filter(x=>new Date(x.expiresAt)<=new Date()).length}}
