@@ -29,6 +29,13 @@ export async function executeAuthorized(request:ExecutionRequest){
  if(token.taskId!==request.taskId)return deny(request,"Token task scope mismatch");
  if(token.sandboxId!==request.sandboxId)return deny(request,"Token sandbox scope mismatch");
  if(riskRank[token.risk]<riskRank[task.risk])return deny(request,"Token risk scope is insufficient");
+ addProvenanceNode({id:`task:${task.id}`,kind:"task",label:task.id});
+ addProvenanceNode({id:`sandbox:${sandbox.id}`,kind:"sandbox",label:sandbox.id});
+ addProvenanceNode({id:`capability:${token.id}`,kind:"capability",label:token.id});
+ addProvenanceNode({id:`run:${request.taskId}:${request.sandboxId}`,kind:"execution",label:`${request.taskId} / ${request.agentId}`});
+ addProvenanceEdge({from:`task:${task.id}`,to:`run:${request.taskId}:${request.sandboxId}`,relation:"CAUSED_BY"});
+ addProvenanceEdge({from:`run:${request.taskId}:${request.sandboxId}`,to:`sandbox:${sandbox.id}`,relation:"EXECUTED_IN"});
+ addProvenanceEdge({from:`run:${request.taskId}:${request.sandboxId}`,to:`capability:${token.id}`,relation:"AUTHORIZED_BY"});
  const gate=executionGate(task,request.approvalId,state.locked,request.agentId,undefined,request.sandboxId);
  if(!gate.allowed)return deny(request,gate.reasons.join("; "));
  const result=await activeSandboxRuntime.execute(request.sandboxId,request.argv);
