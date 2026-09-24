@@ -3,8 +3,9 @@ import type {Agent,Approval,ControlState,Event,Experiment,Mission,Sandbox,Status
 import {evaluateTask} from "./policy";
 import {recordAudit} from "./audit";
 import {appendEventPersistent,loadEvents} from "./event-store";
+import {DurableJsonControlStore} from "./durable-store";
 const now=()=>new Date().toISOString();
-const state:ControlState={
+const initialState:ControlState={
  agents:[
   {id:"AG-01",name:"Supervisor",role:"Orchestrator",status:"RUNNING",progress:72,task:"Coordinating T-104",capabilities:["mission.read","task.dispatch","event.write"]},
   {id:"AG-02",name:"Builder",role:"Engineering",status:"EXPERIMENT",progress:48,task:"GUI state experiment",capabilities:["repo.branch","sandbox.run","artifact.write"]},
@@ -39,20 +40,24 @@ const state:ControlState={
  locked:false
 };
 const clone=<T,>(v:T):T=>JSON.parse(JSON.stringify(v));
+const controlStore=new DurableJsonControlStore(initialState);
+const state:ControlState=controlStore.getControlState();
 const persistedEvents=loadEvents();
-if(persistedEvents.length)state.events=persistedEvents.slice(0,100);
+if(persistedEvents.length){state.events=persistedEvents.slice(0,100);controlStore.saveControlState(state);}
+const persistState=()=>controlStore.saveControlState(state);
 export function snapshot(){return clone(state)}
 export function registerSandbox(sandbox:Sandbox){
  if(!sandbox.id||state.sandboxes.some(x=>x.id===sandbox.id))throw new Error("Sandbox already registered");
  if(!state.tasks.some(x=>x.id===sandbox.task))throw new Error("Sandbox task binding not found");
  if(!state.agents.some(x=>x.id===sandbox.agentId))throw new Error("Sandbox agent binding not found");
  state.sandboxes.push(clone(sandbox));
+ persistState();
  appendEvent("sandbox.registered",`Sandbox ${sandbox.id} registriert`,sandbox.status,sandbox.agentId,{resource:sandbox.id,taskId:sandbox.task});
  return clone(sandbox);
 }
-export function updateSandboxStatus(id:string,status:Status){const s=state.sandboxes.find(x=>x.id===id);if(!s)throw new Error("Sandbox not found");s.status=status;appendEvent("sandbox.status",`Sandbox ${id}: ${status}`,status,s.agentId,{resource:id,taskId:s.task});return clone(s)}
+export function updateSandboxStatus(id:string,status:Status){const s=state.sandboxes.find(x=>x.id===id);if(!s)throw new Error("Sandbox not found");s.status=status;persistState();appendEvent("sandbox.status",`Sandbox ${id}: ${status}`,status,s.agentId,{resource:id,taskId:s.task});return clone(s)}
 export function getControlState(){return snapshot()}
-export function appendEvent(type:string,message:string,status:Status,actor="system",meta:Partial<Event>={}):Event{const parent=state.events[0]?.id;const event:Event={id:crypto.randomUUID(),type,message,status,time:now(),actor,causalParentId:parent,...meta};state.events.unshift(event);state.events=state.events.slice(0,100);appendEventPersistent(event);return clone(event)}
-export function runGuardian(){if(state.locked){recordAudit({actor:"AG-03",action:"guardian.check",decision:"DENY"},{});return snapshot()}const task=state.tasks.find(t=>t.id==="TASK-105-A");if(task){const policy=evaluateTask(task,state.locked);recordAudit({actor:"AG-03",action:"guardian.check",resource:task.id,decision:policy.decision},task);if(policy.decision==="DENY"){task.status="BLOCKED";appendEvent("agent.blocked","Guardian: Policy denied task execution","BLOCKED","AG-03",{taskId:task.id});return snapshot()}if(policy.decision==="REQUIRE_APPROVAL"){task.status="APPROVAL_REQUIRED";appendEvent("approval.requested","Guardian: Capability Check benötigt Creator-Freigabe","APPROVAL_REQUIRED","AG-03",{taskId:task.id});return snapshot()}return snapshot()}}
-export function resolveApproval(id:string,grant:boolean){const a=state.approvals.find(x=>x.id===id);if(!a)return snapshot();a.status=grant?"GRANTED":"DENIED";const t=state.tasks.find(x=>x.id===a.taskId);if(t){t.status=grant?"RUNNING":"BLOCKED";t.progress=grant?25:t.progress}appendEvent(grant?"approval.granted":"approval.denied",grant?"Creator-Freigabe erteilt":"Creator-Freigabe verweigert",grant?"RUNNING":"BLOCKED","creator",{taskId:a.taskId});return snapshot()}
-export function setLockdown(locked:boolean){state.locked=locked;recordAudit({actor:"creator",action:locked?"control.lockdown":"control.unlock",decision:"ALLOW"}, {locked});state.agents=state.agents.map(a=>a.id==="AG-02"?{...a,status:locked?"BLOCKED":"EXPERIMENT"}:a);appendEvent(locked?"control.lockdown":"control.unlock",locked?"Emergency Lockdown aktiviert":"Emergency Lockdown aufgehoben",locked?"ERROR":"COMPLETED");return snapshot()}
+export function appendEvent(type:string,message:string,status:Status,actor="system",meta:Partial<Event>={}):Event{const parent=state.events[0]?.id;const event:Event={id:crypto.randomUUID(),type,message,status,time:now(),actor,causalParentId:parent,...meta};state.events.unshift(event);state.events=state.events.slice(0,100);appendEventPersistent(event);persistState();return clone(event)}
+export function runGuardian(){if(state.locked){recordAudit({actor:"AG-03",action:"guardian.check",decision:"DENY"},{});return snapshot()}const task=state.tasks.find(t=>t.id==="TASK-105-A");if(task){const policy=evaluateTask(task,state.locked);recordAudit({actor:"AG-03",action:"guardian.check",resource:task.id,decision:policy.decision},task);if(policy.decision==="DENY"){task.status="BLOCKED";persistState();appendEvent("agent.blocked","Guardian: Policy denied task execution","BLOCKED","AG-03",{taskId:task.id});return snapshot()}if(policy.decision==="REQUIRE_APPROVAL"){task.status="APPROVAL_REQUIRED";persistState();appendEvent("approval.requested","Guardian: Capability Check benötigt Creator-Freigabe","APPROVAL_REQUIRED","AG-03",{taskId:task.id});return snapshot()}return snapshot()}}
+export function resolveApproval(id:string,grant:boolean){const a=state.approvals.find(x=>x.id===id);if(!a)return snapshot();a.status=grant?"GRANTED":"DENIED";const t=state.tasks.find(x=>x.id===a.taskId);if(t){t.status=grant?"RUNNING":"BLOCKED";t.progress=grant?25:t.progress;persistState()}appendEvent(grant?"approval.granted":"approval.denied",grant?"Creator-Freigabe erteilt":"Creator-Freigabe verweigert",grant?"RUNNING":"BLOCKED","creator",{taskId:a.taskId});return snapshot()}
+export function setLockdown(locked:boolean){state.locked=locked;recordAudit({actor:"creator",action:locked?"control.lockdown":"control.unlock",decision:"ALLOW"}, {locked});state.agents=state.agents.map(a=>a.id==="AG-02"?{...a,status:locked?"BLOCKED":"EXPERIMENT"}:a);persistState();appendEvent(locked?"control.lockdown":"control.unlock",locked?"Emergency Lockdown aktiviert":"Emergency Lockdown aufgehoben",locked?"ERROR":"COMPLETED");return snapshot()}
