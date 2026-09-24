@@ -46,7 +46,7 @@ export async function runWorkerCycle():Promise<WorkerCycle>{
     if(!handle||handle.state!=="RUNNING") throw new Error(`sandbox runtime is not executable: ${handle?.state??"MISSING"}`);
    }
 
-   await sandboxRuntime.execute(run.sandboxId,"agent-execution");
+   await sandboxRuntime.execute(run.sandboxId,["agent-execution"]);
    completeJob(job.id);
    completeRun(run.id);
    result.completed.push(job.id);
