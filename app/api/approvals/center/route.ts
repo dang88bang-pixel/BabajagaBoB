@@ -1,6 +1,7 @@
 import {NextResponse} from "next/server";
 import {approvalGranted,createApproval,getApproval,listApprovals,resolveApprovalRequest} from "@/lib/approvals";
 import {actionField,readJson,stringArray,stringField,requireCapability} from "@/lib/request-validation";
+import {requireControlPlaneAuth} from "@/lib/control-auth";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 export async function GET(){return NextResponse.json({approvals:listApprovals()},{headers:{"Cache-Control":"no-store"}})}
