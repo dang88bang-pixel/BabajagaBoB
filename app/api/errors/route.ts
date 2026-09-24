@@ -13,7 +13,7 @@ export async function POST(req:Request){
   if(action==="transition")return NextResponse.json(transitionError(stringField(b,"id",128),stringField(b,"status",64),b.patch as never));
   if(action==="investigate")return NextResponse.json(await investigateError(stringField(b,"id",128)));
   if(action==="experiment"){const {startExperiment}=await import("@/lib/error-intelligence");return NextResponse.json(startExperiment(stringField(b,"id",128),stringField(b,"objectiveId",128)),{status:201});}
-  if(action==="recovery"){const {prepareErrorRecovery}=await import("@/lib/error-intelligence");return NextResponse.json(prepareErrorRecovery(stringField(b,"id",128)),{status:201});}
+  if(action==="recovery"){const {prepareErrorRecovery}=await import("@/lib/error-intelligence");return NextResponse.json(await prepareErrorRecovery(stringField(b,"id",128)),{status:201});}
   if(action==="recovery.execute"){const {beginRecovery}=await import("@/lib/reliability");return NextResponse.json(beginRecovery(stringField(b,"id",128)));}
   if(action==="recovery.verify"){const {verifyRecovery}=await import("@/lib/reliability");return NextResponse.json(verifyRecovery(stringField(b,"id",128)));}
   if(action==="evidence"){const {recordExperimentEvidence}=await import("@/lib/error-intelligence");return NextResponse.json(recordExperimentEvidence(stringField(b,"id",128),stringField(b,"evidenceId",128)));}
