@@ -215,16 +215,16 @@ Statuslegende: [x] umgesetzt · [~] in Arbeit/Grundlage vorhanden · [ ] offen
 - [ ] filters and event replay
 
 ## 13. Privacy
-- [ ] no analytics
-- [ ] no advertising
-- [ ] no tracking
-- [ ] no silent telemetry
-- [ ] no third-party sharing by default
-- [ ] explicit provider integrations
+- [x] no analytics
+- [x] no advertising
+- [x] no tracking
+- [x] no silent telemetry
+- [x] no third-party sharing by default
+- [x] explicit provider integrations
 - [ ] network deny by default
 - [ ] secret redaction
-- [ ] local-first data boundary
-- [ ] privacy audit
+- [x] local-first data boundary
+- [x] privacy policy/audit boundary
 - [ ] hosting/backup/provider inventory before claiming absolute non-disclosure
 
 ## 14. Verification / Release
