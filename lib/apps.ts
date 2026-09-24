@@ -2,6 +2,9 @@ import crypto from "node:crypto";
 import {approvalGranted} from "./approvals";
 import {documentStep} from "./gallery";
 import {recordAudit} from "./audit";
+import {sandboxRuntime} from "./runtime";
+import {executionGate} from "./execution-gate";
+import {getControlState} from "./control-plane";
 import type {Risk} from "./types";
 
 export type AppState="PLANNING"|"BUILDING"|"TESTING"|"SECURITY_VALIDATION"|"AWAITING_CONFIRMATION"|"INSTALLING"|"ACTIVE"|"PAUSED"|"FAILED"|"REMOVED";
@@ -41,7 +44,7 @@ export function registerExecutableModule(input:{appId:string;name:string;version
  documentStep({kind:"TEST",title:"Ausführbares Modul validiert",description:`Modul ${module.name} hat Tests und Sicherheitsvalidierung bestanden`,status:"COMPLETED",actor:"agent",appId:app.id,moduleId:module.id,taskId:input.taskId});
  return structuredClone(module);
 }
-export function installExecutableModule(moduleId:string,approvalId:string,taskId?:string){
+export async function installExecutableModule(moduleId:string,approvalId:string,taskId?:string){
  const module=moduleStore.get(moduleId);if(!module)throw new Error("module not found");
  if(module.state!=="VALIDATED")throw new Error("module is not validated");
  const app=appStore.get(module.appId);if(!app)throw new Error("app not found");
@@ -59,3 +62,22 @@ export function installExecutableModule(moduleId:string,approvalId:string,taskId
 export function listApps(){return structuredClone([...appStore.values()])}
 export function getApp(id:string){return structuredClone(appStore.get(id)??null)}
 export function listModules(appId?:string){return structuredClone([...moduleStore.values()].filter(m=>!appId||m.appId===appId))}
+
+
+export async function startExecutableModule(moduleId:string,taskId?:string){
+ const module=moduleStore.get(moduleId); if(!module) throw new Error("module not found");
+ const app=appStore.get(module.appId); if(!app) throw new Error("app not found");
+ if(module.state!=="INSTALLED"&&module.state!=="PAUSED") throw new Error("module must be installed");
+ if(taskId){ const task=getControlState().tasks.find(t=>t.id===taskId); if(!task) throw new Error("task not found"); const gate=executionGate(task,module.userConfirmationApprovalId,getControlState().locked,undefined,undefined,module.sandboxId); if(!gate.allowed) throw new Error(`execution blocked: ${gate.reasons.join("; ")}`); }
+ if(!module.sandboxId) throw new Error("module has no sandbox");
+ await sandboxRuntime.start(module.sandboxId);
+ module.state="RUNNING"; app.state="ACTIVE"; app.progress=100; module.updatedAt=new Date().toISOString(); app.updatedAt=module.updatedAt;
+ documentStep({kind:"RUN",title:"Ausführbares Modul gestartet",description:`Modul ${module.name} läuft isoliert in Sandbox ${module.sandboxId}`,status:"RUNNING",actor:"agent",appId:app.id,moduleId,taskId});
+ return structuredClone({app,module});
+}
+export async function pauseExecutableModule(moduleId:string){
+ const module=moduleStore.get(moduleId); if(!module||!module.sandboxId) throw new Error("module sandbox not found");
+ await sandboxRuntime.pause(module.sandboxId); module.state="PAUSED"; module.updatedAt=new Date().toISOString();
+ documentStep({kind:"RUN",title:"Ausführbares Modul pausiert",description:`Modul ${module.name} wurde pausiert`,status:"WAITING",actor:"agent",appId:module.appId,moduleId});
+ return structuredClone(module);
+}
