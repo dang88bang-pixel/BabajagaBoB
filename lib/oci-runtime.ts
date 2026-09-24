@@ -1,4 +1,5 @@
 import {spawn} from "node:child_process";
+import crypto from "node:crypto";
 import type {ResourceLimits,RuntimeHandle} from "./runtime";
 
 export type OciContainerSpec={
@@ -42,7 +43,7 @@ export class OciContainerRuntimeAdapter{
   async create(spec:OciContainerSpec):Promise<RuntimeHandle>{
     assertSafeImage(spec.image);
     if(spec.limits.timeoutMs<=0||spec.limits.memoryMb<=0||spec.limits.cpuMillicores<=0||spec.limits.processes<=0) throw new Error("Invalid sandbox resource limits");
-    if(spec.network==="ALLOWLIST" && (!spec.allowlist||spec.allowlist.length===0)) throw new Error("ALLOWLIST requires explicit destinations");
+    if(spec.network==="ALLOWLIST") throw new Error("OCI ALLOWLIST networking is fail-closed until an egress proxy is configured");
 
     const sandboxId=`OCI-${cryptoRandomId()}`;
     const args=[
