@@ -23,7 +23,7 @@ export async function executeAuthorized(request:ExecutionRequest){
  if(!sandbox){return deny(request,"Sandbox not found");}
  if(sandbox.task!==request.taskId)return deny(request,"Sandbox is not bound to task");
  if(sandbox.agentId!==request.agentId)return deny(request,"Sandbox is not bound to agent");
- const validation=validateCapabilityToken(request.capabilityTokenId,["task:execute","sandbox:run"]); if(!validation.valid)return deny(request,validation.reason);
+ const validation=validateCapabilityToken(request.capabilityTokenId,["task:execute","sandbox:run"],{subject:request.agentId,taskId:request.taskId,sandboxId:request.sandboxId,risk:task.risk}); if(!validation.valid)return deny(request,validation.reason);
  const token=capabilityTokens().find(x=>x.id===request.capabilityTokenId); if(!token)return deny(request,"Token not found");
  if(token.subject!==request.agentId)return deny(request,"Token subject mismatch");
  if(token.taskId!==request.taskId)return deny(request,"Token task scope mismatch");
