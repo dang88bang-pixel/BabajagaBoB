@@ -1,6 +1,7 @@
 import {expireLeases,leaseJob,startJob,completeJob,failJob,heartbeatJob,queueSnapshot} from "./queue";
 import {beginRecovery,getRun,listRuns,startRun,completeRun,failRun} from "./runs";
 import {activeSandboxRuntime as sandboxRuntime,reconcileActiveRuntime,runtimeHandle,activeRuntimeMode} from "./runtime-factory";
+import {createErrorIncident,transitionError,investigateError} from "./error-intelligence";
 
 export type WorkerCycle={leased:string[];completed:string[];failed:string[];expired:number;recovered:string[]};
 
@@ -51,6 +52,9 @@ export async function runWorkerCycle():Promise<WorkerCycle>{
    result.completed.push(job.id);
   }catch(error){
    const message=error instanceof Error?error.message:String(error);
+   const incident=createErrorIncident({severity:"HIGH",symptom:"Worker execution failed",incident:message,failureMode:"RUN_EXECUTION_FAILURE",contributingFactors:["worker execution path"],evidenceIds:[],taskId:run.taskId,runId:run.id,agentId:run.agentId,sandboxId:run.sandboxId,error:message});
+   transitionError(incident.id,"TRIAGING");
+   investigateError(incident.id);
    const nextJob=failJob(job.id,message);
    if(nextJob?.state==="QUEUED") beginRecovery(run.id);
    else failRun(run.id,message);
