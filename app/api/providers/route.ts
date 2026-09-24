@@ -5,7 +5,7 @@ export const dynamic="force-dynamic";
 export async function GET(){return NextResponse.json(providerSnapshot(),{headers:{"Cache-Control":"no-store"}})}
 export async function POST(req:Request){
  try{const b=await req.json();
- if(b.action==="connect")return NextResponse.json({provider:connectProvider(b.id,b.endpoint,b.credentialRef)});
+ if(b.action==="connect")return NextResponse.json({provider:connectProvider(b.id,b.endpoint,b.credentialRef,b.approvalId)});
  if(b.action==="disconnect")return NextResponse.json({provider:disconnectProvider(b.id)});
  if(b.action==="revoke")return NextResponse.json({provider:revokeProvider(b.id)});
  if(b.action==="state")return NextResponse.json({provider:setProviderState(b.id,b.lifecycle,b.health,b.message)});
