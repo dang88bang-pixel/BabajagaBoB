@@ -54,22 +54,50 @@ export async function installExecutableModule(moduleId:string,approvalId:string,
  const app=appStore.get(module.appId);if(!app)throw new Error("app not found");
  if(app.state!=="AWAITING_CONFIRMATION")throw new Error("app must complete planning, testing and security validation before confirmation");
  if(!approvalGranted(approvalId))throw new Error("explicit user confirmation is required");
- module.userConfirmationApprovalId=approvalId;module.state="APPROVED";module.updatedAt=new Date().toISOString();persist();
+
+ module.userConfirmationApprovalId=approvalId;
+ module.state="APPROVED";
+ module.updatedAt=new Date().toISOString();
+ persist();
  documentStep({kind:"APPROVAL",title:"Benutzerbestätigung erhalten",description:`Installation von ${module.name} wurde explizit bestätigt`,status:"COMPLETED",actor:"user",appId:app.id,moduleId,taskId,metadata:{approvalId}});
- app.state="INSTALLING";app.progress=95;app.updatedAt=new Date().toISOString();persist();
+
+ app.state="INSTALLING";
+ app.progress=95;
+ app.updatedAt=new Date().toISOString();
+ module.state="INSTALLING";
+ module.updatedAt=app.updatedAt;
+ persist();
  documentStep({kind:"INSTALL",title:"Isolierte Sandbox wird vorbereitet",description:`Modul ${module.name} erhält eine dedizierte Sandbox mit Netzwerk DENY`,status:"RUNNING",actor:"agent",appId:app.id,moduleId,taskId});
+
  const sandboxId=`SB-APP-${module.id}`;
- await sandboxRuntime.create({id:sandboxId,type:"application-module",network:{mode:"DENY",allowlist:[]},limits:{cpuMillicores:500,memoryMb:512,storageMb:2048,timeoutMs:120000,processes:16},risk:module.risk});
- module.sandboxId=sandboxId;
- module.state="INSTALLED";persist();module.updatedAt=new Date().toISOString();app.state="ACTIVE";app.progress=100;app.updatedAt=new Date().toISOString();
- recordAudit({actor:"agent",action:"app.module.install",resource:moduleId,decision:"ALLOW"},{appId:app.id,moduleId,approvalId});
- documentStep({kind:"INSTALL",title:"Installation abgeschlossen",description:`Modul ${module.name} ist aktiv in Sandbox ${module.sandboxId}`,status:"COMPLETED",actor:"agent",appId:app.id,moduleId,taskId});
- return structuredClone({app,module});
+ try{
+  await sandboxRuntime.create({id:sandboxId,type:"application-module",network:{mode:"DENY",allowlist:[]},limits:{cpuMillicores:500,memoryMb:512,storageMb:2048,timeoutMs:120000,processes:16},risk:module.risk});
+  module.sandboxId=sandboxId;
+  module.state="INSTALLED";
+  module.updatedAt=new Date().toISOString();
+  app.state="ACTIVE";
+  app.progress=100;
+  app.updatedAt=module.updatedAt;
+  persist();
+  recordAudit({actor:"agent",action:"app.module.install",resource:moduleId,decision:"ALLOW"},{appId:app.id,moduleId,approvalId,sandboxId});
+  documentStep({kind:"INSTALL",title:"Installation abgeschlossen",description:`Modul ${module.name} ist aktiv in Sandbox ${module.sandboxId}`,status:"COMPLETED",actor:"agent",appId:app.id,moduleId,taskId});
+  return structuredClone({app,module});
+ }catch(error){
+  const message=error instanceof Error?error.message:String(error);
+  module.state="DISABLED";
+  module.updatedAt=new Date().toISOString();
+  app.state="FAILED";
+  app.progress=0;
+  app.updatedAt=module.updatedAt;
+  persist();
+  recordAudit({actor:"agent",action:"app.module.install",resource:moduleId,decision:"ERROR"},{appId:app.id,moduleId,approvalId,error:message});
+  documentStep({kind:"ERROR",title:"Installation fehlgeschlagen",description:`Modul ${module.name}: ${message}`,status:"ERROR",actor:"agent",appId:app.id,moduleId,taskId});
+  throw error;
+ }
 }
 export function listApps(){return structuredClone([...appStore.values()])}
 export function getApp(id:string){return structuredClone(appStore.get(id)??null)}
 export function listModules(appId?:string){return structuredClone([...moduleStore.values()].filter(m=>!appId||m.appId===appId))}
-
 
 export async function startExecutableModule(moduleId:string,taskId?:string){
  const module=moduleStore.get(moduleId); if(!module) throw new Error("module not found");
