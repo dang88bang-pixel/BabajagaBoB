@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type {Agent,Approval,ControlState,Event,Experiment,Mission,Sandbox,Status,Task} from "./types";
 import {evaluateTask} from "./policy";
 import {recordAudit} from "./audit";
