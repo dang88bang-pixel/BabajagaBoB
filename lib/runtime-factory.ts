@@ -7,8 +7,8 @@ class OciSandboxRuntimeAdapter implements SandboxRuntime{
  }
  async start(id:string){return ociContainerRuntime.start(id)}
  async pause(id:string){return ociContainerRuntime.pause(id)}
- async execute(id:string,operation:string){
-  const result=await ociContainerRuntime.execute(id,["/bin/sh","-lc",operation]);
+ async execute(id:string,operation:string[]){
+  const result=await ociContainerRuntime.execute(id,operation);
   if(!result.accepted) throw new Error(result.stderr||result.message);
   return {accepted:true,message:result.stdout.trim()||result.message};
  }
