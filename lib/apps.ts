@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import {approvalGranted} from "./approvals";
 import {documentStep} from "./gallery";
 import {recordAudit} from "./audit";
-import {sandboxRuntime} from "./runtime";
+import {activeSandboxRuntime as sandboxRuntime} from "./runtime-factory";
 import {executionGate} from "./execution-gate";
 import {getControlState} from "./control-plane";
 import type {Risk} from "./types";
