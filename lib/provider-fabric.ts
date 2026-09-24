@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import {observe} from "./observability";
 import {recordAudit} from "./audit";
+import {approvalGranted} from "./approvals";
 
 export type ProviderCategory="AGENT_RUNTIME"|"SANDBOX"|"WORKFLOW"|"CODE_AGENT"|"BUILD"|"COMPUTER"|"DEPLOYMENT"|"KNOWLEDGE"|"OTHER";
 export type ProviderLifecycle="DISCOVERED"|"EVALUATING"|"AUTHORIZED"|"CONNECTING"|"CONNECTED"|"DEGRADED"|"BLOCKED"|"DISCONNECTED"|"REVOKED";
@@ -37,9 +38,11 @@ export function setProviderState(id:string,lifecycle:ProviderLifecycle,health:Pr
  observe({type:"provider.state",message:message??(p.name+" -> "+lifecycle),status:lifecycle==="CONNECTED"?"COMPLETED":lifecycle==="DEGRADED"?"ERROR":"RUNNING",actor:"provider-manager",resource:id,action:"provider.state",decision:"ALLOW"});
  return structuredClone(p);
 }
-export function connectProvider(id:string,endpoint?:string,credentialRef?:string){
+export function connectProvider(id:string,endpoint?:string,credentialRef?:string,approvalId?:string){
  const p=getProvider(id);if(!p)throw new Error("provider not found");
  if(p.lifecycle==="REVOKED")throw new Error("provider is revoked");
+ if(p.requiresApproval&&!approvalId)throw new Error("third-party provider connection requires explicit approval");
+ if(p.requiresApproval&&approvalId&&!approvalGranted(approvalId))throw new Error("provider connection approval is not granted");
  p.endpoint=endpoint;p.credentialRef=credentialRef;p.lifecycle="CONNECTED";p.health="HEALTHY";p.enabled=true;p.lastHeartbeat=new Date().toISOString();p.lastError=undefined;
  return setProviderState(id,"CONNECTED","HEALTHY",p.name+" connected through managed adapter");
 }
