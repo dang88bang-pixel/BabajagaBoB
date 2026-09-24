@@ -7,6 +7,7 @@ export const dynamic="force-dynamic";
 export async function GET(){return NextResponse.json({approvals:listApprovals()},{headers:{"Cache-Control":"no-store"}})}
 export async function POST(req:Request){
  try{
+  requireControlPlaneAuth(req);
   const b=await readJson(req);
   const action=actionField(b,["create","resolve","check"]);
   if(action==="create"){
