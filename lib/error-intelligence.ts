@@ -6,7 +6,7 @@ import {documentStep} from "./gallery";
 import {upsertKnowledge} from "./knowledge";
 import {loadErrors,saveErrors} from "./error-store";
 import {activeSandboxRuntime} from "./runtime-factory";
-import {getControlState} from "./control-plane";
+import {getControlState,registerSandbox,updateSandboxStatus} from "./control-plane";
 
 export type ErrorLifecycle="DETECTED"|"TRIAGING"|"CONTAINED"|"REPRODUCING"|"DIAGNOSING"|"HYPOTHESIS"|"EXPERIMENTING"|"ROOT_CAUSE_FOUND"|"FIXING"|"VERIFYING"|"RECOVERING"|"LEARNED"|"REGRESSION_LOCKED"|"ESCALATED";
 export type ErrorSeverity="LOW"|"MEDIUM"|"HIGH"|"CRITICAL";
@@ -22,9 +22,10 @@ export async function investigateError(id:string){const x=incidents.get(id);if(!
  if(task||x.severity==="CRITICAL"){
   const sandboxId=`DIAG-${x.id}`;
   await activeSandboxRuntime.create({id:sandboxId,type:"diagnostic",network:{mode:"DENY",allowlist:[]},limits:{cpuMillicores:500,memoryMb:512,storageMb:1024,timeoutMs:120000,processes:32},risk:x.severity==="CRITICAL"?"HIGH":"LOW"});
+  registerSandbox({id:sandboxId,type:"diagnostic",status:"COMPLETED",network:"DENY",task:task!.id,agentId:x.agentId||task!.assignedAgent});
   x.sandboxId=sandboxId; incidents.set(id,x); persist();
  }
-} else {try{await activeSandboxRuntime.start(x.sandboxId)}catch{}}const f=recordFailure({taskId:x.taskId,runId:x.runId,symptom:x.symptom,incident:x.incident,failureMode:x.failureMode||"UNKNOWN",contributingFactors:x.contributingFactors,prevention:[]});x.status="DIAGNOSING";x.error=f.id;incidents.set(id,x);persist();return structuredClone(x)}
+} else {try{await activeSandboxRuntime.start(x.sandboxId); try{updateSandboxStatus(x.sandboxId,"RUNNING")}catch{}}catch{} }const f=recordFailure({taskId:x.taskId,runId:x.runId,symptom:x.symptom,incident:x.incident,failureMode:x.failureMode||"UNKNOWN",contributingFactors:x.contributingFactors,prevention:[]});x.status="DIAGNOSING";x.error=f.id;incidents.set(id,x);persist();return structuredClone(x)}
 export function establishRootCause(id:string,rootCause:string,evidenceIds:string[]=[]){const x=incidents.get(id);if(!x)throw new Error("Error incident not found");if(evidenceIds.length===0&&x.evidenceIds.length===0)throw new Error("Root cause requires evidence");const merged=[...new Set([...x.evidenceIds,...evidenceIds])];const updated=transitionError(id,"ROOT_CAUSE_FOUND",{rootCause,evidenceIds:merged});if(x.error)resolveFailure(x.error,rootCause,updated.regressionTestId);return updated}
 export function learnFromError(id:string,summary:string,regressionTestId?:string){const x=incidents.get(id);if(!x)throw new Error("Error incident not found");const knowledgeState=x.status==="ROOT_CAUSE_FOUND"&&x.rootCause&&x.evidenceIds.length>0?"ESTABLISHED":"HYPOTHESIS"; const k=upsertKnowledge({subject:"Never Again: "+x.id,predicate:"prevention",object:summary,layer:"NEGATIVE",state:knowledgeState,sourceIds:x.evidenceIds});x.knowledgeId=k.id;x.regressionTestId=regressionTestId;x.status=regressionTestId?"REGRESSION_LOCKED":"LEARNED";incidents.set(id,x);persist();recordAudit({actor:x.agentId||"SYSTEM",action:"error.learned",resource:id,decision:"ALLOW"},{knowledgeId:k.id,regressionTestId});return structuredClone(x)}
 export function startExperiment(id:string,objectiveId:string){const x=incidents.get(id);if(!x)throw new Error("Error incident not found");const e=createExperiment({id:`EXP-${id}`,missionId:x.taskId||"INCIDENT",objectiveId, title:`Reproduce ${id}`, sandbox:x.sandboxId||"diagnostic-pending", hypothesis:x.hypothesis||"failure condition is reproducible", baseline:"known-good execution",control:"unchanged execution",variables:["suspected failure condition"],expectedResult:"reproduce the observed failure",alternativeExplanations:["environmental variance","dependency failure"],taskId:x.taskId||"UNASSIGNED",agentId:x.agentId||"AG-03"});transitionError(id,"EXPERIMENTING");return e}
