@@ -1,6 +1,6 @@
 import {enqueueJob,leaseJob,startJob,completeJob,failJob} from "./queue";
 import {createRun,startRun,completeRun,failRun,getRun,attachExecution} from "./runs";
-import {sandboxRuntime} from "./runtime";
+import {activeSandboxRuntime as sandboxRuntime} from "./runtime-factory";
 import type {Risk} from "./types";
 import {getControlState} from "./control-plane";
 import {executionGate} from "./execution-gate";
