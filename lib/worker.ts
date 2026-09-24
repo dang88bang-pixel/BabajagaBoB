@@ -1,7 +1,7 @@
 import {expireLeases,leaseJob,startJob,completeJob,failJob,heartbeatJob,queueSnapshot} from "./queue";
 import {beginRecovery,getRun,listRuns,startRun,completeRun,failRun} from "./runs";
 import {activeSandboxRuntime as sandboxRuntime,reconcileActiveRuntime,runtimeHandle,activeRuntimeMode} from "./runtime-factory";
-import {createErrorIncident,transitionError,investigateError} from "./error-intelligence";
+import {createErrorIncident,transitionError,investigateError} from "./error-intelligence";\nimport {ensureExecutionCapability} from "./authority";\nimport {executeAuthorized} from "./execution-broker";
 
 export type WorkerCycle={leased:string[];completed:string[];failed:string[];expired:number;recovered:string[]};
 
@@ -46,7 +46,7 @@ export async function runWorkerCycle():Promise<WorkerCycle>{
     if(!handle||handle.state!=="RUNNING") throw new Error(`sandbox runtime is not executable: ${handle?.state??"MISSING"}`);
    }
 
-   await sandboxRuntime.execute(run.sandboxId,["agent-execution"]);
+   const capability=ensureExecutionCapability(run.agentId,run.taskId,run.sandboxId,queueSnapshot().find(x=>x.id===job.id)?.risk??"LOW");\n   await executeAuthorized({taskId:run.taskId,agentId:run.agentId,sandboxId:run.sandboxId,capabilityTokenId:capability.id,argv:["agent-execution"]});
    completeJob(job.id);
    completeRun(run.id);
    result.completed.push(job.id);
