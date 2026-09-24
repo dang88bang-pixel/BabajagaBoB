@@ -17,7 +17,8 @@ export async function executeAuthorized(request:ExecutionRequest){
  const task=state.tasks.find(x=>x.id===request.taskId); if(!task)return deny(request,"Task not found");
  const agent=state.agents.find(x=>x.id===request.agentId); if(!agent)return deny(request,"Agent not found");
  if(task.assignedAgent!==request.agentId)return deny(request,"Agent is not assigned to task");
- const sandbox=state.sandboxes.find(x=>x.id===request.sandboxId); if(!sandbox)return deny(request,"Sandbox not found");
+ const sandbox=state.sandboxes.find(x=>x.id===request.sandboxId);
+ if(!sandbox){return deny(request,"Sandbox not found");}
  if(sandbox.task!==request.taskId)return deny(request,"Sandbox is not bound to task");
  if(sandbox.agentId!==request.agentId)return deny(request,"Sandbox is not bound to agent");
  const validation=validateCapabilityToken(request.capabilityTokenId,["task:execute","sandbox:run"]); if(!validation.valid)return deny(request,validation.reason);
