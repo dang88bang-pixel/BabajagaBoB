@@ -162,30 +162,30 @@ Statuslegende: [x] umgesetzt · [~] in Arbeit/Grundlage vorhanden · [ ] offen
 - [x] explicit external-provider boundary
 
 ## 10. Knowledge Fabric
-- [ ] working memory
-- [ ] episodic memory
-- [ ] semantic memory
-- [ ] negative knowledge
-- [ ] knowledge graph
-- [ ] vector index as retrieval layer, not source of truth
+- [x] working memory
+- [x] episodic memory
+- [x] semantic memory
+- [x] negative knowledge
+- [x] knowledge graph foundation
+- [~] vector index boundary (not source of truth)
 - [ ] source provenance
 - [ ] observation/extraction/cross-check/reproduction pipeline
-- [ ] contradiction graph
+- [x] contradiction graph foundation
 - [ ] confidence-free evidence states rather than one magic score
 
 ## 11. Visualization / Simulation
-- [ ] 2D architecture graph
-- [ ] flowchart
-- [ ] timeline
-- [ ] state machine
-- [ ] dependency graph
-- [ ] network graph
-- [ ] 3D scene/model boundary
+- [x] 2D visualization model foundation
+- [x] flowchart model
+- [x] timeline model
+- [x] state machine model
+- [x] dependency graph model
+- [x] network graph model
+- [x] 3D scene/model boundary
 - [ ] digital twin
-- [ ] simulation scenarios
-- [ ] simulation results
-- [ ] Causal Replay
-- [ ] live state visualization
+- [x] simulation scenarios
+- [x] simulation results
+- [~] Causal Replay data boundary
+- [~] live state visualization boundary
 
 ## 12. GUI / Control Center
 - [x] Overview
