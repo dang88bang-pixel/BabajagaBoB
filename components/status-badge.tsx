@@ -1,0 +1,2 @@
+import type {Status} from "../lib/types"; import {statusLabel,statusTone} from "../lib/status";
+export function StatusBadge({status}:{status:Status}){return <span className={"badge "+statusTone(status)}><i/> {statusLabel(status)}</span>}
