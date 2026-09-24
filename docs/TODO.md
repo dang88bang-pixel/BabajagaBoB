@@ -153,7 +153,7 @@ Statuslegende: [x] umgesetzt · [~] in Arbeit/Grundlage vorhanden · [ ] offen
 - [ ] event persistence
 - [ ] audit persistence
 - [ ] artifact metadata persistence
-- [ ] provenance indexes
+- [x] provenance indexes (graph foundation)
 - [ ] migrations
 - [ ] backup/restore
 - [ ] integrity verification
