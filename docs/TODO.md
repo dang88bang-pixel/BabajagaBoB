@@ -60,11 +60,11 @@ Statuslegende: [x] umgesetzt · [~] in Arbeit/Grundlage vorhanden · [ ] offen
 - [ ] process isolation
 - [ ] network allowlist enforcement
 - [ ] CPU/RAM/storage/process limits
-- [ ] device allocation
-- [ ] Device Fabric
-- [ ] Device trust states
-- [ ] Device capability discovery ≠ authorization
-- [ ] offline execution packages
+- [x] device allocation boundary
+- [x] Device Fabric foundation
+- [x] Device trust states
+- [x] Device capability discovery ≠ authorization
+- [~] offline execution package boundary
 
 ## 04. Tool / Skill / Runtime Workshop
 - [ ] Tool lifecycle: discover → spec → prototype → test → validate → register
