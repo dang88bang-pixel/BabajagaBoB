@@ -6,6 +6,7 @@ GUI-first foundation for an autonomous full-stack agent platform.
 - Active Control Center shell
 - Agent Observatory
 - Mission queue
+- Execution queue with lease/retry/cancellation states
 - Experiment status
 - Live activity events
 - Emergency lockdown state
@@ -14,4 +15,6 @@ GUI-first foundation for an autonomous full-stack agent platform.
 
 ## Run
 npm install
+npm run typecheck
+npm run build
 npm run dev
