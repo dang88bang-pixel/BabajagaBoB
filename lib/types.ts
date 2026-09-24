@@ -8,4 +8,7 @@ export type Experiment={id:string;title:string;status:Status;progress:number;san
 export type Sandbox={id:string;type:string;status:Status;network:"DENY"|"ALLOWLIST";task:string;agentId:string};
 export type Task={id:string;missionId:string;title:string;status:Status;progress:number;risk:Risk;assignedAgent:string;requiresApproval:boolean};
 export type Approval={id:string;taskId:string;status:"PENDING"|"GRANTED"|"DENIED";reason:string};
+export type ToolLifecycle="DRAFT"|"PROTOTYPE"|"TESTING"|"VALIDATED"|"REGISTERED"|"DEPRECATED";
+export type SkillDefinition={id:string;name:string;version:string;tools:string[];lifecycle:ToolLifecycle;provenance:string;validation:string[]};
+
 export type ControlState={agents:Agent[];missions:Mission[];tasks:Task[];experiments:Experiment[];sandboxes:Sandbox[];events:Event[];approvals:Approval[];locked:boolean};
