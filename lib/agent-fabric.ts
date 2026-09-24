@@ -1,10 +1,11 @@
 import type {Agent,Status} from "./types";
-export type AgentKind="SUPERVISOR"|"PLANNER"|"BUILDER"|"RESEARCH"|"SCIENTIST"|"QA"|"BROWSER"|"GUARDIAN"|"OPERATOR"|"RECOVERY";
+export type AgentKind="SUPERVISOR"|"PLANNER"|"BUILDER"|"RESEARCH"|"SCIENTIST"|"QA"|"BROWSER"|"GUARDIAN"|"OPERATOR"|"RECOVERY"|"INTEGRATOR";
 export type AutonomyProfile={initiative:boolean;experimentation:boolean;codeChanges:boolean;sandboxCreation:boolean;externalNetwork:boolean;production:boolean;infrastructure:boolean;authorityChanges:boolean};
 export type AgentNode=Agent&{kind:AgentKind;profile:AutonomyProfile;heartbeatAt:string;health:"HEALTHY"|"STALE"|"BLOCKED"};
 export type Handoff={id:string;fromAgentId:string;toAgentId:string;taskId:string;reason:string;createdAt:string;status:"REQUESTED"|"ACCEPTED"|"COMPLETED"|"REJECTED"};
 const base:AutonomyProfile={initiative:true,experimentation:true,codeChanges:true,sandboxCreation:true,externalNetwork:false,production:false,infrastructure:false,authorityChanges:false};
 const agents:AgentNode[]=[
+{id:"AG-INT",name:"Integrator",role:"Third-party Provider Management",kind:"INTEGRATOR",status:"WAITING",progress:0,task:"Discover, connect and monitor delegated providers",capabilities:["provider.discover","provider.evaluate","provider.connect","provider.bind","provider.monitor","provider.revoke"],profile:{...base,externalNetwork:true,infrastructure:true},heartbeatAt:new Date().toISOString(),health:"HEALTHY"},
 {id:"AG-SUP",name:"Supervisor",role:"Orchestration",kind:"SUPERVISOR",status:"RUNNING",progress:0,task:"Routing and coordination",capabilities:["task.dispatch","provider.discover","provider.evaluate","provider.monitor"],profile:{...base,codeChanges:false,sandboxCreation:false},heartbeatAt:new Date().toISOString(),health:"HEALTHY"},
 {id:"AG-PLAN",name:"Planner",role:"Planning",kind:"PLANNER",status:"WAITING",progress:0,task:"Decompose missions",capabilities:["mission.plan","provider.discover","provider.evaluate"],profile:{...base,codeChanges:false,sandboxCreation:false},heartbeatAt:new Date().toISOString(),health:"HEALTHY"},
 {id:"AG-BUILD",name:"Builder",role:"Engineering",kind:"BUILDER",status:"WAITING",progress:0,task:"Implement changes",capabilities:["repo.branch","artifact.write","sandbox.run","provider.bind"],profile:{...base},heartbeatAt:new Date().toISOString(),health:"HEALTHY"},
