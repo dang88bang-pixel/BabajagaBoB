@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import {addProvenanceEdge,addProvenanceNode} from "./provenance";
 import {appendEventPersistent} from "./event-store";
 import {recordAudit} from "./audit";
