@@ -1,10 +1,13 @@
 export type FailureRecord={id:string;taskId?:string;runId?:string;symptom:string;incident:string;failureMode:string;rootCause?:string;contributingFactors:string[];prevention:string[];regressionTestId?:string;status:"OPEN"|"ANALYZING"|"RESOLVED"|"VERIFIED";createdAt:string};
 export type RecoveryPlan={id:string;failureId:string;steps:string[];rollbackArtifactId?:string;diagnosticSandboxId?:string;verification:string[];status:"PREPARED"|"EXECUTING"|"VERIFIED"|"FAILED"};
-const failures:FailureRecord[]=[];const plans:RecoveryPlan[]=[];
+const persisted=loadReliability();
+const failures:FailureRecord[]=persisted.failures;const plans:RecoveryPlan[]=persisted.plans;
+const persist=()=>saveReliability({failures,plans});
 const clone=<T,>(x:T):T=>structuredClone(x);
 import {observe} from "./observability";
-export function recordFailure(x:Omit<FailureRecord,"id"|"createdAt"|"status">){const f={...x,id:`FAIL-${Date.now()}`,createdAt:new Date().toISOString(),status:"OPEN" as const};failures.push(f);observe({type:"failure.recorded",message:`Failure ${f.id} erfasst`,status:"ERROR",actor:"reliability",resource:f.id,taskId:f.taskId,action:"reliability.failure.record",decision:"ERROR",argumentsValue:f});return clone(f)}
-export function prepareRecovery(x:Omit<RecoveryPlan,"id"|"status">){const p={...x,id:`REC-${Date.now()}`,status:"PREPARED" as const};plans.push(p);observe({type:"recovery.prepared",message:`Recovery ${p.id} vorbereitet`,status:"RECOVERING",actor:"recovery",resource:p.id,action:"recovery.prepare",argumentsValue:p});return clone(p)}
+import {loadReliability,saveReliability} from "./reliability-store";
+export function recordFailure(x:Omit<FailureRecord,"id"|"createdAt"|"status">){const f={...x,id:`FAIL-${Date.now()}`,createdAt:new Date().toISOString(),status:"OPEN" as const};failures.push(f);observe({type:"failure.recorded",message:`Failure ${f.id} erfasst`,status:"ERROR",actor:"reliability",resource:f.id,taskId:f.taskId,action:"reliability.failure.record",decision:"ERROR",argumentsValue:f});persist();persist();return clone(f)}
+export function prepareRecovery(x:Omit<RecoveryPlan,"id"|"status">){const p={...x,id:`REC-${Date.now()}`,status:"PREPARED" as const};plans.push(p);observe({type:"recovery.prepared",message:`Recovery ${p.id} vorbereitet`,status:"RECOVERING",actor:"recovery",resource:p.id,action:"recovery.prepare",argumentsValue:p});persist();persist();return clone(p)}
 export function resolveFailure(id:string,rootCause:string,regressionTestId?:string){const f=failures.find(x=>x.id===id);if(!f)throw new Error("failure not found");f.rootCause=rootCause;f.regressionTestId=regressionTestId;f.status="RESOLVED";observe({type:"failure.resolved",message:`Failure ${id} gelöst`,status:"COMPLETED",actor:"reliability",resource:id,taskId:f.taskId,action:"reliability.failure.resolve",argumentsValue:{rootCause,regressionTestId}});return clone(f)}
 export function verifyRecovery(id:string){const p=plans.find(x=>x.id===id);if(!p)throw new Error("recovery plan not found");p.status="VERIFIED";observe({type:"recovery.verified",message:`Recovery ${id} verifiziert`,status:"COMPLETED",actor:"recovery",resource:id,action:"recovery.verify"});return clone(p)}
 export function listReliability(){return clone({failures,plans})}
