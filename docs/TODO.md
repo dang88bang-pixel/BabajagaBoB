@@ -151,7 +151,7 @@ Statuslegende: [x] umgesetzt · [~] in Arbeit/Grundlage vorhanden · [ ] offen
 - [x] durable ControlStore adapter (local atomic JSON)
 - [x] transactional writes (atomic file replacement)
 - [x] event persistence boundary with integrity-checked event log
-- [~] audit persistence boundary (store-ready)
+- [x] audit persistence boundary with integrity-checked local event log
 - [~] artifact metadata persistence boundary (store-ready)
 - [x] provenance graph persistence with integrity checks
 - [x] schema version + migration boundary
@@ -185,7 +185,7 @@ Statuslegende: [x] umgesetzt · [~] in Arbeit/Grundlage vorhanden · [ ] offen
 - [x] simulation scenarios
 - [x] simulation results
 - [x] Causal Replay event/provenance data boundary
-- [~] live state visualization boundary
+- [x] live state visualization boundary
 
 ## 12. GUI / Control Center
 - [x] Overview
@@ -203,7 +203,7 @@ Statuslegende: [x] umgesetzt · [~] in Arbeit/Grundlage vorhanden · [ ] offen
 - [ ] Capability Graph
 - [ ] Authority Graph visualization
 - [ ] Provenance Graph
-- [ ] Agent Timeline
+- [x] Agent Timeline
 - [ ] Why? structured work record
 - [ ] Creator Inbox: Inform / Ask / Block
 - [ ] Goal Negotiation
@@ -212,7 +212,7 @@ Statuslegende: [x] umgesetzt · [~] in Arbeit/Grundlage vorhanden · [ ] offen
 - [ ] device pool
 - [ ] integrations registry
 - [ ] global search
-- [ ] filters and event replay
+- [x] filters and event replay
 
 ## 13. Privacy
 - [x] no analytics
