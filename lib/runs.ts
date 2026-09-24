@@ -19,7 +19,7 @@ export function createRun(input:Pick<Run,"taskId"|"agentId"|"risk"> & Partial<Pi
 }
 export function listRuns(){return clone(runs)}
 export function getRun(id:string){const r=runs.find(x=>x.id===id);return r?clone(r):null}
-export function attachExecution(runId:string,jobId:string,sandboxId:string){const r=runs.find(x=>x.id===runId);if(!r)throw new Error("run not found");r.jobId=jobId;r.sandboxId=sandboxId;observe({type:"run.execution.attached",message:`Run ${id} mit Job und Sandbox verknüpft`,status:"PLANNING",actor:r.agentId,resource:id,taskId:r.taskId,action:"run.attach",argumentsValue:{jobId,sandboxId}});return clone(r)}
+export function attachExecution(runId:string,jobId:string,sandboxId:string){const r=runs.find(x=>x.id===runId);if(!r)throw new Error("run not found");r.jobId=jobId;r.sandboxId=sandboxId;observe({type:"run.execution.attached",message:`Run ${runId} mit Job und Sandbox verknüpft`,status:"PLANNING",actor:r.agentId,resource:runId,taskId:r.taskId,action:"run.attach",argumentsValue:{jobId,sandboxId}});return clone(r)}
 
 export function startRun(id:string){const r=runs.find(x=>x.id===id);if(!r||!["CREATED","QUEUED","RECOVERING"].includes(r.state))return null;r.state="RUNNING";r.attempt++;r.startedAt=now();observe({type:"run.started",message:`Run ${id} gestartet`,status:"RUNNING",actor:r.agentId,resource:id,taskId:r.taskId,action:"run.start",argumentsValue:{attempt:r.attempt}});return clone(r)}
 export function queueRun(id:string){const r=runs.find(x=>x.id===id);if(!r||!["CREATED","PAUSED"].includes(r.state))return null;r.state="QUEUED";observe({type:"run.queued",message:`Run ${id} in Queue`,status:"QUEUED",actor:r.agentId,resource:id,taskId:r.taskId,action:"run.queue"});return clone(r)}
