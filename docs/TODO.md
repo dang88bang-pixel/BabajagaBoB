@@ -124,8 +124,8 @@ Statuslegende: [x] umgesetzt · [~] in Arbeit/Grundlage vorhanden · [ ] offen
 - [ ] predictive readiness signals
 - [ ] prepared rollback artifacts
 - [ ] recovery rehearsals
-- [ ] autonomous investigation
-- [ ] Creator escalation
+- [~] autonomous investigation boundary
+- [~] Creator escalation boundary
 
 ## 08. CI/CD und Software Lifecycle
 - [x] branch-per-task (workflow contract)
