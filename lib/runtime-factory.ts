@@ -6,11 +6,7 @@ class OciSandboxRuntimeAdapter implements SandboxRuntime{
   return ociContainerRuntime.create({image:process.env.BOB_OCI_IMAGE??"alpine:3.20",command:["sleep","infinity"],limits:spec.limits,network:spec.network.mode,allowlist:spec.network.allowlist,containerName:`bob-${spec.id.toLowerCase().replace(/[^a-z0-9_.-]/g,"-")}`});
  }
  async start(id:string){return ociContainerRuntime.start(id)}
- async pause(id:string){
-  const result=await ociContainerRuntime.execute(id,["kill","-STOP","1"]);
-  if(!result.accepted) throw new Error(result.stderr||result.message);
-  return {sandboxId:id,state:"PAUSED" as const,network:{mode:"DENY" as const,allowlist:[]},limits:{cpuMillicores:1000,memoryMb:1024,storageMb:4096,timeoutMs:300000,processes:32}};
- }
+ async pause(id:string){return ociContainerRuntime.pause(id)}
  async execute(id:string,operation:string){
   const result=await ociContainerRuntime.execute(id,["/bin/sh","-lc",operation]);
   if(!result.accepted) throw new Error(result.stderr||result.message);
@@ -29,4 +25,9 @@ export const activeRuntimeMode=process.env.BOB_SANDBOX_RUNTIME==="oci"?"oci":"mo
 export async function reconcileActiveRuntime(){
  if(activeRuntimeMode==="oci") return ociContainerRuntime.reconcile();
  return [];
+}
+
+export function runtimeHandle(sandboxId:string){
+ if(activeRuntimeMode==="oci") return ociContainerRuntime.getHandle(sandboxId);
+ return undefined;
 }
