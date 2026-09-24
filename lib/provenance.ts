@@ -18,6 +18,6 @@ function read():Envelope{
 function write(nodes:ProvenanceNode[],edges:ProvenanceEdge[]){
  const payload={version:1 as const,nodes:clone(nodes),edges:clone(edges)};const e={...payload,digest:digest(payload)};const tmp=path.join(root,`.provenance.${process.pid}.${Date.now()}.tmp`);fs.writeFileSync(tmp,JSON.stringify(e,null,2),{mode:0o600});fs.renameSync(tmp,file);
 }
-export function addProvenanceNode(n:Omit<ProvenanceNode,"createdAt">){const e=read();const x={...n,createdAt:new Date().toISOString()};e.nodes.push(x);write(e.nodes,e.edges);return clone(x);}
-export function addProvenanceEdge(e0:Omit<ProvenanceEdge,"id"|"createdAt">){const e=read();if(!e.nodes.some(x=>x.id===e0.from)||!e.nodes.some(x=>x.id===e0.to))throw new Error("provenance endpoint missing");const x={...e0,id:"PE-"+crypto.randomUUID(),createdAt:new Date().toISOString()};e.edges.push(x);write(e.nodes,e.edges);return clone(x);}
+export function addProvenanceNode(n:Omit<ProvenanceNode,"createdAt">){const e=read();const existing=e.nodes.find(x=>x.id===n.id);if(existing)return clone(existing);const x={...n,createdAt:new Date().toISOString()};e.nodes.push(x);write(e.nodes,e.edges);return clone(x);}
+export function addProvenanceEdge(e0:Omit<ProvenanceEdge,"id"|"createdAt">){const e=read();if(!e.nodes.some(x=>x.id===e0.from)||!e.nodes.some(x=>x.id===e0.to))throw new Error("provenance endpoint missing");const existing=e.edges.find(x=>x.from===e0.from&&x.to===e0.to&&x.relation===e0.relation);if(existing)return clone(existing);const x={...e0,id:"PE-"+crypto.randomUUID(),createdAt:new Date().toISOString()};e.edges.push(x);write(e.nodes,e.edges);return clone(x);}
 export function listProvenance(){const e=read();return clone({nodes:e.nodes,edges:e.edges});}
