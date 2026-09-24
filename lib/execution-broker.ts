@@ -2,7 +2,7 @@ import {getControlState} from "./control-plane";
 import {executionGate} from "./execution-gate";
 import {capabilityTokens,validateCapabilityToken} from "./authority";
 import {recordAudit} from "./audit";
-import {activeSandboxRuntime} from "./runtime-factory";
+import {activeSandboxRuntime} from "./runtime-factory";\nimport {observe} from "./observability";\nimport {addProvenanceNode,addProvenanceEdge} from "./provenance";
 import type {Risk} from "./types";
 
 export type ExecutionRequest={taskId:string;agentId:string;sandboxId:string;capabilityTokenId:string;approvalId?:string;argv:string[]};
