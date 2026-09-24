@@ -1,4 +1,10 @@
-import {NextResponse} from "next/server";import {cancelJob,leaseJob,queueSnapshot} from "../../../lib/queue";
-export const dynamic="force-dynamic";
-export async function GET(){return NextResponse.json({jobs:queueSnapshot()},{headers:{"Cache-Control":"no-store"}})}
-export async function POST(req:Request){const body=await req.json().catch(()=>({}));if(body.action==="lease"&&typeof body.id==="string"){const job=leaseJob(body.id);return job?NextResponse.json(job):NextResponse.json({error:"Job cannot be leased"}, {status:409})}if(body.action==="cancel"&&typeof body.id==="string"){const job=cancelJob(body.id);return job?NextResponse.json(job):NextResponse.json({error:"Job cannot be cancelled"}, {status:409})}return NextResponse.json({error:"Unsupported queue action"},{status:400})}
+import {NextResponse} from "next/server";
+import {cancelJob,completeJob,expireLeases,failJob,heartbeatJob,leaseJob,queueSnapshot,startJob} from "../../../lib/queue";
+export const runtime="nodejs";
+export async function GET(){expireLeases();return NextResponse.json({jobs:queueSnapshot()},{headers:{"Cache-Control":"no-store"}})}
+export async function POST(req:Request){
+ const body=await req.json().catch(()=>({})); const id=String(body.id||""); let result;
+ switch(body.action){case "lease":result=leaseJob(id);break;case "start":result=startJob(id);break;case "heartbeat":result=heartbeatJob(id);break;case "complete":result=completeJob(id);break;case "fail":result=failJob(id,String(body.error||"job failed"));break;case "expire":expireLeases();return NextResponse.json({jobs:queueSnapshot()});case "cancel":result=cancelJob(id);break;default:return NextResponse.json({error:"Unsupported queue action"},{status:400})}
+ if(!result)return NextResponse.json({error:"Invalid job transition"},{status:409});
+ return NextResponse.json({job:result});
+}
