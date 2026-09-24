@@ -12,7 +12,6 @@ type Persisted={handle:RuntimeHandle;image:string};
 const root=()=>process.env.BOB_STORAGE_DIR??path.join(process.cwd(),".bob-data");
 const file=()=>path.join(root(),"oci-runtime.json");
 const handles=new Map<string,{handle:RuntimeHandle;image:string}>();
-const now=()=>new Date().toISOString();
 
 function assertSafeImage(image:string){if(!/^[a-zA-Z0-9][a-zA-Z0-9._\\-/:@]+$/.test(image))throw new Error("Invalid OCI image reference")}
 function assertSafeName(name:string){if(!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(name))throw new Error("Invalid OCI container name")}
