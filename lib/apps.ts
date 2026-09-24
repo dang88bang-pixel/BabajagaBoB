@@ -37,7 +37,7 @@ export function registerExecutableModule(input:{appId:string;name:string;version
  if(!input.securityValidated)throw new Error("executable module requires security validation");
  const now=new Date().toISOString();
  const module:ExecutableModule={id:"MOD-"+crypto.randomUUID(),...input,state:"VALIDATED",createdAt:now,updatedAt:now};
- moduleStore.set(module.id,module);app.modules.push(module.id);app.updatedAt=now;
+ moduleStore.set(module.id,module);app.modules.push(module.id);app.state="AWAITING_CONFIRMATION";app.progress=90;app.updatedAt=now;
  documentStep({kind:"TEST",title:"Ausführbares Modul validiert",description:`Modul ${module.name} hat Tests und Sicherheitsvalidierung bestanden`,status:"COMPLETED",actor:"agent",appId:app.id,moduleId:module.id,taskId:input.taskId});
  return structuredClone(module);
 }
