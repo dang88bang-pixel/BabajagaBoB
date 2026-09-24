@@ -1,12 +1,13 @@
 import {expireLeases,leaseJob,startJob,completeJob,failJob,heartbeatJob,queueSnapshot} from "./queue";
 import {beginRecovery,getRun,listRuns,startRun,completeRun,failRun} from "./runs";
-import {activeSandboxRuntime as sandboxRuntime} from "./runtime-factory";
+import {activeSandboxRuntime as sandboxRuntime,reconcileActiveRuntime} from "./runtime-factory";
 
 export type WorkerCycle={leased:string[];completed:string[];failed:string[];expired:number;recovered:string[]};
 
 export async function runWorkerCycle():Promise<WorkerCycle>{
  const result:WorkerCycle={leased:[],completed:[],failed:[],expired:0,recovered:[]};
  result.expired=expireLeases();
+ await reconcileActiveRuntime();
 
  // Restart/retry reconciliation: a requeued job may still point to a run that
  // was RUNNING when its previous worker disappeared. Move that run into the
