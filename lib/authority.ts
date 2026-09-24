@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type {Risk} from "./types";
 export type AuthorityEdge={id:string;from:string;to:string;kind:"DELEGATES"|"SCOPES"|"BINDS";capabilities:string[];expiresAt:string|null};
-export type CapabilityToken={id:string;subject:string;taskId:string;sandboxId:string;capabilities:string[];risk:Risk;issuedBy:string;expiresAt:string;revocable:boolean};
+export type CapabilityToken={id:string;subject:string;taskId:string;sandboxId:string;capabilities:string[];risk:Risk;issuedBy:string;expiresAt:string;revocable:boolean;revoked?:boolean};
 const edges:AuthorityEdge[]=[],tokens=new Map<string,CapabilityToken>();
 export function addAuthorityEdge(edge:AuthorityEdge){if(edge.from===edge.to)throw new Error("self delegation is forbidden");edges.push(structuredClone(edge));return structuredClone(edge)}
 export function authorityGraph(){return edges.map(structuredClone)}
