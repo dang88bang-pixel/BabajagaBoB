@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
-import {advanceWorkshop,createWorkshopItem,getWorkshop,listWorkshop} from "@/lib/workshop";
-import {registerTool,getTool} from "@/lib/tool-registry";
+import {advanceWorkshop,listWorkshop} from "@/lib/workshop";
+
 import {registerSkill} from "@/lib/skills";
 import type {Risk} from "@/lib/types";
 export type WorkshopAction="SPECIFY"|"PROTOTYPE"|"SANDBOX"|"TEST"|"SECURITY_VALIDATE"|"EXPERIMENT"|"VALIDATE"|"REGISTER";
