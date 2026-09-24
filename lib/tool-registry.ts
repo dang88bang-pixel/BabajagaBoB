@@ -1,0 +1,8 @@
+import type {Risk} from "./types";
+export type ToolDefinition={id:string;version:string;name:string;description:string;inputSchema:Record<string,unknown>;capabilities:string[];allowedEnvironments:string[];risk:Risk;timeoutMs:number;resourceLimits:{cpuMillicores:number;memoryMb:number};network:"DENY"|"ALLOWLIST"|"INTERNET";sideEffects:string[];reversible:boolean;approvalRequired:boolean};
+const tools=new Map<string,ToolDefinition>();
+export function registerTool(tool:ToolDefinition){const key=`${tool.id}@${tool.version}`;if(tools.has(key))throw new Error("tool version already registered");tools.set(key,structuredClone(tool));return structuredClone(tool)}
+export function listTools(){return [...tools.values()].map(structuredClone)}
+export function getTool(id:string,version?:string){const candidates=[...tools.values()].filter(t=>t.id===id);if(version)return candidates.find(t=>t.version===version);return candidates.sort((a,b)=>b.version.localeCompare(a.version))[0]}
+export function toolCanRun(tool:ToolDefinition,environment:string,capabilities:string[]){return tool.allowedEnvironments.includes(environment)&&tool.capabilities.every(c=>capabilities.includes(c))}
+registerTool({id:"tool.runtime.snapshot",version:"1.0.0",name:"Sandbox Snapshot",description:"Create a recoverable sandbox snapshot",inputSchema:{sandboxId:{type:"string"}},capabilities:["sandbox.snapshot"],allowedEnvironments:["development","experiment","test","recovery"],risk:"LOW",timeoutMs:30000,resourceLimits:{cpuMillicores:500,memoryMb:256},network:"DENY",sideEffects:["snapshot"],reversible:true,approvalRequired:false});
