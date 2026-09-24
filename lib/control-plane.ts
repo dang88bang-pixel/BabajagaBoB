@@ -42,6 +42,15 @@ const clone=<T,>(v:T):T=>JSON.parse(JSON.stringify(v));
 const persistedEvents=loadEvents();
 if(persistedEvents.length)state.events=persistedEvents.slice(0,100);
 export function snapshot(){return clone(state)}
+export function registerSandbox(sandbox:Sandbox){
+ if(!sandbox.id||state.sandboxes.some(x=>x.id===sandbox.id))throw new Error("Sandbox already registered");
+ if(!state.tasks.some(x=>x.id===sandbox.task))throw new Error("Sandbox task binding not found");
+ if(!state.agents.some(x=>x.id===sandbox.agentId))throw new Error("Sandbox agent binding not found");
+ state.sandboxes.push(clone(sandbox));
+ appendEvent("sandbox.registered",`Sandbox ${sandbox.id} registriert`,sandbox.status,sandbox.agentId,{resource:sandbox.id,taskId:sandbox.task});
+ return clone(sandbox);
+}
+export function updateSandboxStatus(id:string,status:Status){const s=state.sandboxes.find(x=>x.id===id);if(!s)throw new Error("Sandbox not found");s.status=status;appendEvent("sandbox.status",`Sandbox ${id}: ${status}`,status,s.agentId,{resource:id,taskId:s.task});return clone(s)}
 export function getControlState(){return snapshot()}
 export function appendEvent(type:string,message:string,status:Status,actor="system",meta:Partial<Event>={}):Event{const parent=state.events[0]?.id;const event:Event={id:crypto.randomUUID(),type,message,status,time:now(),actor,causalParentId:parent,...meta};state.events.unshift(event);state.events=state.events.slice(0,100);appendEventPersistent(event);return clone(event)}
 export function runGuardian(){if(state.locked){recordAudit({actor:"AG-03",action:"guardian.check",decision:"DENY"},{});return snapshot()}const task=state.tasks.find(t=>t.id==="TASK-105-A");if(task){const policy=evaluateTask(task,state.locked);recordAudit({actor:"AG-03",action:"guardian.check",resource:task.id,decision:policy.decision},task);if(policy.decision==="DENY"){task.status="BLOCKED";appendEvent("agent.blocked","Guardian: Policy denied task execution","BLOCKED","AG-03",{taskId:task.id});return snapshot()}if(policy.decision==="REQUIRE_APPROVAL"){task.status="APPROVAL_REQUIRED";appendEvent("approval.requested","Guardian: Capability Check benötigt Creator-Freigabe","APPROVAL_REQUIRED","AG-03",{taskId:task.id});return snapshot()}return snapshot()}}
