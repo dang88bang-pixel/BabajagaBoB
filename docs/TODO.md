@@ -128,8 +128,8 @@ Statuslegende: [x] umgesetzt · [~] in Arbeit/Grundlage vorhanden · [ ] offen
 - [ ] Creator escalation
 
 ## 08. CI/CD und Software Lifecycle
-- [ ] branch-per-task
-- [ ] sandbox-per-run
+- [x] branch-per-task (workflow contract)
+- [x] sandbox-per-run
 - [ ] commit provenance
 - [ ] lint
 - [ ] typecheck
