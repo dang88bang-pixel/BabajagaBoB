@@ -4,6 +4,7 @@ import {activeSandboxRuntime as sandboxRuntime,reconcileActiveRuntime,runtimeHan
 import {createErrorIncident,transitionError,investigateError} from "./error-intelligence";
 import {ensureExecutionCapability} from "./authority";
 import {executeAuthorized} from "./execution-broker";
+import {getControlState} from "./control-plane";
 
 export type WorkerCycle={leased:string[];completed:string[];failed:string[];expired:number;recovered:string[]};
 
@@ -48,7 +49,9 @@ export async function runWorkerCycle():Promise<WorkerCycle>{
     if(!handle||handle.state!=="RUNNING") throw new Error(`sandbox runtime is not executable: ${handle?.state??"MISSING"}`);
    }
 
-   const capability=ensureExecutionCapability(run.agentId,run.taskId,run.sandboxId,queueSnapshot().find(x=>x.id===job.id)?.risk??"LOW");
+   const task=getControlState().tasks.find(x=>x.id===run.taskId);
+   if(!task) throw new Error(`task not found: ${run.taskId}`);
+   const capability=ensureExecutionCapability(run.agentId,run.taskId,run.sandboxId,task.risk);
    await executeAuthorized({taskId:run.taskId,agentId:run.agentId,sandboxId:run.sandboxId,capabilityTokenId:capability.id,argv:["agent-execution"]});
    completeJob(job.id);
    completeRun(run.id);
