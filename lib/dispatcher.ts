@@ -1,5 +1,5 @@
 import {enqueueJob,leaseJob,startJob,completeJob,failJob} from "./queue";
-import {createRun,startRun,completeRun,failRun,getRun} from "./runs";
+import {createRun,startRun,completeRun,failRun,getRun,attachExecution} from "./runs";
 import {sandboxRuntime} from "./runtime";
 import type {Risk} from "./types";
 
@@ -9,6 +9,7 @@ export async function dispatchTask(input:DispatchInput){
  const run=createRun({taskId:input.taskId,agentId:input.agentId,risk:input.risk});
  const job=enqueueJob({id:`JOB-${run.id}`,taskId:input.taskId,agentId:input.agentId,maxAttempts:3,risk:input.risk,idempotencyKey:input.idempotencyKey??run.id});
  const sandbox=await sandboxRuntime.create({id:`SB-RUN-${run.id}`,type:input.sandboxType??"development",network:{mode:"DENY",allowlist:[]},risk:input.risk,limits:{cpuMillicores:1000,memoryMb:1024,storageMb:4096,timeoutMs:300000,processes:32}});
+ attachExecution(run.id,job.id,sandbox.sandboxId);
  return {run:{...run,jobId:job.id,sandboxId:sandbox.sandboxId},job,sandbox};
 }
 export function workerStart(runId:string,jobId:string){const run=getRun(runId);if(!run)return null;const leased=leaseJob(jobId);if(!leased)return null;if(!startJob(jobId))return null;return startRun(runId)}
