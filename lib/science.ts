@@ -26,5 +26,22 @@ export async function runExperiment(id:string,kind:"BASELINE"|"CONTROL"|"REPLICA
  observe({type:"experiment.run",message:`Experiment ${id} ${kind}`,status:e.status,actor:"scientist",resource:id,action:"science.experiment.run",argumentsValue:run});return clone(run);
 }
 export function listExperimentRuns(){return clone(experimentRuns)}
+export type CausalValidation={experimentId:string;valid:boolean;knowledgeState:KnowledgeState;baselineRuns:number;controlRuns:number;replicationRuns:number;replicationAgreement:number;alternativeExplanations:string[];reasons:string[]};
+export function validateCausalChain(id:string):CausalValidation{
+ const e=experiments.find(x=>x.id===id);if(!e)throw new Error("experiment not found");
+ const runs=experimentRuns.filter(r=>r.experimentId===id);
+ const b=runs.filter(r=>r.kind==="BASELINE"),c=runs.filter(r=>r.kind==="CONTROL"),r=runs.filter(r=>r.kind==="REPLICATION");
+ const reasons:string[]=[];
+ if(b.length===0)reasons.push("baseline missing");
+ if(c.length===0)reasons.push("control missing");
+ if(r.length===0)reasons.push("replication missing");
+ const signatures=r.map(x=>x.accepted+"|"+x.message);
+ const agreement=r.length?new Set(signatures).size===1?1:signatures.filter(x=>x===signatures[0]).length/signatures.length:0;
+ if(r.length>1&&agreement<1)reasons.push("replications disagree");
+ const valid=b.length>0&&c.length>0&&r.length>0&&agreement===1&&e.evidenceIds.length>0;
+ const state:KnowledgeState=valid?"ESTABLISHED":(r.length>0||e.evidenceIds.length>0?"SUPPORTED":"HYPOTHESIS");
+ const result={experimentId:id,valid,knowledgeState:state,baselineRuns:b.length,controlRuns:c.length,replicationRuns:r.length,replicationAgreement:agreement,alternativeExplanations:e.alternativeExplanations,reasons};
+ e.knowledgeState=state;if(valid)e.status="COMPLETED";return clone(result);
+}
 export function createDecision(x:Omit<DecisionRecord,"id"|"createdAt">){const d={...x,id:`ADR-${Date.now()}`,createdAt:new Date().toISOString()};decisions.push(d);observe({type:"agent.decision.recorded",message:`Decision Record ${d.id} erfasst`,status:"COMPLETED",actor:"agent",resource:d.id,taskId:d.taskId,action:"science.decision.create",argumentsValue:d});return clone(d)}
 export function listScience(){return clone({objectives,experiments,evidence,decisions,experimentRuns})}
