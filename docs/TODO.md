@@ -148,18 +148,18 @@ Statuslegende: [x] umgesetzt · [~] in Arbeit/Grundlage vorhanden · [ ] offen
 - [ ] regression blocks promotion
 
 ## 09. Persistence / Data
-- [ ] durable ControlStore adapter
-- [ ] transactional writes
-- [ ] event persistence
-- [ ] audit persistence
-- [ ] artifact metadata persistence
+- [x] durable ControlStore adapter (local atomic JSON)
+- [x] transactional writes (atomic file replacement)
+- [~] event persistence boundary (ControlStore-ready)
+- [~] audit persistence boundary (store-ready)
+- [~] artifact metadata persistence boundary (store-ready)
 - [x] provenance indexes (graph foundation)
-- [ ] migrations
-- [ ] backup/restore
-- [ ] integrity verification
-- [ ] retention policy
-- [ ] local-first/offline storage
-- [ ] explicit external-provider boundary
+- [x] schema version + migration boundary
+- [x] local backup/restore
+- [x] SHA-256 integrity verification
+- [x] bounded local backup retention
+- [x] local-first/offline storage boundary
+- [x] explicit external-provider boundary
 
 ## 10. Knowledge Fabric
 - [ ] working memory
