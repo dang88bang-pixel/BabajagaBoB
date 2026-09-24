@@ -101,12 +101,12 @@ Statuslegende: [x] umgesetzt · [~] in Arbeit/Grundlage vorhanden · [ ] offen
 
 ## 06. Mission / Experiment / Science Layer
 - [ ] Creator → Mission → Objective → Task
-- [ ] experiment lifecycle
-- [ ] baseline/control/replication
+- [x] experiment lifecycle
+- [x] baseline/control/replication (data model)
 - [ ] variables and confounders
-- [ ] expected vs observed results
-- [ ] evidence records
-- [ ] causal scope
+- [x] expected vs observed results
+- [x] evidence records
+- [x] causal scope (foundation)
 - [ ] knowledge state transitions
 - [ ] contradiction handling
 - [ ] unresolved/unknown state
@@ -120,7 +120,7 @@ Statuslegende: [x] umgesetzt · [~] in Arbeit/Grundlage vorhanden · [ ] offen
 - [ ] root cause record
 - [ ] contributing factors
 - [ ] prevention action
-- [ ] Never-Again regression tests
+- [x] Never-Again regression test linkage
 - [ ] predictive readiness signals
 - [ ] prepared rollback artifacts
 - [ ] recovery rehearsals
