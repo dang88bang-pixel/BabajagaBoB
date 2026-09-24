@@ -1,4 +1,5 @@
 import {activeSandboxRuntime,activeRuntimeMode,reconcileActiveRuntime} from "../../../lib/runtime-factory";
+import {executeAuthorized} from "../../../lib/execution-broker";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -22,7 +23,7 @@ export async function POST(request:Request){
    case "snapshot": return Response.json({snapshot:await activeSandboxRuntime.snapshot(body.sandboxId)},{status:201});
    case "restore": return Response.json({runtime:await activeSandboxRuntime.restore(body.sandboxId,body.snapshotId)});
    case "destroy": await activeSandboxRuntime.destroy(body.sandboxId); return Response.json({ok:true});
-   case "execute": return Response.json(await activeSandboxRuntime.execute(body.sandboxId,body.operation));
+   case "execute": return Response.json(await executeAuthorized({taskId:body.taskId,agentId:body.agentId,sandboxId:body.sandboxId,capabilityTokenId:body.capabilityTokenId,approvalId:body.approvalId,argv:body.argv}),{status:200});
    case "reconcile": return Response.json({mode:activeRuntimeMode,observations:await reconcileActiveRuntime()});
    default: return Response.json({error:"unsupported runtime action"},{status:400});
   }
