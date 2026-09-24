@@ -3,7 +3,7 @@ import {ociContainerRuntime} from "./oci-runtime";
 
 class OciSandboxRuntimeAdapter implements SandboxRuntime{
  async create(spec:SandboxSpec):Promise<RuntimeHandle>{
-  return ociContainerRuntime.create({image:process.env.BOB_OCI_IMAGE??"alpine:3.20",command:["sleep","infinity"],limits:spec.limits,network:spec.network.mode,allowlist:spec.network.allowlist});
+  return ociContainerRuntime.create({image:process.env.BOB_OCI_IMAGE??"alpine:3.20",command:["sleep","infinity"],limits:spec.limits,network:spec.network.mode,allowlist:spec.network.allowlist,containerName:`bob-${spec.id.toLowerCase().replace(/[^a-z0-9_.-]/g,"-")}`});
  }
  async start(id:string){return ociContainerRuntime.start(id)}
  async pause(id:string){
