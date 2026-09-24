@@ -44,8 +44,9 @@ export function registerExecutableModule(input:{appId:string;name:string;version
 export function installExecutableModule(moduleId:string,approvalId:string,taskId?:string){
  const module=moduleStore.get(moduleId);if(!module)throw new Error("module not found");
  if(module.state!=="VALIDATED")throw new Error("module is not validated");
+ const app=appStore.get(module.appId);if(!app)throw new Error("app not found");
+ if(app.state!=="AWAITING_CONFIRMATION")throw new Error("app must complete planning, testing and security validation before confirmation");
  if(!approvalGranted(approvalId))throw new Error("explicit user confirmation is required");
- const app=appStore.get(module.appId)!;
  module.userConfirmationApprovalId=approvalId;module.state="APPROVED";module.updatedAt=new Date().toISOString();
  documentStep({kind:"APPROVAL",title:"Benutzerbestätigung erhalten",description:`Installation von ${module.name} wurde explizit bestätigt`,status:"COMPLETED",actor:"user",appId:app.id,moduleId,taskId,metadata:{approvalId}});
  app.state="INSTALLING";app.progress=95;app.updatedAt=new Date().toISOString();
