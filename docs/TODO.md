@@ -96,7 +96,7 @@ Statuslegende: [x] umgesetzt · [~] in Arbeit/Grundlage vorhanden · [ ] offen
 - [ ] task routing
 - [ ] workload scheduling
 - [ ] agent health/heartbeat
-- [ ] autonomy profiles
+- [x] autonomy profiles
 - [ ] Creator delegation model
 
 ## 06. Mission / Experiment / Science Layer
