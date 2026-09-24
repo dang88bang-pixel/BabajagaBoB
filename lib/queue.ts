@@ -1,7 +1,7 @@
 import type {Risk} from "./types";
 
 export type JobState="QUEUED"|"LEASED"|"RUNNING"|"SUCCEEDED"|"FAILED"|"CANCELLED";
-export type Job={id:string;taskId:string;agentId:string;state:JobState;attempt:number;maxAttempts:number;risk:Risk;createdAt:string;leasedUntil?:string;lastHeartbeat?:string;error?:string};
+export type Job={id:string;taskId:string;agentId:string;state:JobState;attempt:number;maxAttempts:number;risk:Risk;createdAt:string;leasedUntil?:string;lastHeartbeat?:string;error?:string;idempotencyKey?:string};
 const now=()=>new Date().toISOString();
 const jobs:Job[]=[
  {id:"JOB-104-A",taskId:"TASK-104-A",agentId:"AG-02",state:"SUCCEEDED",attempt:1,maxAttempts:3,risk:"LOW",createdAt:now()},
@@ -10,6 +10,7 @@ const jobs:Job[]=[
 ];
 const clone=<T,>(v:T):T=>JSON.parse(JSON.stringify(v));
 export function queueSnapshot(){return clone(jobs)}
+export function enqueueJob(input:Omit<Job,"state"|"attempt"|"createdAt">){const existing=input.idempotencyKey?jobs.find(x=>x.idempotencyKey===input.idempotencyKey):undefined;if(existing)return clone(existing);const j={...input,state:"QUEUED" as const,attempt:0,createdAt:now()};jobs.push(j);return clone(j)}
 export function leaseJob(id:string){
  const j=jobs.find(x=>x.id===id);
  if(!j||j.state!=="QUEUED")return null;
