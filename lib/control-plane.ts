@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import type {Agent,Approval,ControlState,Event,Experiment,Mission,Sandbox,Status,Task} from "./types";
 import {evaluateTask} from "./policy";
 import {recordAudit} from "./audit";
+import {appendEventPersistent,loadEvents} from "./event-store";
 const now=()=>new Date().toISOString();
 const state:ControlState={
  agents:[
@@ -38,8 +39,10 @@ const state:ControlState={
  locked:false
 };
 const clone=<T,>(v:T):T=>JSON.parse(JSON.stringify(v));
+const persistedEvents=loadEvents();
+if(persistedEvents.length)state.events=persistedEvents.slice(0,100);
 export function snapshot(){return clone(state)}
-export function appendEvent(type:string,message:string,status:Status,actor="system",meta:Partial<Event>={}):Event{const parent=state.events[0]?.id;const event:Event={id:crypto.randomUUID(),type,message,status,time:now(),actor,causalParentId:parent,...meta};state.events.unshift(event);state.events=state.events.slice(0,100);return clone(event)}
+export function appendEvent(type:string,message:string,status:Status,actor="system",meta:Partial<Event>={}):Event{const parent=state.events[0]?.id;const event:Event={id:crypto.randomUUID(),type,message,status,time:now(),actor,causalParentId:parent,...meta};state.events.unshift(event);state.events=state.events.slice(0,100);appendEventPersistent(event);return clone(event)}
 export function runGuardian(){if(state.locked){recordAudit({actor:"AG-03",action:"guardian.check",decision:"DENY"},{});return snapshot()}const task=state.tasks.find(t=>t.id==="TASK-105-A");if(task){const policy=evaluateTask(task,state.locked);recordAudit({actor:"AG-03",action:"guardian.check",resource:task.id,decision:policy.decision},task);if(policy.decision==="DENY"){task.status="BLOCKED";appendEvent("agent.blocked","Guardian: Policy denied task execution","BLOCKED","AG-03",{taskId:task.id});return snapshot()}if(policy.decision==="REQUIRE_APPROVAL"){task.status="APPROVAL_REQUIRED";appendEvent("approval.requested","Guardian: Capability Check benötigt Creator-Freigabe","APPROVAL_REQUIRED","AG-03",{taskId:task.id});return snapshot()}return snapshot()}}
 export function resolveApproval(id:string,grant:boolean){const a=state.approvals.find(x=>x.id===id);if(!a)return snapshot();a.status=grant?"GRANTED":"DENIED";const t=state.tasks.find(x=>x.id===a.taskId);if(t){t.status=grant?"RUNNING":"BLOCKED";t.progress=grant?25:t.progress}appendEvent(grant?"approval.granted":"approval.denied",grant?"Creator-Freigabe erteilt":"Creator-Freigabe verweigert",grant?"RUNNING":"BLOCKED","creator",{taskId:a.taskId});return snapshot()}
 export function setLockdown(locked:boolean){state.locked=locked;recordAudit({actor:"creator",action:locked?"control.lockdown":"control.unlock",decision:"ALLOW"}, {locked});state.agents=state.agents.map(a=>a.id==="AG-02"?{...a,status:locked?"BLOCKED":"EXPERIMENT"}:a);appendEvent(locked?"control.lockdown":"control.unlock",locked?"Emergency Lockdown aktiviert":"Emergency Lockdown aufgehoben",locked?"ERROR":"COMPLETED");return snapshot()}
