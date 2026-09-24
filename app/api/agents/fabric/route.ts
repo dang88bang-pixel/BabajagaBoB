@@ -1,0 +1,4 @@
+import {NextResponse} from "next/server";
+import {heartbeatAgent,listAgentNodes,listHandoffs,requestHandoff,resolveHandoff,updateAgentStatus} from "@/lib/agent-fabric";
+export async function GET(){return NextResponse.json({agents:listAgentNodes(),handoffs:listHandoffs()},{headers:{"Cache-Control":"no-store"}})}
+export async function POST(req:Request){try{const b=await req.json();if(b.action==="heartbeat")return NextResponse.json({agent:heartbeatAgent(b.id)});if(b.action==="status")return NextResponse.json({agent:updateAgentStatus(b.id,b.status,b.progress,b.task)});if(b.action==="handoff")return NextResponse.json({handoff:requestHandoff(b.fromAgentId,b.toAgentId,b.taskId,b.reason)},{status:201});if(b.action==="resolve")return NextResponse.json({handoff:resolveHandoff(b.id,b.status)});return NextResponse.json({error:"unknown action"},{status:400})}catch(e){return NextResponse.json({error:e instanceof Error?e.message:"invalid request"},{status:400})}}
