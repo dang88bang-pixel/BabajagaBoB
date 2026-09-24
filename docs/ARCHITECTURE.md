@@ -35,3 +35,21 @@ Structured records should use observable fields: objective, observation, assumpt
 ## Safety boundary
 
 Lockdown is fail-closed. Discovery of external devices/services must never imply authorization. Network access is deny-by-default and future allowlists must be explicit.
+
+## Runtime, tools and authority boundaries
+
+The runtime is exposed only through server-side Control Plane routes. The current adapter is a mock lifecycle implementation: it models create/clone/reset/snapshot/restore/destroy/execute semantics and enforces the declared network boundary, but it does not expose a host shell and is not a production container/VM runtime.
+
+The Tool Registry is versioned and records input schema, required capabilities, allowed environments, risk, resource limits, network requirements, side effects, reversibility and approval requirements. A tool definition does not itself grant authority.
+
+Capability and Authority are separate graphs:
+- Capability Graph: technical operations available to an agent.
+- Authority Graph: explicit delegation from Creator/authorized issuer to agent, task, sandbox and capability.
+- Self-grant and self-delegation are rejected at the service boundary.
+- Capability tokens are scoped to task/sandbox/capabilities and have expiry.
+
+Artifacts are provenance records linking agent, task, run, sandbox and knowledge state to a content digest. The current artifact store is in-memory and therefore is not presented as durable storage.
+
+## Persistence boundary
+
+ControlStore defines the persistence contract for control state, audit records and artifacts. InMemoryControlStore is the current implementation. A durable database adapter must implement this interface before the application claims restart-safe persistence.
