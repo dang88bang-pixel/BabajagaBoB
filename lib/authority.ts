@@ -7,7 +7,7 @@ export function addAuthorityEdge(edge:AuthorityEdge){if(edge.from===edge.to)thro
 export function authorityGraph(){return edges.map(structuredClone)}
 export function issueCapabilityToken(input:Omit<CapabilityToken,"id">){if(input.issuedBy===input.subject)throw new Error("self-grant is forbidden");const token={...input,id:`CAP-${crypto.randomUUID()}`};tokens.set(token.id,structuredClone(token));return structuredClone(token)}
 export function revokeCapabilityToken(id:string){const token=tokens.get(id);if(!token)return false;token.revoked=true;tokens.set(id,token);return true}
-export function validateCapabilityToken(id:string,required:string[]){const token=tokens.get(id);if(!token)return {valid:false,reason:"token not found"};if(!token.revocable)return {valid:false,reason:"token revoked"};if(new Date(token.expiresAt).getTime()<Date.now())return {valid:false,reason:"token expired"};if(!required.every(c=>token.capabilities.includes(c)))return {valid:false,reason:"capability not delegated"};return {valid:true,reason:"capability delegated"}}
+export function validateCapabilityToken(id:string,required:string[]){const token=tokens.get(id);if(!token)return {valid:false,reason:"token not found"};if(token.revoked)return {valid:false,reason:"token revoked"};if(new Date(token.expiresAt).getTime()<Date.now())return {valid:false,reason:"token expired"};if(!required.every(c=>token.capabilities.includes(c)))return {valid:false,reason:"capability not delegated"};return {valid:true,reason:"capability delegated"}}
 export function capabilityTokens(){return [...tokens.values()].map(structuredClone)}
 
 export type Role="OWNER"|"ADMIN"|"DEVELOPER"|"REVIEWER"|"OPERATOR"|"VIEWER";
