@@ -1,6 +1,6 @@
 import {expireLeases,leaseJob,startJob,completeJob,failJob,heartbeatJob,queueSnapshot} from "./queue";
 import {beginRecovery,getRun,listRuns,startRun,completeRun,failRun} from "./runs";
-import {sandboxRuntime} from "./runtime";
+import {activeSandboxRuntime as sandboxRuntime} from "./runtime-factory";
 
 export type WorkerCycle={leased:string[];completed:string[];failed:string[];expired:number;recovered:string[]};
 
