@@ -10,7 +10,7 @@ import type {Risk} from "./types";
 export type AppState="PLANNING"|"BUILDING"|"TESTING"|"SECURITY_VALIDATION"|"AWAITING_CONFIRMATION"|"INSTALLING"|"ACTIVE"|"PAUSED"|"FAILED"|"REMOVED";
 export type ExecutableModule={
  id:string; appId:string; name:string; version:string; entrypoint:string; capabilities:string[]; risk:Risk;
- testsPassed:boolean; securityValidated:boolean; userConfirmationApprovalId?:string; state:"PROPOSED"|"VALIDATED"|"APPROVED"|"INSTALLED"|"DISABLED";
+ testsPassed:boolean; securityValidated:boolean; userConfirmationApprovalId?:string; sandboxId?:string; state:"PROPOSED"|"VALIDATED"|"APPROVED"|"INSTALLING"|"INSTALLED"|"RUNNING"|"PAUSED"|"DISABLED";
  createdAt:string; updatedAt:string;
 };
 export type ManagedApp={
@@ -53,10 +53,13 @@ export async function installExecutableModule(moduleId:string,approvalId:string,
  module.userConfirmationApprovalId=approvalId;module.state="APPROVED";module.updatedAt=new Date().toISOString();
  documentStep({kind:"APPROVAL",title:"Benutzerbestätigung erhalten",description:`Installation von ${module.name} wurde explizit bestätigt`,status:"COMPLETED",actor:"user",appId:app.id,moduleId,taskId,metadata:{approvalId}});
  app.state="INSTALLING";app.progress=95;app.updatedAt=new Date().toISOString();
- documentStep({kind:"INSTALL",title:"Ausführbares Modul installiert",description:`Modul ${module.name} wird nach bestätigter Validierung installiert`,status:"RUNNING",actor:"agent",appId:app.id,moduleId,taskId});
+ documentStep({kind:"INSTALL",title:"Isolierte Sandbox wird vorbereitet",description:`Modul ${module.name} erhält eine dedizierte Sandbox mit Netzwerk DENY`,status:"RUNNING",actor:"agent",appId:app.id,moduleId,taskId});
+ const sandboxId=`SB-APP-${module.id}`;
+ await sandboxRuntime.create({id:sandboxId,type:"application-module",network:{mode:"DENY",allowlist:[]},limits:{cpuMillicores:500,memoryMb:512,storageMb:2048,timeoutMs:120000,processes:16},risk:module.risk});
+ module.sandboxId=sandboxId;
  module.state="INSTALLED";module.updatedAt=new Date().toISOString();app.state="ACTIVE";app.progress=100;app.updatedAt=new Date().toISOString();
  recordAudit({actor:"agent",action:"app.module.install",resource:moduleId,decision:"ALLOW"},{appId:app.id,moduleId,approvalId});
- documentStep({kind:"INSTALL",title:"Installation abgeschlossen",description:`Modul ${module.name} ist aktiv`,status:"COMPLETED",actor:"agent",appId:app.id,moduleId,taskId});
+ documentStep({kind:"INSTALL",title:"Installation abgeschlossen",description:`Modul ${module.name} ist aktiv in Sandbox ${module.sandboxId}`,status:"COMPLETED",actor:"agent",appId:app.id,moduleId,taskId});
  return structuredClone({app,module});
 }
 export function listApps(){return structuredClone([...appStore.values()])}
