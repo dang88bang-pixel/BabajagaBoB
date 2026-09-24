@@ -19,7 +19,7 @@ export function createErrorIncident(input:Omit<ErrorIncident,"id"|"timestamp"|"s
 export function transitionError(id:string,status:ErrorLifecycle,patch:Partial<ErrorIncident>={}){const x=incidents.get(id);if(!x)throw new Error("Error incident not found");x.status=status;Object.assign(x,patch);incidents.set(id,x);persist();recordAudit({actor:x.agentId||"SYSTEM",action:"error.transition",resource:id,decision:"ALLOW"},{status,...patch});return structuredClone(x)}
 export async function investigateError(id:string){const x=incidents.get(id);if(!x)throw new Error("Error incident not found");if(rank[x.severity]>=3)transitionError(id,"CONTAINED");transitionError(id,"REPRODUCING");if(!x.sandboxId){
  const task=getControlState().tasks.find(t=>t.id===x.taskId);
- if(task){
+ if(task||x.severity==="CRITICAL"){
   const sandboxId=`DIAG-${x.id}`;
   await activeSandboxRuntime.create({id:sandboxId,type:"diagnostic",network:{mode:"DENY",allowlist:[]},limits:{cpuMillicores:500,memoryMb:512,storageMb:1024,timeoutMs:120000,processes:32},risk:x.severity==="CRITICAL"?"HIGH":"LOW"});
   x.sandboxId=sandboxId; incidents.set(id,x); persist();
