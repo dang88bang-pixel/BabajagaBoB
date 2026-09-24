@@ -150,10 +150,10 @@ Statuslegende: [x] umgesetzt · [~] in Arbeit/Grundlage vorhanden · [ ] offen
 ## 09. Persistence / Data
 - [x] durable ControlStore adapter (local atomic JSON)
 - [x] transactional writes (atomic file replacement)
-- [~] event persistence boundary (ControlStore-ready)
+- [x] event persistence boundary with integrity-checked event log
 - [~] audit persistence boundary (store-ready)
 - [~] artifact metadata persistence boundary (store-ready)
-- [x] provenance indexes (graph foundation)
+- [x] provenance graph persistence with integrity checks
 - [x] schema version + migration boundary
 - [x] local backup/restore
 - [x] SHA-256 integrity verification
@@ -184,7 +184,7 @@ Statuslegende: [x] umgesetzt · [~] in Arbeit/Grundlage vorhanden · [ ] offen
 - [ ] digital twin
 - [x] simulation scenarios
 - [x] simulation results
-- [~] Causal Replay data boundary
+- [x] Causal Replay event/provenance data boundary
 - [~] live state visualization boundary
 
 ## 12. GUI / Control Center
