@@ -18,6 +18,8 @@ export function createRun(input:Pick<Run,"taskId"|"agentId"|"risk"> & Partial<Pi
 }
 export function listRuns(){return clone(runs)}
 export function getRun(id:string){const r=runs.find(x=>x.id===id);return r?clone(r):null}
+export function attachExecution(runId:string,jobId:string,sandboxId:string){const r=runs.find(x=>x.id===runId);if(!r)throw new Error("run not found");r.jobId=jobId;r.sandboxId=sandboxId;return clone(r)}
+
 export function startRun(id:string){const r=runs.find(x=>x.id===id);if(!r||!["CREATED","QUEUED","RECOVERING"].includes(r.state))return null;r.state="RUNNING";r.attempt++;r.startedAt=now();return clone(r)}
 export function queueRun(id:string){const r=runs.find(x=>x.id===id);if(!r||!["CREATED","PAUSED"].includes(r.state))return null;r.state="QUEUED";return clone(r)}
 export function completeRun(id:string){const r=runs.find(x=>x.id===id);if(!r||!["RUNNING","RECOVERING"].includes(r.state))return null;r.state="SUCCEEDED";r.finishedAt=now();return clone(r)}
