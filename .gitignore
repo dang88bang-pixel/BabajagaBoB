@@ -5,3 +5,5 @@ out/
 !.env.example
 .vercel/
 .DS_Store
+
+.bob-data/
