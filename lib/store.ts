@@ -8,7 +8,7 @@ export class InMemoryControlStore implements ControlStore{
  getControlState(){return structuredClone(this.state)}
  saveControlState(state:ControlState){this.state=structuredClone(state)}
  appendAudit(record:AuditRecord){this.audits.push(structuredClone(record))}
- listAudit(){return this.audits.map(structuredClone)}
+ listAudit(){return this.audits.map(x=>structuredClone(x))}
  appendArtifact(artifact:Artifact){this.artifacts.push(structuredClone(artifact))}
- listArtifacts(){return this.artifacts.map(structuredClone)}
+ listArtifacts(){return this.artifacts.map(x=>structuredClone(x))}
 }
