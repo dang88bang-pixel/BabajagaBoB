@@ -12,3 +12,6 @@ export type ToolLifecycle="DRAFT"|"PROTOTYPE"|"TESTING"|"VALIDATED"|"REGISTERED"
 export type SkillDefinition={id:string;name:string;version:string;tools:string[];lifecycle:ToolLifecycle;provenance:string;validation:string[]};
 
 export type ControlState={agents:Agent[];missions:Mission[];tasks:Task[];experiments:Experiment[];sandboxes:Sandbox[];events:Event[];approvals:Approval[];locked:boolean};
+
+export type ProviderLifecycle="DISCOVERED"|"EVALUATING"|"AUTHORIZED"|"CONNECTING"|"CONNECTED"|"DEGRADED"|"BLOCKED"|"DISCONNECTED"|"REVOKED";
+export type ProviderHealth="UNKNOWN"|"HEALTHY"|"DEGRADED"|"UNHEALTHY";
