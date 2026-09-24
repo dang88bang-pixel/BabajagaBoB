@@ -1,0 +1,4 @@
+import {approvalGranted} from "./approvals";
+import {isKilled} from "./governance";
+import type {Pipeline} from "./cicd";
+export function promotionGate(pipeline:Pipeline,target:"STAGING"|"PRODUCTION"){if(isKilled("DEPLOYMENT",pipeline.id))return {allowed:false,reasons:["deployment kill-switch active"]};if(pipeline.checks.some(x=>["LINT","TYPECHECK","UNIT","INTEGRATION","SECURITY","BUILD","BROWSER","EVALUATION"].includes(x.kind)&&x.status!=="PASSED"))return {allowed:false,reasons:["verification checks incomplete"]};if(target==="PRODUCTION"){if(pipeline.stage!=="SMOKE")return {allowed:false,reasons:["smoke stage required"]};if(!pipeline.approvalId||!approvalGranted(pipeline.approvalId))return {allowed:false,reasons:["production approval required"]}}return {allowed:true,reasons:["promotion gates satisfied"]}}

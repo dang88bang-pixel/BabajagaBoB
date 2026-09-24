@@ -1,0 +1,4 @@
+import {NextResponse} from "next/server";
+import {createPipeline,listPipelines,promote,updateCheck} from "@/lib/cicd";
+export async function GET(){return NextResponse.json({pipelines:listPipelines()},{headers:{"Cache-Control":"no-store"}})}
+export async function POST(req:Request){try{const b=await req.json();if(b.action==="create")return NextResponse.json({pipeline:createPipeline(b.value)},{status:201});if(b.action==="check")return NextResponse.json({pipeline:updateCheck(b.pipelineId,b.kind,b.status,b.summary??"")});if(b.action==="promote")return NextResponse.json({pipeline:promote(b.pipelineId,b.stage)});return NextResponse.json({error:"unknown action"},{status:400})}catch(e){return NextResponse.json({error:e instanceof Error?e.message:"invalid request"},{status:400})}}
