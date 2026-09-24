@@ -22,7 +22,7 @@ export async function investigateError(id:string){const x=incidents.get(id);if(!
  if(task||x.severity==="CRITICAL"){
   const sandboxId=`DIAG-${x.id}`;
   await activeSandboxRuntime.create({id:sandboxId,type:"diagnostic",network:{mode:"DENY",allowlist:[]},limits:{cpuMillicores:500,memoryMb:512,storageMb:1024,timeoutMs:120000,processes:32},risk:x.severity==="CRITICAL"?"HIGH":"LOW"});
-  registerSandbox({id:sandboxId,type:"diagnostic",status:"COMPLETED",network:"DENY",task:task!.id,agentId:x.agentId||task!.assignedAgent});
+  registerSandbox({id:sandboxId,type:"diagnostic",status:"EXPERIMENT",network:"DENY",task:task!.id,agentId:task!.assignedAgent});
   x.sandboxId=sandboxId; incidents.set(id,x); persist();
  }
 } else {try{await activeSandboxRuntime.start(x.sandboxId); try{updateSandboxStatus(x.sandboxId,"RUNNING")}catch{}}catch{} }const f=recordFailure({taskId:x.taskId,runId:x.runId,symptom:x.symptom,incident:x.incident,failureMode:x.failureMode||"UNKNOWN",contributingFactors:x.contributingFactors,prevention:[]});x.status="DIAGNOSING";x.error=f.id;incidents.set(id,x);persist();return structuredClone(x)}
