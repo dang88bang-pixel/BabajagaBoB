@@ -25,3 +25,8 @@ class OciSandboxRuntimeAdapter implements SandboxRuntime{
 
 export const activeSandboxRuntime:SandboxRuntime=process.env.BOB_SANDBOX_RUNTIME==="oci"?new OciSandboxRuntimeAdapter():sandboxRuntime;
 export const activeRuntimeMode=process.env.BOB_SANDBOX_RUNTIME==="oci"?"oci":"mock";
+
+export async function reconcileActiveRuntime(){
+ if(activeRuntimeMode==="oci") return ociContainerRuntime.reconcile();
+ return [];
+}
