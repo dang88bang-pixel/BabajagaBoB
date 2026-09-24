@@ -1,6 +1,6 @@
 "use client";
 import {useEffect,useState} from "react";import type {Agent,Event,Experiment,Mission,Sandbox,Status} from "../lib/types";import {StatusBadge} from "./status-badge";
-const nav=["Overview","Agents","Missions","Experiments","Sandboxes","Tests","Deployments","Artifacts","Security","Integrations"];
+const nav=["Overview","Agents","Missions","Tasks","Approvals","Experiments","Sandboxes","Tests","Deployments","Artifacts","Security","Integrations"];
 type Snapshot={agents:Agent[];missions:Mission[];tasks:{id:string;title:string;status:Status;progress:number;risk:string;assignedAgent:string;requiresApproval:boolean}[];experiments:Experiment[];sandboxes:Sandbox[];events:Event[];approvals:{id:string;taskId:string;status:string;reason:string}[];locked:boolean};
 export default function ControlCenter(){
  const [section,setSection]=useState("Overview"),[data,setData]=useState<Snapshot|null>(null),[error,setError]=useState("");
