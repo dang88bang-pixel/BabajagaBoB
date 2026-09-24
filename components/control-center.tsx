@@ -1,10 +1,10 @@
 "use client";
 import {useEffect,useState} from "react";import type {Agent,Event,Experiment,Mission,Sandbox,Status} from "../lib/types";import {StatusBadge} from "./status-badge";
-const nav=["Overview","Agents","Missions","Tasks","Approvals","Experiments","Sandboxes","Tests","Deployments","Artifacts","Security","Integrations"];
+const nav=["Overview","Agents","Missions","Tasks","Queue","Approvals","Experiments","Sandboxes","Tests","Deployments","Artifacts","Security","Integrations"];
 type Snapshot={agents:Agent[];missions:Mission[];tasks:{id:string;title:string;status:Status;progress:number;risk:string;assignedAgent:string;requiresApproval:boolean}[];experiments:Experiment[];sandboxes:Sandbox[];events:Event[];approvals:{id:string;taskId:string;status:string;reason:string}[];locked:boolean};
 export default function ControlCenter(){
- const [section,setSection]=useState("Overview"),[data,setData]=useState<Snapshot|null>(null),[error,setError]=useState("");
- const load=async()=>{try{const r=await fetch("/api/control",{cache:"no-store"});if(!r.ok)throw new Error("Control Plane unavailable");setData(await r.json());setError("")}catch(e){setError(e instanceof Error?e.message:"Unknown error")}};
+ const [section,setSection]=useState("Overview"),[data,setData]=useState<Snapshot|null>(null),[queue,setQueue]=useState<{id:string;taskId:string;agentId:string;state:string;attempt:number;maxAttempts:number;risk:string}[]>([]),[error,setError]=useState("");
+ const load=async()=>{try{const r=await fetch("/api/control",{cache:"no-store"});if(!r.ok)throw new Error("Control Plane unavailable");setData(await r.json());const q=await fetch("/api/queue",{cache:"no-store"});if(q.ok)setQueue((await q.json()).jobs);setError("")}catch(e){setError(e instanceof Error?e.message:"Unknown error")}};
  useEffect(()=>{load();const id=setInterval(load,2500);return()=>clearInterval(id)},[]);
  const action=async(body:object)=>{if(data?.locked&&"action" in body&&body.action!=="lockdown")return;await fetch("/api/control",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});await load()};
  const locked=Boolean(data?.locked),agents=data?.agents??[],missions=data?.missions??[],tasks=data?.tasks??[],experiments=data?.experiments??[],sandboxes=data?.sandboxes??[],events=data?.events??[],approvals=data?.approvals??[];
