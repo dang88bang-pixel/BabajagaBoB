@@ -3,7 +3,8 @@ import {isKilled} from "./governance";
 import {evaluateTask} from "./policy";
 import type {Task} from "./types";
 export type GateResult={allowed:boolean;reasons:string[]};
-export function executionGate(task:Task,approvalId?:string):GateResult{
+export function executionGate(task:Task,approvalId?:string,systemLocked=false):GateResult{
+ if(systemLocked||isKilled("SYSTEM","SYSTEM"))return {allowed:false,reasons:["System lockdown is active"]};
  if(isKilled("TASK",task.id))return {allowed:false,reasons:["Task kill-switch is active"]};
  const policy=evaluateTask(task,false);
  if(policy.decision==="DENY")return {allowed:false,reasons:policy.reasons};
