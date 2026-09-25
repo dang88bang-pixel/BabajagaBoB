@@ -12,7 +12,7 @@ const nextStage:Record<WorkshopAction,WorkshopStage>={SPECIFY:"SPECIFICATION",PR
 export function executeWorkshopStep(workshopId:string,action:WorkshopAction){
  const item=listWorkshop().find(x=>x.id===workshopId);if(!item)throw new Error("workshop item not found");
  if(action==="REGISTER"&&item.stage!=="VALIDATED")throw new Error("registration requires VALIDATED stage");
- const run={id:"WR-"+crypto.randomUUID(),workshopId,action,status:"RUNNING" as const,startedAt:new Date().toISOString(),artifactDigest:digest(item),message:"Workshop step started"};runs.push(run);
+ const run:WorkshopExecution={id:"WR-"+crypto.randomUUID(),workshopId,action,status:"RUNNING",startedAt:new Date().toISOString(),artifactDigest:digest(item),message:"Workshop step started"};runs.push(run);
  addProvenanceNode({id:workshopId,kind:"WORKSHOP_ITEM",label:item.name});
  addProvenanceNode({id:run.id,kind:"WORKSHOP_EXECUTION",label:`${action} ${item.name}`});
  addProvenanceEdge({from:run.id,to:workshopId,relation:"DERIVED_FROM"});

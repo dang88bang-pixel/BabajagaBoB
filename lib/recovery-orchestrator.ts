@@ -10,7 +10,7 @@ export function detectReadiness(){
  return {activeTasks:active,blockedTasks:blocked,lockdown:s.locked,ready:!s.locked&&blocked===0};
 }
 export function recoverFailure(failureId:string,taskId:string,risk:Risk){
- const plan=prepareRecovery({failureId,steps:["isolate affected execution","collect diagnostics","restore known-good artifact","rerun verification"],verification:"regression test + smoke verification"});
+ const plan=prepareRecovery({failureId,steps:["isolate affected execution","collect diagnostics","restore known-good artifact","rerun verification"],verification:["regression test","smoke verification"]});
  setKillSwitch("TASK",taskId,true,"Recovery isolation");
  return {plan,isolated:true,risk};
 }

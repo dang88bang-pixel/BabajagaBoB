@@ -1,3 +1,4 @@
+import {requireControlPlaneAuth} from "@/lib/control-auth";
 import {NextResponse} from "next/server";
 import {createApp,getApp,listApps,listModules,registerExecutableModule,setAppState,installExecutableModule} from "@/lib/apps";
 import {listGallery} from "@/lib/gallery";
@@ -6,7 +7,9 @@ export async function GET(req:Request){
  const url=new URL(req.url);const appId=url.searchParams.get("appId")??undefined;
  return NextResponse.json({apps:listApps(),modules:listModules(appId),gallery:listGallery({appId})},{headers:{"Cache-Control":"no-store"}});
 }
-export async function POST(req:Request){try{
+export async function POST(req:Request){
+ requireControlPlaneAuth(req);
+try{
  const b=await req.json();
  if(b.action==="create")return NextResponse.json({app:createApp(b.value)},{status:201});
  if(b.action==="state")return NextResponse.json({app:setAppState(b.appId,b.state,b.progress,b.taskId)});
