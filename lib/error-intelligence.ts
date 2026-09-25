@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
 import {createStore} from "./persistence/store";
 import {observe} from "./observability";
-import {recordFailure, prepareRecovery, resolveFailure, verifyRecovery, lockRegressionFromFailure } from "./reliability";
+import {recordFailure, prepareRecovery, resolveFailure, verifyRecovery, listFailures, updateFailure} from "./reliability";
 import {addEvidence, createExperiment} from "./science";
 import {upsertKnowledge, linkKnowledge} from "./knowledge";
-import {createSandbox, snapshotSandbox} from "./sandbox/fabric";
+import {createSandbox, snapshotSandbox, startSandbox} from "./sandbox/fabric";
 import {getControlState} from "./control-plane";
 import {registerRegressionTest, runRegressionSuite} from "./regression";
 import {notifyInbox} from "./inbox";
@@ -176,6 +176,9 @@ export async function investigateError(incidentId: string, options: {sandboxType
       agentId: task.assignedAgent,
       risk: rank[incident.severity] >= 3 ? "HIGH" : "LOW"
     });
+    // Diagnosesandbox real starten: Reproduktion, Snapshot und Verifikation
+    // laufen ausschließlich gegen eine laufende isolierte Runtime.
+    await startSandbox(sandboxId);
     incident = transitionError(incidentId, "REPRODUCING", {diagnosticSandboxId: sandboxId, sandboxId: incident.sandboxId ?? sandboxId});
   } else if (incident.status === "CONTAINED") {
     incident = transitionError(incidentId, "REPRODUCING");
@@ -282,7 +285,17 @@ export function createRegressionTest(incidentId: string, argv: string[], created
     argv,
     createdBy
   });
-  if (incident.failureId) lockRegressionFromFailure(incident.failureId, argv, createdBy);
+  // Denselben Test mit dem Failure verknüpfen — kein zweiter Regressionstest
+  // (früher entstanden hier zwei Tests: REG-<incident> und REG-<failure>).
+  if (incident.failureId) {
+    const failure = listFailures().find(f => f.failureId === incident.failureId);
+    if (failure) {
+      updateFailure(incident.failureId, {
+        regressionId: test.regressionId,
+        prevention: [...new Set([...failure.prevention, `Regressionstest ${test.regressionId}`])]
+      });
+    }
+  }
   const payload = store.read();
   const record = payload.incidents.find(i => i.incidentId === incidentId);
   if (!record) throw new Error("error incident not found");

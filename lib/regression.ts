@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import {createStore} from "./persistence/store";
+import {assertArgvPolicy} from "./argv-policy";
 import {activeSandboxRuntime} from "./runtime-factory";
 import {observe} from "./observability";
 import {addProvenanceEdge} from "./provenance";
@@ -44,15 +45,12 @@ export type RegressionRun = {
 type Payload = {tests: RegressionTest[]; runs: RegressionRun[]; status: Record<string, "PASS" | "FAIL" | "UNKNOWN">};
 const store = createStore<Payload>("regression", 1, () => ({tests: [], runs: [], status: {}}));
 
-const MAX_ARGV_LENGTH = 4096;
 const MAX_OUTPUT = 4000;
 
 function validateArgv(argv: string[]) {
-  if (!Array.isArray(argv) || argv.length === 0) throw new Error("regression argv must not be empty");
-  for (const arg of argv) {
-    if (typeof arg !== "string" || arg.length === 0 || arg.length > MAX_ARGV_LENGTH) throw new Error("invalid regression argv entry");
-  }
-  if (/[;&|`$><\n]/.test(argv[0])) throw new Error("shell metacharacters are forbidden; regression tests use argv[] with shell:false");
+  // Keine Shell-Strings: Shell-Interpreter und Metazeichen sind verboten
+  // (zentrale Policy, identisch zu Broker und Sandbox-Runtime).
+  assertArgvPolicy(argv, "regression tests");
 }
 
 export function registerRegressionTest(input: {

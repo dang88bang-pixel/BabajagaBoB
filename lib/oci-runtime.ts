@@ -1,5 +1,6 @@
 import {spawn} from "node:child_process";
 import crypto from "node:crypto";
+import {assertArgvPolicy} from "./argv-policy";
 import {createStore} from "./persistence/store";
 import type {
   ExecutionResult,
@@ -272,6 +273,8 @@ export class OciContainerRuntimeAdapter implements SandboxRuntime {
     const record = this.find(sandboxId);
     if (!record) throw new Error("OCI sandbox not found");
     if (!Array.isArray(argv) || argv.length === 0) throw new Error("Execution argv is empty");
+    // Dieselbe argv-Policy wie Broker und lokale Runtime: keine Shell-Strings.
+    assertArgvPolicy(argv, "oci sandbox runtime");
     if (record.state !== "RUNNING") throw new Error(`OCI sandbox is not executable in state ${record.state}`);
     const result = await runDocker(["exec", record.containerName, ...argv], Math.min(timeoutMs ?? record.limits.timeoutMs, record.limits.timeoutMs));
     return {

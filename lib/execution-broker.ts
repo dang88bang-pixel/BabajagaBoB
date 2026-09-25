@@ -5,6 +5,7 @@ import {recordAudit} from "./audit";
 import {activeSandboxRuntime, runtimeHandle} from "./runtime-factory";
 import {observe} from "./observability";
 import {addProvenanceEdge, addProvenanceNode} from "./provenance";
+import {MAX_ARGV_LENGTH, firstMetacharacterArg, isShellInterpreter} from "./argv-policy";
 import type {ExecutionResult} from "./runtime";
 import type {Risk} from "./types";
 
@@ -76,7 +77,12 @@ export async function executeAuthorized(request: ExecutionRequest): Promise<Exec
   // 1./2. Task und Agent müssen existieren.
   if (!request || typeof request !== "object") deny({}, "REQUEST_SHAPE", "malformed execution request");
   if (!Array.isArray(request.argv) || request.argv.length === 0) deny(request, "ARGV", "execution argv must not be empty");
-  if (request.argv.some(arg => typeof arg !== "string" || arg.length === 0 || arg.length > 4096)) deny(request, "ARGV", "invalid execution argument");
+  if (request.argv.some(arg => typeof arg !== "string" || arg.length === 0 || arg.length > MAX_ARGV_LENGTH)) deny(request, "ARGV", "invalid execution argument");
+  // Keine Shell-Strings: Shell-Interpreter und Metazeichen werden vor jeder
+  // weiteren Prüfung auditiert verweigert (argv[] + shell:false bleibt erzwungen).
+  if (isShellInterpreter(request.argv[0])) deny(request, "SHELL_PROGRAM", `shell interpreter '${request.argv[0]}' is forbidden`);
+  const metacharIndex = firstMetacharacterArg(request.argv);
+  if (metacharIndex !== null) deny(request, "SHELL_METACHAR", `shell metacharacters are forbidden in argv[${metacharIndex}]`);
 
   const state = getControlState();
   const task = state.tasks.find(t => t.taskId === request.taskId);

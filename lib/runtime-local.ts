@@ -3,6 +3,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import {spawn} from "node:child_process";
 import {createStore, storageRoot} from "./persistence/store";
+import {assertArgvPolicy} from "./argv-policy";
 import type {
   ExecutionResult,
   RuntimeHandle,
@@ -297,10 +298,10 @@ export class LocalWorkspaceRuntime implements SandboxRuntime {
   async execute(sandboxId: string, argv: string[], timeoutMs?: number): Promise<ExecutionResult> {
     const record = this.require(sandboxId);
     if (argv.length === 0) throw new Error("argv must not be empty");
-    if (argv.some(arg => typeof arg !== "string" || arg.length === 0 || arg.length > 4096)) throw new Error("invalid argv entry");
+    // Zentrale Policy: keine Shell-Strings (Interpreter, Metazeichen, Limits).
+    assertArgvPolicy(argv, "local sandbox runtime");
     if (record.network.mode === "ALLOWLIST") throw new Error("ALLOWLIST execution is fail-closed in the local runtime");
     const [command, ...args] = argv;
-    if (/[;&|`$><\n]/.test(command)) throw new Error("shell metacharacters are forbidden in argv[0]");
     const timeout = Math.min(timeoutMs ?? record.limits.timeoutMs, record.limits.timeoutMs);
     const started = Date.now();
     return new Promise<ExecutionResult>((resolve, reject) => {

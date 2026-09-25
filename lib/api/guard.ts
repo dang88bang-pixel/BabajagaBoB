@@ -98,7 +98,9 @@ function assertSameOrigin(request: Request, method: string) {
 function legacyTokenAllowed(): string | null {
   const token = process.env.BOB_CONTROL_PLANE_TOKEN;
   if (!token) return null;
-  if (process.env.BOB_ALLOW_LEGACY_CONTROL_TOKEN === "0") return null;
+  // Fail closed: der Legacy-Administrationstoken ist nur bei ausdrücklicher
+  // Freigabe (BOB_ALLOW_LEGACY_CONTROL_TOKEN=1) aktiv, niemals by default.
+  if (process.env.BOB_ALLOW_LEGACY_CONTROL_TOKEN !== "1") return null;
   return token;
 }
 

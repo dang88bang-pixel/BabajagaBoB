@@ -1,0 +1,90 @@
+import {beforeAll, describe, expect, it, vi} from "vitest";
+import {isolatedStorageRoot, TEST_BOOTSTRAP_SECRET} from "../helpers/runtime";
+
+isolatedStorageRoot("sec-authority");
+
+let authority: typeof import("../../lib/authority");
+let bootstrap: typeof import("../../lib/bootstrap");
+let audit: typeof import("../../lib/audit");
+
+const AGENT_ID = "AG-BUILD";
+
+function tokenInput(overrides: Partial<Parameters<typeof authority.issueCapabilityToken>[0]> = {}) {
+  return {
+    subject: AGENT_ID,
+    taskId: "TASK-0001",
+    sandboxId: "SB-0001",
+    environment: "development",
+    capabilities: ["task:execute", "sandbox:run"],
+    risk: "MODERATE" as const,
+    issuedBy: "CREATOR",
+    issuedByKind: "CREATOR" as const,
+    expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+    ...overrides
+  };
+}
+
+beforeAll(async () => {
+  vi.resetModules();
+  authority = await import("../../lib/authority");
+  bootstrap = await import("../../lib/bootstrap");
+  audit = await import("../../lib/audit");
+});
+
+describe("Authority (Sicherheitsinvarianten)", () => {
+  it("bleibt vor dem Creator-Bootstrap fail closed", () => {
+    expect(() => bootstrap.requireInitialized()).toThrow();
+  });
+
+  it("initialisiert den Creator genau einmal", () => {
+    const result = bootstrap.completeBootstrap({secret: TEST_BOOTSTRAP_SECRET, creatorName: "Test Creator"});
+    expect(result.rootAuthorityId).toMatch(/^ROOT-/);
+    expect(() => bootstrap.completeBootstrap({secret: TEST_BOOTSTRAP_SECRET, creatorName: "Zweiter"})).toThrow();
+    expect(() => bootstrap.requireInitialized()).not.toThrow();
+  });
+
+  it("verweigert die Selbstvergabe von Capabilities", () => {
+    expect(() => authority.issueCapabilityToken(tokenInput({issuedBy: AGENT_ID, issuedByKind: "AGENT"}))).toThrow();
+  });
+
+  it("verweigert Wildcard-Capabilities", () => {
+    expect(() => authority.issueCapabilityToken(tokenInput({capabilities: ["*"]}))).toThrow();
+  });
+
+  it("verweigert TTL über dem Creator-Maximum", () => {
+    expect(() =>
+      authority.issueCapabilityToken(tokenInput({expiresAt: new Date(Date.now() + 60 * 60_000).toISOString()}))
+    ).toThrow();
+  });
+
+  it("verweigert Risk-Eskalation durch Agenten", () => {
+    expect(() =>
+      authority.issueCapabilityToken(
+        tokenInput({issuedBy: "SYSTEM-WORKER", issuedByKind: "AGENT", capabilities: ["task:execute"], risk: "CRITICAL"})
+      )
+    ).toThrow();
+  });
+
+  it("stellt ein gültiges, gebundenes Token aus und verifiziert das Secret", () => {
+    const issued = authority.issueCapabilityToken(tokenInput());
+    expect(issued.token.id).toMatch(/^CAP-/);
+    expect(issued.secret.length).toBeGreaterThan(20);
+    expect(authority.verifyCapabilitySecret(issued.token.id, issued.secret)).toBe(true);
+    expect(authority.verifyCapabilitySecret(issued.token.id, "falsches-secret")).toBe(false);
+
+    const context = {subject: AGENT_ID, taskId: "TASK-0001", sandboxId: "SB-0001", environment: "development"};
+    expect(authority.validateCapabilityToken(issued.token.id, ["task:execute"], context).valid).toBe(true);
+    expect(authority.validateCapabilityToken(issued.token.id, ["task:execute"], {...context, taskId: "TASK-9999"}).valid).toBe(false);
+    expect(authority.validateCapabilityToken(issued.token.id, ["task:execute"], {...context, environment: "production"}).valid).toBe(false);
+    expect(authority.validateCapabilityToken(issued.token.id, ["deployment:production"]).valid).toBe(false);
+
+    authority.revokeCapabilityToken(issued.token.id, "CREATOR");
+    expect(authority.validateCapabilityToken(issued.token.id, ["task:execute"], context).valid).toBe(false);
+  });
+
+  it("auditiert jede Verweigerung (DENY) nachvollziehbar", () => {
+    const denials = audit.auditSnapshot(200).filter(record => record.decision === "DENY");
+    expect(denials.length).toBeGreaterThan(0);
+    expect(audit.verifyAuditChain().valid).toBe(true);
+  });
+});
