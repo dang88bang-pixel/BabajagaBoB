@@ -143,7 +143,7 @@ describe("E2E: Creator → Mission → Objective → Task → Agent → Authoriz
       state: "SUPPORTED",
       sourceIds: [task.taskId]
     });
-    expect(note.state).toBe("ESTABLISHED");
+    expect(note.state).toBe("SUPPORTED");
     expect(knowledge.negativeKnowledge().length).toBeGreaterThan(0);
   });
 });
