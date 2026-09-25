@@ -6,4 +6,10 @@ out/
 .vercel/
 .DS_Store
 
+# Laufzeitdaten der Control Plane (lokale Runtime-, Store- und Sandbox-Daten).
 .bob-data/
+.bob-data-*/
+*.tsbuildinfo
+coverage/
+.vitest/
+.tmp/

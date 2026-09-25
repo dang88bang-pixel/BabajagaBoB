@@ -2,7 +2,6 @@ import {NextResponse} from "next/server";
 import {auditGovernance,createDelegation,isKilled,listDelegations,listKillSwitches,revokeDelegation,setKillSwitch,validateDelegation,delegationIntegrity} from "@/lib/governance";
 import {governanceStoreIntegrity} from "@/lib/governance-store";
 import {actionField,readJson,stringArray,stringField,requireCapability} from "@/lib/request-validation";
-import {requireControlPlaneAuth} from "@/lib/control-auth";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 export async function GET(){return NextResponse.json({killSwitches:listKillSwitches(),delegations:listDelegations(),integrity:{...delegationIntegrity(),store:governanceStoreIntegrity()}},{headers:{"Cache-Control":"no-store"}})}

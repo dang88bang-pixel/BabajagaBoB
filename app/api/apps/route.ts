@@ -1,5 +1,5 @@
 import {NextResponse} from "next/server";
-import {createApp,getApp,listApps,listModules,registerExecutableModule,setAppState,installExecutableModule} from "@/lib/apps";
+import {createApp,listApps,listModules,registerExecutableModule,setAppState,installExecutableModule} from "@/lib/apps";
 import {listGallery} from "@/lib/gallery";
 export const runtime="nodejs";export const dynamic="force-dynamic";
 export async function GET(req:Request){

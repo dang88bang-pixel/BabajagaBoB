@@ -16,7 +16,7 @@ const handles=new Map<string,{handle:RuntimeHandle;image:string}>();
 
 function assertSafeImage(image:string){if(!/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]+$/.test(image))throw new Error("Invalid OCI image reference")}
 function assertSafeName(name:string){if(!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(name))throw new Error("Invalid OCI container name")}
-function load(){try{const raw=JSON.parse(fs.readFileSync(file(),"utf8")) as Persisted[];for(const item of raw)handles.set(item.handle.sandboxId,item)}catch{}}
+function load(){try{const raw=JSON.parse(fs.readFileSync(file(),"utf8")) as Persisted[];for(const item of raw)handles.set(item.handle.sandboxId,item)}catch{/* no persisted handles yet */}}
 function save(){fs.mkdirSync(root(),{recursive:true});const tmp=file()+".tmp";fs.writeFileSync(tmp,JSON.stringify([...handles.values()],null,2),{mode:0o600});fs.renameSync(tmp,file())}
 function runDocker(args:string[],timeoutMs:number):Promise<{code:number|null;stdout:string;stderr:string;timedOut:boolean}>{
  return new Promise((resolve,reject)=>{const child=spawn("docker",args,{shell:false,stdio:["ignore","pipe","pipe"]});let stdout="",stderr="",timedOut=false;const timer=setTimeout(()=>{timedOut=true;child.kill("SIGKILL")},timeoutMs);child.stdout.on("data",c=>stdout+=String(c));child.stderr.on("data",c=>stderr+=String(c));child.once("error",e=>{clearTimeout(timer);reject(e)});child.once("close",code=>{clearTimeout(timer);resolve({code,stdout,stderr,timedOut})})})
@@ -39,7 +39,7 @@ export class OciContainerRuntimeAdapter{
   const observations:OciRuntimeObservation[]=[];
   const listed=await runDocker(["ps","-a","--filter","label=com.bob.managed=true","--format","{{json .}}"],10_000).catch(()=>({code:1,stdout:"",stderr:"",timedOut:false}));
   const actual=new Map<string,{id:string;name:string;image:string;state:string}>();
-  if(listed.code===0&&!listed.timedOut){for(const line of listed.stdout.split("\\n").filter(Boolean)){try{const row=JSON.parse(line) as {ID?:string;Names?:string;Image?:string;State?:string};if(row.ID&&row.Names)actual.set(row.Names,{id:row.ID,name:row.Names,image:row.Image??"",state:row.State??""});}catch{}}}
+  if(listed.code===0&&!listed.timedOut){for(const line of listed.stdout.split("\\n").filter(Boolean)){try{const row=JSON.parse(line) as {ID?:string;Names?:string;Image?:string;State?:string};if(row.ID&&row.Names)actual.set(row.Names,{id:row.ID,name:row.Names,image:row.Image??"",state:row.State??""});}catch{/* skip unparsable docker ps row */}}}
   for(const [id,item] of handles){
    const r=await runDocker(["inspect","--format","{{.State.Status}}",id],10_000).catch(()=>({code:1,stdout:"",stderr:"",timedOut:false}));
    if(r.code!==0){item.handle.state="FAILED";observations.push({sandboxId:id,state:"FAILED",managed:true,observedAt});continue}

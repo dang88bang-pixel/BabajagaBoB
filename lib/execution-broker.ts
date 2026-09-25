@@ -3,7 +3,6 @@ import {executionGate} from "./execution-gate";
 import {capabilityTokens,validateCapabilityToken} from "./authority";
 import {recordAudit} from "./audit";
 import {activeSandboxRuntime} from "./runtime-factory";
-import {observe} from "./observability";
 import {addProvenanceNode,addProvenanceEdge} from "./provenance";
 import type {Risk} from "./types";
 

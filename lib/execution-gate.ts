@@ -12,6 +12,6 @@ export function executionGate(task:Task,approvalId?:string,systemLocked=false,ag
  const policy=evaluateTask(task,false);
  if(policy.decision==="DENY")return {allowed:false,reasons:policy.reasons};
  if(policy.decision==="REQUIRE_APPROVAL"&&!approvalId)return {allowed:false,reasons:["Approval required"]};
- if(policy.decision==="REQUIRE_APPROVAL"&&!approvalGranted(approvalId!))return {allowed:false,reasons:["Approval is not granted"]};
+ if(policy.decision==="REQUIRE_APPROVAL"&&!(approvalId&&approvalGranted(approvalId)))return {allowed:false,reasons:["Approval is not granted"]};
  return {allowed:true,reasons:policy.reasons};
 }

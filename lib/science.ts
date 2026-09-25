@@ -1,4 +1,4 @@
-import type {Experiment,KnowledgeState,Risk} from "./types";
+import type {Experiment,KnowledgeState} from "./types";
 import {observe} from "./observability";
 import crypto from "node:crypto";
 import {executeAuthorized} from "./execution-broker";
