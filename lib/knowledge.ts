@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import {createStore} from "./persistence/store";
 import {observe} from "./observability";
 import type {KnowledgeState} from "./types";
+import {indexKnowledgeNode, removeKnowledgeNode} from "./knowledge-vector";
 
 /**
  * Knowledge Graph (Abschnitt 19/20).
@@ -80,6 +81,7 @@ export function upsertKnowledge(x: {
     existing.verification = x.verification ?? existing.verification;
     existing.updatedAt = now;
     store.write(payload);
+    indexKnowledgeNode(existing);
     return structuredClone(existing);
   }
   const node: KnowledgeNode = {
@@ -99,6 +101,7 @@ export function upsertKnowledge(x: {
   };
   payload.nodes.push(node);
   store.write(payload);
+  indexKnowledgeNode(node);
   observe({
     type: "knowledge.upserted",
     message: `Wissen ${node.knowledgeId} (${node.layer}) aktualisiert`,
@@ -125,6 +128,7 @@ export function updateKnowledge(
   node.confidence = classify(node.sourceIds, node.evidenceIds);
   node.updatedAt = new Date().toISOString();
   store.write(payload);
+  indexKnowledgeNode(node);
   return structuredClone(node);
 }
 
