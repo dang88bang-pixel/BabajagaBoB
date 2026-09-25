@@ -75,7 +75,7 @@ export function removeKnowledgeNode(knowledgeId: string): void {
 }
 
 export function rebuildKnowledgeVectorIndex(nodes: KnowledgeNode[]): {indexed: number} {
-  return store.update(index => {
+  store.update(index => {
     const next: Record<string, {knowledgeId:string; vector:number[]; textDigest:string}> = {};
     for (const node of nodes) {
       const text = nodeText(node);
@@ -87,8 +87,8 @@ export function rebuildKnowledgeVectorIndex(nodes: KnowledgeNode[]): {indexed: n
     }
     for (const [id, value] of Object.entries(next)) index[id] = value;
     for (const id of Object.keys(index)) if (!next[id]) delete index[id];
-    return {indexed: nodes.length};
   });
+  return {indexed: nodes.length};
 }
 
 export function searchKnowledgeVector(nodes: KnowledgeNode[], query: string, limit = 20): Array<{knowledgeId:string; score:number}> {
