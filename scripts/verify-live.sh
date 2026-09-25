@@ -69,7 +69,10 @@ OID=$(jqv '.objective.objectiveId')
 assert_status "Task erstellen und zuweisen" 201 "$(api -X POST -d "{\"action\":\"create\",\"missionId\":\"$MID\",\"objectiveId\":\"$OID\",\"title\":\"Live-Task\",\"risk\":\"LOW\",\"assignedAgent\":\"AG-BUILD\"}" "$BASE/api/tasks")"
 TID=$(jqv '.task.taskId')
 assert_status "Task-Status setzen" 200 "$(api -X POST -d "{\"action\":\"status\",\"taskId\":\"$TID\",\"status\":\"RUNNING\",\"progress\":10}" "$BASE/api/tasks")"
-assert_status "Agent-Fabric lesbar" 200 "$(api "$BASE/api/agents")"
+assert_status "Agent-Fabric lesbar" 200 "$(api "$BASE/api/agents/fabric")"
+assert_json "11 Agentenrollen mit Autonomie-Vertrag" '(.agents | length) == 11 and (.summary.total == 11)'
+assert_json "Kein Agent mit Selbstvergabe/Produktionszugriff" '(.summary.authorityChanges | length) == 0 and (.summary.productionAccess | length) == 0 and (.summary.externalNetwork | length) == 0'
+assert_json "Keine Wildcard-Capability bei Agenten" '([.agents[].capabilities[]] | index("*")) == null' 
 printf "        Mission=%s Objective=%s Task=%s\n" "$MID" "$OID" "$TID"
 
 step "3. Sandbox (Fabric) und Capability-Token"
@@ -154,6 +157,9 @@ assert_status "Provider ohne Freigabe verbinden" 400 "$(api -X POST -d '{"action
 assert_json "Verbindung verlangt Freigabe" '.error | test("approval"; "i")'
 assert_status "Geräte-Fabric lesbar" 200 "$(api "$BASE/api/devices")"
 assert_json "Gerät vorhanden und nicht implizit autorisiert" '(.devices | length) > 0'
+assert_status "Computer-Use-Fabric lesbar" 200 "$(api "$BASE/api/computer-use")"
+assert_json "Kein Computer vorautorisiert (Discovery != Autorisierung)" '(.computers | length) > 0 and ([.computers[].authorized] | any | not)'
+assert_json "Computer-Netzwerk nicht INTERNET" '([.computers[].network] | index("INTERNET")) == null' 
 
 step "8. Wiederherstellung, Persistenz, Shell-Verbot"
 assert_status "Sandbox aus Snapshot wiederherstellen" 200 "$(api -X POST -d "{\"action\":\"restore\",\"sandboxId\":\"$SB\",\"snapshotId\":\"$SNAP\"}" "$BASE/api/sandboxes")"

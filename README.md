@@ -6,53 +6,62 @@ BabajagaBoB ist als ausführungsorientierte Agent-Plattform aufgebaut: Missionen
 
 ## Gesamtstatus
 
-**Stand:** September 2026  
-**Arbeitsbranch:** `feat/app-runtime-persistence`
+**Stand:** 2026-09-25
+**Arbeitsbranch:** `arena/01a0d635-babajagabob`
 
-| Bereich | Status | Fortschritt |
-|---|---|---:|
-| Control Center / GUI | implementiert | 85% |
-| Agent Observatory | implementiert | 80% |
-| Mission / Task-Modell | implementiert | 80% |
-| Execution Queue | implementiert | 80% |
-| Runs / Leases / Retry | implementiert | 75% |
-| Capability / Authority | implementiert | 80% |
-| Execution Gate / Broker | implementiert | 85% |
-| Sandbox-Abstraktion | implementiert | 80% |
-| OCI/Docker Runtime | vorhanden, eingeschränkt | 65% |
-| Persistenter Control-Plane-State | implementiert | 75% |
-| Audit / Event Store | implementiert | 75% |
-| Provenance / Replay | implementiert | 70% |
-| Experiment / Science Fabric | implementiert | 70% |
-| Error Intelligence | implementiert | 75% |
-| Recovery | vorbereitet + Sandbox-Checkpoint | 60% |
-| Governance / Kill Switch | implementiert | 75% |
-| Approval Center | implementiert | 75% |
-| Privacy / Data Boundary | implementiert | 75% |
-| Provider Fabric | Adapter-/Registry-Grundlage | 45% |
-| Device Fabric | Modell-/Autorisierungsgrundlage | 40% |
-| Knowledge Graph | Modell vorhanden | 35% |
-| Simulation / 2D / 3D | Modell vorhanden | 30% |
-| CI/CD / Promotion | Governance-Grundlage | 45% |
-| Tests / Regression Harness | Grundlage vorhanden | 35% |
-| echte verteilte Agent-Worker | noch nicht vollständig | 20% |
+Es werden **keine künstlichen Fortschrittswerte** geführt. Jede Komponente hat
+einen belegbaren Reifegrad:
 
-### Was bereits durchgängig funktioniert
+- **ARCHITECTURE** – Vertrag/Typen/Doku vorhanden, Ausführung fehlt
+- **IMPLEMENTED** – Code vorhanden, kompiliert, nicht durch Tests belegt
+- **INTEGRATED** – im realen Ablauf verdrahtet (Routen/Worker/Broker)
+- **TESTED** – durch automatisierte Tests nachgewiesen
+- **VERIFIED** – zusätzlich real ausgeführt und reproduzierbar
+- **UNVERIFIED / PARTIAL / BLOCKED / NOT_IMPLEMENTED** – ausdrücklich offen
 
-`Task → Agent → Capability → Sandbox → Execution → Audit/Provenance → Error → Diagnosis → Recovery Checkpoint → Verification`
+Vollständige, belegte Liste: `docs/STATUS.md`. Zusammenfassung mit Bewertung:
+`docs/ABSCHLUSSBERICHT.md` (Struktur A–L).
 
-Die Execution-Grenze ist fail-closed aufgebaut:
+### Was nachweislich durchgängig funktioniert
 
-- Control Plane vor Runtime.
-- Task muss existieren und dem Agent zugewiesen sein.
-- Sandbox muss registriert und an Task + Agent gebunden sein.
-- Capability Token muss Subject, Task, Sandbox und Risiko abdecken.
-- Kill Switch und Policy Gate können Ausführung blockieren.
-- `CRITICAL` wird nicht autonom ausgeführt.
-- Sandbox-Netzwerk ist standardmäßig `DENY`.
-- Host-Shell wird durch den Mock-Adapter nicht exponiert.
-- OCI-Ausführung verwendet strukturierte Argumente statt Shell-Interpolation.
-- Externe Datenübertragung ist über eine explizite Data-Boundary vorgesehen.
+`Creator → Mission → Objective → Task → Agent → Authorization → Sandbox →
+Experiment/Execution → Evidence → Validation → Audit → Provenance → Knowledge →
+Recovery`
+
+- Autorisierung ist fail closed: Session oder Capability-Token, Bindung an Task,
+  Sandbox, Umgebung und Risiko; kein Agent kann sich Rechte geben.
+- Keine Shell-Strings: `argv[]` mit `shell:false`; Shell-Interpreter und
+  Metazeichen sind in jedem Argument verboten (Broker **und** Runtime).
+- Netzwerk default `DENY`; `ALLOWLIST` ist fail closed, bis ein Egress-Proxy existiert.
+- Erfolg nur mit Nachweis: Root Cause verlangt Evidenz, Recovery verlangt einen
+  verifizierten Snapshot **und** bestandene Regression, `LEARNED` verlangt `fix.verify`.
+- Angriffe werden blockiert **und** auditiert (fremdes Token, Shell-Programm,
+  Shell-Metazeichen, fremde Sandbox-Bindung, Lockdown).
+- Nachweis: 17 Testdateien / 88 Tests sowie `scripts/verify-live.sh`
+  (83 Live-Prüfungen über HTTP, 0 Fehler).
+
+## Dokumentation
+
+| Datei | Inhalt |
+|---|---|
+| `docs/ARCHITECTURE.md` | Aufbau, Module, Persistenzmodell |
+| `docs/STATUS.md` | Reifegrade je Komponente (belegt) |
+| `docs/ABSCHLUSSBERICHT.md` | Abschlussbericht A–L mit `PASS/PARTIAL/FAIL` |
+| `docs/SECURITY.md` | Bedrohungsmodell und Grenzen |
+| `docs/AUTHORIZATION.md` | Rollen, Capabilitys, Routen-Aktionen |
+| `docs/BOOTSTRAP.md` | Bootstrap, Creator-Login, Betriebsgrenzen |
+| `docs/SANDBOX.md` | Sandbox-Fabric, Netzwerk, Snapshots |
+| `docs/RUNTIME.md` | Lokale Runtime, OCI (UNVERIFIED), Registry |
+| `docs/EXPERIMENTS.md` | Experimente und Kausalvalidierung |
+| `docs/RECOVERY.md` | Recovery-Stufen und Regression |
+| `docs/KNOWLEDGE.md` | Gedächtnisschichten, Zustände, negatives Wissen |
+| `docs/PROVIDERS.md` | Provider-Fabric und Approval-Pflicht |
+| `docs/DEVICES.md` | Geräte-Fabric (Discovery ≠ Autorisierung) |
+| `docs/COMPUTER_USE.md` | Computer Use und Simulation |
+| `docs/CI_CD.md` | CI-Jobs und Promotion-Gate |
+| `docs/TESTING.md` | Teststrategie, Live-Nachweis |
+| `docs/OPERATIONS.md` | Betrieb, Notfälle, Beobachtbarkeit |
+| `docs/TODO.md` | offene Punkte und `PARTIAL`-Liste |
 
 ## Architektur
 
@@ -223,18 +232,16 @@ Nie echte Secrets committen.
 
 ## Nächste Abschlussarbeiten
 
-1. echte Test-/Regression-Suite mit reproduzierbaren Failure Cases.
-2. Control-Plane-Transaktionen und verteilte Locking-Strategie.
-3. echte Agent-Worker-Prozesse und Job-Leases.
-4. OCI Snapshot/Restore über Image-/Volume-Backend.
-5. Egress-Proxy für kontrollierte Allowlist-Netzwerke.
-6. Capability-gebundene Authentifizierung statt gemeinsamem Control-Plane-Bearer für UI-Aktionen.
-7. persistenter Knowledge Graph und Reproduktionsindex.
-8. reale Provider-/Device-Adapter erst nach expliziter Konfiguration.
-9. vollständige 2D/3D-Simulation und Causal Replay.
-10. Browser-/Desktop-Computer-Use in isolierten Ausführungsumgebungen.
-11. CI/CD mit realen Build-, Security-, Browser- und Promotion-Gates.
-12. UI-Vervollständigung aller Module mit einheitlichen Live-Status-/Progress-Komponenten.
+Die tatsächlichen offenen Punkte werden in `docs/TODO.md` und `docs/STATUS.md`
+geführt – u. a.:
+
+1. OCI-Runtime mit echtem Daemon verifizieren (bisher `UNVERIFIED`).
+2. Egress-Proxy für kontrollierte `ALLOWLIST`-Netzwerke implementieren.
+3. Provider real anbinden (mit Allowlist + Approval) statt nur zu beschreiben.
+4. Browser-/Desktop-Treiber für Computer Use, Geräte-Discovery ergänzen.
+5. Browser-E2E-Tests für das Control Center.
+6. Metrik-/Alerting-Export und Backup-Automation.
+7. Last- und Langzeittests mit definierten SLOs.
 
 ## Sicherheitsprinzip
 

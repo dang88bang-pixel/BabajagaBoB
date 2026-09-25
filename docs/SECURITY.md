@@ -45,7 +45,7 @@ Rechte erzeugen noch den Broker umgehen.
   Agent-Capability-Token und Legacy-Token werden an dieser Grenze bewusst **nicht** akzeptiert.
 - **Live verifiziert (2026-09-25):** `GET /api/control` ohne Session → 428, `POST /api/auth`
   (Bootstrap) → 201 + HttpOnly-Cookie, danach `GET /api/control` → 200, `POST /api/control` mit
-  fremdem `Origin` → 403. Kompletter Nachweis: `scripts/verify-live.sh` (83 Prüfungen, 0 Fehler;
+  fremdem `Origin` → 403. Kompletter Nachweis: `scripts/verify-live.sh` (89 Prüfungen, 0 Fehler;
   Ergebnis in `docs/TESTING.md`).
 - **Creator-Login (Re-Authentifizierung):** Nach Verlust des Cookies meldet sich der Creator mit dem
   server-seitigen Secret an (`<BOB_STORAGE_DIR>/creator-token` 0600 oder `BOB_CREATOR_LOGIN_SECRET`).

@@ -25,9 +25,10 @@ Produktionsreife:
 | Bootstrap / Creator-Initialisierung | TESTED | einmaliger Bootstrap, Doppelaufruf verweigert |
 | Server-Session + API-Guard | TESTED | `tests/security/api-guard.test.ts`, `tests/security/api-gate.test.ts` |
 | Aktionsspezifische Routen-Guards | TESTED | `tests/security/route-guards.test.ts`: 428 vor Bootstrap, 401 ohne Auth, `CREATOR_ONLY` für Agenten-Schreibzugriff auf Provenance/Knowledge, `CAPABILITY_DENIED` für Runs ohne `run:manage`, CSRF-Origin |
-| Live-Nachweis über HTTP | VERIFIED | `scripts/verify-live.sh`: 83 Prüfungen / 0 Fehler gegen `npx next start` (Storage `/tmp/bob-live5`, 2026-09-25); alle drei §49-Abnahmen enthalten |
+| Live-Nachweis über HTTP | VERIFIED | `scripts/verify-live.sh`: 89 Prüfungen / 0 Fehler gegen `npx next start` (Storage `/tmp/bob-live7`, 2026-09-25); alle drei §49-Abnahmen enthalten |
 | API-Grenze (Middleware + Auth-Route) | TESTED | `middleware.ts`, `lib/api/api-gate.ts`, `app/api/auth/route.ts`; Creator-Login mit Sperre; live verifiziert (428/201/200/403) |
 | Governance / Kill Switches | IMPLEMENTED | Code + Persistenz vorhanden, kein eigener Test |
+| Agent Fabric (11 Rollen, Autonomie-Vertrag) | TESTED | `tests/unit/agent-fabric.test.ts`: 11 Rollen aus der Control Plane, keine Selbstvergabe/Produktion/Infrastruktur, Heartbeat und Handoffs |
 | Execution Gate + Broker | TESTED | `tests/e2e/*`, `tests/security/argv-policy.test.ts` |
 | Sandbox Fabric (Task-/Agent-Bindung) | TESTED | `tests/integration/sandbox-runtime.test.ts` |
 | Lokale Runtime (`REAL_LOCAL`) | TESTED | echte Prozesse, `argv[]`, `shell:false`, Timeout-Kill |
@@ -67,7 +68,7 @@ Produktionsreife:
 | Provider Fabric | TESTED | Katalog/Bindungen/Telemetrie persistent, Approval-gebundene Verbindung (`tests/integration/provider-fabric.test.ts`) |
 | Device Fabric / Simulation / Computer Use | PARTIAL | persistent; Simulation und Computer Use ohne eigene Tests |
 | CI/CD (`ci.yml`) | TESTED | 5 Jobs (Lint/Typecheck, Unit/Integration/Regression, Security/E2E, Build, Promotion-Gate); grüne Läufe dokumentiert in `docs/CI_CD.md` |
-| Automatisierte Testsuiten | TESTED | 15 Dateien / 81 Tests grün, siehe `docs/TESTING.md` |
+| Automatisierte Testsuiten | TESTED | 17 Dateien / 88 Tests grün, siehe `docs/TESTING.md` |
 
 ## Aktuelle Sicherheitsgrenzen
 
@@ -88,8 +89,9 @@ Produktionsreife:
   (Kern- und Schreibpfade sind verdrahtet, übrige Routen sind über die Middleware fail closed).
 - OCI-Runtime gegen einen echten Daemon verifizieren (`REAL_OCI`).
 - Browser-/UI-E2E für das Control Center.
-- Fehlende §44-Dokumente ergänzen (u. a. `AUTHORIZATION.md`, `SANDBOX.md`, `RUNTIME.md`, `RECOVERY.md`,
-  `KNOWLEDGE.md`, `CI_CD.md`, `OPERATIONS.md`, `PROVIDERS.md`, `DEVICES.md`, `COMPUTER_USE.md`,
-  `EXPERIMENTS.md`); fertig: `TESTING.md`, `SECURITY.md`, `BOOTSTRAP.md`.
+- §44-Dokumente sind vollständig (14 Dateien): `SECURITY.md`, `AUTHORIZATION.md`, `SANDBOX.md`,
+  `RUNTIME.md`, `EXPERIMENTS.md`, `RECOVERY.md`, `KNOWLEDGE.md`, `PROVIDERS.md`, `DEVICES.md`,
+  `COMPUTER_USE.md`, `CI_CD.md`, `TESTING.md`, `OPERATIONS.md`, `BOOTSTRAP.md`; Abschlussbericht:
+  `docs/ABSCHLUSSBERICHT.md` (Struktur A–L).
 
 Eine Produktionsreife-Aussage wird bewusst nicht getroffen; maßgeblich sind die oben belegten Reifegrade.
