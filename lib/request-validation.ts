@@ -1,4 +1,4 @@
-import {validateCapabilityToken} from "./authority";
+import {precheckCapabilityToken} from "./authority";
 
 export async function readJson(request:Request):Promise<Record<string,unknown>>{
   const type=request.headers.get("content-type")??"";
@@ -30,8 +30,13 @@ export function stringArray(value:unknown,key:string,maxItems=100,maxItemLength=
   if(!Array.isArray(value)||value.length>maxItems||value.some(x=>typeof x!=="string"||x.length===0||x.length>maxItemLength)) throw new Error(`invalid ${key}`);
   return value as string[];
 }
+/**
+ * Vorprüfung für Nicht-Ausführungs-Aktionen (z. B. Approval-Auflösung).
+ * Authentizität, Scope, Ablauf und Widerruf werden geprüft; der Verbrauch des
+ * Tokens wird nur bei Ausführungen im Execution Broker durchgesetzt.
+ */
 export function requireCapability(tokenId:string|undefined,capability:string){
   if(!tokenId) throw new Error("capability token required");
-  const result=validateCapabilityToken(tokenId,[capability]);
+  const result=precheckCapabilityToken(tokenId,[capability]);
   if(!result.valid) throw new Error(result.reason);
 }

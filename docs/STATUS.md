@@ -28,7 +28,9 @@ Produktionsreife:
 | Store-Migration und Reparatur | TESTED | `tests/unit/store-migration.test.ts` (22 Tests): v1→v2 migriert und schreibt v2, Sicherungskopie, Journaleintrag, fehlende Kette oder neuere Datei → fail closed, leerer Envelope (`payload: null`) wird erkannt, als `<datei>.null-payload` gesichert und neu initialisiert, Store-Name im Digest, Backup-Zuordnung ohne Präfixverwechslung (`workshop` vs. `workshop-executions`) |
 | Creator Inbox | TESTED | `tests/security/inbox-route.test.ts`: Anlegen (201), Beantworten ausschließlich durch Creator, doppelte Beantwortung abgelehnt, unbekannte Aktion 400, Sessionpflicht; live `GET /api/inbox` 200 (zuvor 500) |
 | Routen-Guards je Methode | TESTED | `tests/security/api-route-contract.test.ts` prüft jede exportierte Methode einzeln; sechs GET-Routen (`authority`, `cicd`, `devices`, `governance`, `providers`, `worker`) hatten keinen Guard und sind jetzt `*:read`-geschützt |
-| Live-Nachweis über HTTP | VERIFIED | `scripts/verify-live.sh`: **130 Prüfungen / 0 Fehler** gegen `npx next start` (frisch initialisiert, 2026-09-25; **128** bei bereits initialisierter Instanz; mit zweitem Faktor **136 / 134**); alle drei §49-Abnahmen, Agentenweg über Capability-Token ohne Browser-Session, **Evidenz einer blockierten Autorisierung** (`kind=DENIAL`, Digest erneut geprüft, keine Klartext-Argumente) und **TOTP live** (Pflicht, Ablehnung, Akzeptanz, Replay) |
+| Live-Nachweis über HTTP | VERIFIED | `scripts/verify-live.sh`: **149 Prüfungen / 0 Fehler** gegen `npx next start` (frisch initialisiert, 2026-09-25; **147** bei bereits initialisierter Instanz; mit zweitem Faktor **155 / 153**), jeweils mit aktiver Kernel-Isolation; alle drei §49-Abnahmen, Agentenweg über Capability-Token ohne Browser-Session, **Evidenz einer blockierten Autorisierung** (`kind=DENIAL`, Digest erneut geprüft, keine Klartext-Argumente), **Replay-Verweigerung** (zweiter Lauf mit demselben Token → 409 + Evidenz), **gemessene Kernel-Isolation** (Schritt 11) und **TOTP live** (Schritt 12: Pflicht, Ablehnung, Akzeptanz, Replay) |
+| Kernel-Isolation der Ausführung (`NAMESPACES`) | VERIFIED | `lib/ns-isolation.ts` + `scripts/ns-exec.sh`; Rootfs über `bash scripts/build-ns-rootfs.sh` (126 MB, Node + BusyBox). Gemessen im isolierten Prozess: `CapBnd`/`CapEff` = `0000000000000000`, `NoNewPrivs` = 1, 1 sichtbarer Prozess, Rootfs `EROFS`, `/work` schreibbar, nur `lo`, leere Routingtabelle. Belegt durch `tests/integration/ns-isolation.test.ts` (7 Tests) und `verify-live.sh` Schritt 11 |
+| Capability-Token: Wiederholungssperre | TESTED | `lib/authority.ts` (`maxUses` Standard 1, `consumeCapabilityToken` **vor** der Ausführung); zweiter Lauf → 409 + Audit-DENY + `DENIAL`-Evidenz; Gate/Route prüfen nur vor (`precheckCapabilityToken`), entschieden wird im Broker; `tests/security/token-replay.test.ts` (5 Tests) |
 | Backup mit Digest-Prüfung | TESTED | `tests/integration/metrics-backup.test.ts`: Kopien unter `<BOB_STORAGE_DIR>/backups` (0600), manipuliertes Backup → 409, Restore nur nach Version-/Digest-Prüfung |
 | Betriebsmetriken (Prometheus-Text) | TESTED | `GET /api/metrics` (Session-pflichtig): Store-Integrität, Audit-Kette, Runs, Queue, Token, Incidents, Recovery, Wissen, Fabric, Kill Switches – nur Zahlen |
 | Control Center (38 Abschnitte) | TESTED | `tests/ui/control-center.test.tsx` (vollständige Navigation, echte Daten, Anmeldemaske) und `tests/ui/control-center-api.test.tsx` (35 echte Routen-Handler, Metriken als Prometheus-Text, Secrets ohne Lesezugriff); jede Seite ist an eine reale Serverroute gebunden, leer = „keine Einträge“, fehlend = „nicht verfügbar“; live alle Routen mit 200 geprüft |
@@ -41,7 +43,7 @@ Produktionsreife:
 | Lokale Runtime (`REAL_LOCAL`) | TESTED | echte Prozesse, `argv[]`, `shell:false`, Timeout-Kill |
 | Apps / App-Module | TESTED | Modul-Sandbox über die Fabric gebunden (Task+Agent), `tests/integration/app-module-sandbox.test.ts` |
 | argv-Policy (keine Shell-Strings) | TESTED | `lib/argv-policy.ts`, Broker-DENY + Runtime-Enforcement |
-| OCI Runtime (`REAL_OCI`) | UNVERIFIED | kein Docker/Podman in der Umgebung; Härtungsflags ungeprüft |
+| OCI Runtime (`REAL_OCI`) | UNVERIFIED | kein Docker/Podman in der Umgebung (apt-/Registry-/Release-Zugriff gesperrt); Härtungsflags ungeprüft. Ersatzweise **kernel-seitige** Isolation als `NAMESPACES` umgesetzt und gemessen — bewusst **nicht** als `CONTAINER` bezeichnet |
 | Task Queue / Runs | IMPLEMENTED | Lease/Retry/Dead-Letter, kein eigener Test |
 | Worker / Dispatcher | IMPLEMENTED | `worker.cycle` getestet indirekt nicht; kein eigener Test |
 
@@ -75,7 +77,7 @@ Produktionsreife:
 | Provider Fabric | TESTED | Katalog/Bindungen/Telemetrie persistent, Approval-gebundene Verbindung (`tests/integration/provider-fabric.test.ts`) |
 | Device Fabric / Simulation / Computer Use | PARTIAL | persistent; Computer Use in `tests/integration/computer-use.test.ts` (Registrieren ≠ Autorisieren), Simulation ohne eigenen Test |
 | CI/CD (`ci.yml`) | TESTED | 5 Jobs (Lint/Typecheck, Unit/Integration/Regression, Security/E2E, Build, Promotion-Gate); grüne Läufe dokumentiert in `docs/CI_CD.md` |
-| Automatisierte Testsuiten | TESTED | **30 Dateien / 166 Tests grün**, siehe `docs/TESTING.md` |
+| Automatisierte Testsuiten | TESTED | **32 Dateien / 178 Tests grün**, siehe `docs/TESTING.md` |
 
 ## Aktuelle Sicherheitsgrenzen
 
@@ -87,14 +89,17 @@ Produktionsreife:
 6. Netzwerk ist standardmäßig deaktiviert; `ALLOWLIST` ist fail closed.
 7. Shell-Interpreter und Shell-Metazeichen sind in jedem `argv`-Element verboten.
 8. Legacy-Administrationstoken ist standardmäßig deaktiviert und nie Creator.
-9. OCI-Nutzung ohne Shell-Interpolation; Härtungsflags unverifiziert.
+9. OCI-Nutzung ohne Shell-Interpolation; Härtungsflags unverifiziert. Ist `BOB_NS_ISOLATION=on` gesetzt,
+   wird ohne verfügbare Kernel-Isolation **nichts** ausgeführt (fail closed, HTTP 409).
 10. Geschützte Daten gehen nicht implizit an externe Provider.
 
 ## Offene Restarbeiten (faktisch, ohne Wertung)
 
 - Aktionsspezifische `guardRequest`-Prüfungen für die restlichen, noch nicht verdrahteten Routen ergänzen
   (Kern- und Schreibpfade sind verdrahtet, übrige Routen sind über die Middleware fail closed).
-- OCI-Runtime gegen einen echten Daemon verifizieren (`REAL_OCI`).
+- OCI-Runtime gegen einen echten Daemon verifizieren (`REAL_OCI`); solange das nicht möglich ist, gilt
+  die gemessene Stufe `NAMESPACES` (kein Image-Format, keine cgroup-Quotas).
+- Kernel-Isolation um cgroup-Ressourcenlimits (CPU/RAM/PIDs) erweitern – derzeit zeitbasiert.
 - Browser-/UI-E2E für das Control Center.
 - §44-Dokumente sind vollständig (14 Dateien): `SECURITY.md`, `AUTHORIZATION.md`, `SANDBOX.md`,
   `RUNTIME.md`, `EXPERIMENTS.md`, `RECOVERY.md`, `KNOWLEDGE.md`, `PROVIDERS.md`, `DEVICES.md`,

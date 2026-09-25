@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import {getControlState} from "./control-plane";
 import {executionGate} from "./execution-gate";
-import {capabilityTokens, validateCapabilityToken} from "./authority";
+import {capabilityTokens, consumeCapabilityToken, validateCapabilityToken} from "./authority";
 import {recordAudit} from "./audit";
 import {executionEvidenceContent, recordArtifact, verifyArtifact} from "./artifacts";
 import {activeSandboxRuntime, runtimeHandle} from "./runtime-factory";
@@ -208,6 +208,15 @@ export async function executeAuthorized(request: ExecutionRequest): Promise<Exec
     if (limits.processes <= 0 || limits.processes > MAX_RESOURCE_LIMITS.processes) deny(request, "RESOURCE_LIMITS", "process limit outside allowed range");
   }
 
+  // 16b. Wiederholungssperre: Das Token wird **vor** der Ausführung verbraucht.
+  // Eine Autorisierung = eine Ausführung; ein zweiter Lauf mit demselben Token
+  // ist ein Replay und wird verweigert (Audit + Verweigerungsevidenz).
+  try {
+    consumeCapabilityToken(request.capabilityTokenId, request.agentId);
+  } catch (error) {
+    deny(request, "TOKEN_REPLAY", error instanceof Error ? error.message : "capability token could not be consumed");
+  }
+
   // 17. Execution Gate erlaubt die Aktion (bereits geprüft) → Ausführung.
   if (request.runId) {
     addProvenanceNode({id: request.runId, kind: "RUN", label: request.runId, runId: request.runId});
@@ -289,7 +298,8 @@ export async function executeAuthorized(request: ExecutionRequest): Promise<Exec
       stdout: result.stdout,
       stderr: result.stderr,
       timedOut: result.timedOut,
-      durationMs: result.durationMs
+      durationMs: result.durationMs,
+      isolation: result.isolation
     })
   );
   const anchor = request.runId ?? sandbox.sandboxId;

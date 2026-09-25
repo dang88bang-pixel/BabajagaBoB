@@ -109,10 +109,34 @@ Zentrale Policy für Broker, lokale Runtime, OCI-Runtime und Regression Engine:
 - **Netzwerk ist standardmäßig `DENY`.** `ALLOWLIST` ist fail closed, bis ein kontrollierter Egress-Proxy
   existiert – in Fabric, Runtime und Broker.
 - Lokale Runtime: eigenes Workspace-Verzeichnis (0700), reduziertes Environment, Timeout mit Prozessgruppen-Kill.
+- **Kernel-Isolation (`NAMESPACES`, real):** Ist ein Rootfs vorhanden (`bash scripts/build-ns-rootfs.sh`),
+  läuft jede lokale Ausführung zusätzlich in eigenen Netzwerk-, PID-, IPC-, UTS-, Mount- und
+  User-Namespaces (`lib/ns-isolation.ts`, `scripts/ns-exec.sh`). Gemessen im isolierten Prozess:
+  `CapBnd`/`CapEff` = 0, `NoNewPrivs` = 1, Rootfs `EROFS`, nur `/work` schreibbar, nur `lo` und leere
+  Routingtabelle, 1 sichtbarer Prozess. Zeitüberschreitung beendet die Prozessgruppe.
+- **Fail closed:** Mit `BOB_NS_ISOLATION=on` wird eine Ausführung **verweigert**, wenn die Kernel-Isolation
+  nicht verfügbar ist (`kernel isolation is enforced … but unavailable`, HTTP 409, Audit-DENY). Es gibt
+  keinen stillen Rückfall auf einen unisolierten Lauf. Live nachgewiesen: siehe `docs/TESTING.md`.
 - OCI: `--network none`, `--read-only`, `--cap-drop ALL`, `--security-opt no-new-privileges`, nicht-root-User –
-  **UNVERIFIED** ohne Container-Daemon in dieser Umgebung.
+  **UNVERIFIED** ohne Container-Daemon in dieser Umgebung. Die Isolationsstufe wird deshalb als
+  `NAMESPACES` (und nicht als `CONTAINER`) ausgewiesen.
 - Snapshots sind echte Workspace-Snapshots mit SHA-256-Digest; Restore prüft Digest und Dateihashes und
   schlägt bei Abweichung fehl.
+
+## 5a. Capability-Token: eine Autorisierung = eine Ausführung (`lib/authority.ts`)
+
+- Jedes Token hat `maxUses` (Standard **1**) und `uses`. Beim Start einer Ausführung wird genau eine
+  Verwendung atomar verbraucht (`consumeCapabilityToken`, **vor** dem Ausführen). Ein zweiter Lauf mit
+  demselben Token ist ein **Replay** und wird verweigert: HTTP 409, Audit-DENY und Verweigerungsevidenz
+  (`kind: "DENIAL"`, Grund `TOKEN_REPLAY` bzw. `token exhausted`).
+- Mehrfachverwendung ist ausdrücklich und begrenzt: `maxUses` muss eine ganze Zahl zwischen 1 und
+  `MAX_TOKEN_USES` (25) sein; `0`, negative, gebrochene oder zu große Werte werden bei der Ausstellung
+  verweigert.
+- **Eine Entscheidungsstelle:** API-Gate, Route-Guard und `requireCapability` prüfen Authentizität,
+  Scope, Ablauf und Widerruf (`precheckCapabilityToken`) – den **Verbrauch** setzt ausschließlich der
+  Execution Broker durch. So entsteht die Verweigerungsevidenz an genau der Stelle, die entscheidet;
+  nicht-ausführende Aktionen (z. B. Statusmeldung eines Agenten) verbrauchen kein Token.
+- Absturz nach dem Verbrauch führt zu einer Verweigerung, nicht zu einer zweiten Ausführung (fail closed).
 
 ## 6. Ausführungsbroker (`lib/execution-broker.ts`)
 
@@ -156,15 +180,19 @@ vergleichbar, ohne Geheimnisse zu kopieren. Getestet in `tests/integration/execu
 
 ## 9. Verifikation
 
-Nachweisende Tests: `tests/security/authority.test.ts`, `tests/security/api-guard.test.ts`,
+Nachweisende Tests: `tests/security/authority.test.ts`, `tests/security/token-replay.test.ts`
+(Wiederholungssperre: zweiter Lauf verweigert, Evidenz + Audit, exakt freigegebene Anzahl von
+Verwendungen, parallele Läufe mit genau einer Freigabe, ungültige Nutzungsgrenzen, Trennung von
+Vorprüfung und Verbrauch), `tests/security/api-guard.test.ts`,
 `tests/security/api-gate.test.ts`, `tests/security/route-guards.test.ts`, `tests/security/argv-policy.test.ts`,
 `tests/security/creator-login.test.ts`, `tests/security/creator-login-lockout.test.ts`,
-`tests/security/creator-totp.test.ts` (zusätzlich live: `scripts/verify-live.sh` Schritt 11 prüft
+`tests/security/creator-totp.test.ts` (zusätzlich live: `scripts/verify-live.sh` Schritt 12 prüft
 Pflicht, Ablehnung ohne/mit falschem Code, Akzeptanz und Replay-Ablehnung des zweiten Faktors über
 echtes HTTP), `tests/security/inbox-route.test.ts`,
 `tests/security/api-route-contract.test.ts`, `tests/security/direct-route-denial.test.ts`,
 `tests/e2e/creator-flow.test.ts`, `tests/e2e/failure-recovery.test.ts`
-(**11 Dateien / 64 Tests** in der Security-Suite, 30 Dateien / 166 Tests gesamt) und der Live-Nachweis
-`scripts/verify-live.sh` (**130 Prüfungen / 0 Fehler**).
+(**12 Dateien / 69 Tests** in der Security-Suite, 32 Dateien / 178 Tests gesamt) und der Live-Nachweis
+`scripts/verify-live.sh` (**149 Prüfungen / 0 Fehler** auf frischem Zustand, 147 / 0 auf initialisiertem
+Zustand, jeweils mit aktiver Kernel-Isolation).
 Zusammenfassung: `docs/TESTING.md`. Offene, als `PARTIAL`/`UNVERIFIED` gekennzeichnete Punkte sind dort und in
 `docs/TODO.md` gelistet.

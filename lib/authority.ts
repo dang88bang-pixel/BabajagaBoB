@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import {createStore} from "./persistence/store";
 import {observe} from "./observability";
+import {recordAudit} from "./audit";
 import type {Risk} from "./types";
 
 /**
@@ -45,6 +46,13 @@ export type CapabilityToken = {
   revokedAt?: string;
   secretHash: string;
   createdAt: string;
+  /**
+   * Wiederholungssperre (Abschnitt 15/37): Ein Token autorisiert höchstens
+   * `maxUses` Ausführungen. Standard 1 — eine Autorisierung ist eine Ausführung.
+   * `uses` wird atomar beim Start der Ausführung erhöht (fail closed).
+   */
+  maxUses?: number;
+  uses?: number;
 };
 
 export type IssuedCapability = {token: CapabilityToken; secret: string};
@@ -54,6 +62,8 @@ const store = createStore<Payload>("authority", 2, () => ({edges: [], tokens: []
 
 export const riskRank: Record<Risk, number> = {SAFE: 0, LOW: 1, MODERATE: 2, HIGH: 3, CRITICAL: 4};
 export const MAX_TOKEN_TTL_MS = 15 * 60_000;
+/** Obergrenze für Mehrfachverwendung eines Tokens (bewusst niedrig gehalten). */
+export const MAX_TOKEN_USES = 25;
 export const MAX_AGENT_TOKEN_TTL_MS = 5 * 60_000;
 
 const matches = (granted: string, needed: string) =>
@@ -174,7 +184,10 @@ export function authorityGraph(): AuthorityEdge[] {
 /* ----------------------------------------------------------------- Tokens */
 
 export function issueCapabilityToken(
-  input: Omit<CapabilityToken, "id" | "secretHash" | "createdAt" | "revoked"> & {issuedByKind?: "CREATOR" | "AGENT" | "SYSTEM"},
+  input: Omit<CapabilityToken, "id" | "secretHash" | "createdAt" | "revoked" | "uses" | "maxUses"> & {
+    issuedByKind?: "CREATOR" | "AGENT" | "SYSTEM";
+    maxUses?: number;
+  },
   actor = input.issuedBy
 ): IssuedCapability {
   const payload = store.read();
@@ -184,6 +197,12 @@ export function issueCapabilityToken(
   if (!input.capabilities.length) deny("EMPTY_CAPABILITIES", "capability set must not be empty", actor);
   if (input.capabilities.includes("*")) deny("WILDCARD_CAPABILITY", "wildcard capabilities may not be issued to agents", actor);
   if (new Date(input.expiresAt) <= new Date()) deny("TOKEN_EXPIRED", "capability token would be expired at issuance", actor);
+
+  // Standard ist die einmalige Verwendung; Mehrfachverwendung ist explizit und begrenzt.
+  const requestedUses = input.maxUses ?? 1;
+  if (!Number.isInteger(requestedUses) || requestedUses < 1 || requestedUses > MAX_TOKEN_USES) {
+    deny("TOKEN_USES_LIMIT", `maxUses must be an integer between 1 and ${MAX_TOKEN_USES}`, actor);
+  }
 
   const ttlMs = new Date(input.expiresAt).getTime() - Date.now();
   const maxTtl = issuedByKind === "CREATOR" ? MAX_TOKEN_TTL_MS : MAX_AGENT_TOKEN_TTL_MS;
@@ -200,6 +219,8 @@ export function issueCapabilityToken(
   const secret = crypto.randomBytes(32).toString("base64url");
   const token: CapabilityToken = {
     ...input,
+    maxUses: requestedUses,
+    uses: 0,
     id: `CAP-${crypto.randomUUID()}`,
     issuedByKind,
     revoked: false,
@@ -280,6 +301,30 @@ export function validateCapabilityToken(
   required: string[],
   context?: CapabilityValidationContext
 ): {valid: boolean; reason: string} {
+  return evaluateCapabilityToken(id, required, context, true);
+}
+
+/**
+ * Vorprüfung für das API-Gate: prüft Existenz, Widerruf, Ablauf, Fähigkeiten und
+ * Bindungen — **nicht** den Verbrauch. Der Verbrauch wird ausschließlich im
+ * Execution Broker durchgesetzt, damit genau eine Stelle über die Ausführung
+ * entscheidet und dort auch die Verweigerungsevidenz entsteht. Nicht-Ausführungen
+ * (z. B. Statusmeldungen des Agenten) verbrauchen das Token nicht.
+ */
+export function precheckCapabilityToken(
+  id: string,
+  required: string[],
+  context?: CapabilityValidationContext
+): {valid: boolean; reason: string} {
+  return evaluateCapabilityToken(id, required, context, false);
+}
+
+function evaluateCapabilityToken(
+  id: string,
+  required: string[],
+  context: CapabilityValidationContext | undefined,
+  checkUsage: boolean
+): {valid: boolean; reason: string} {
   const payload = store.read();
   const token = payload.tokens.find(t => t.id === id);
   if (!token) return {valid: false, reason: "token not found"};
@@ -291,7 +336,46 @@ export function validateCapabilityToken(
   if (context?.sandboxId && token.sandboxId !== context.sandboxId) return {valid: false, reason: "token sandbox scope mismatch"};
   if (context?.environment && token.environment !== context.environment) return {valid: false, reason: "token environment mismatch"};
   if (context?.risk && riskRank[token.risk] < riskRank[context.risk]) return {valid: false, reason: "token risk scope is insufficient"};
+  if (checkUsage && (token.uses ?? 0) >= (token.maxUses ?? 1)) {
+    return {valid: false, reason: `token exhausted (${token.uses ?? 0}/${token.maxUses ?? 1} uses); replay is refused`};
+  }
   return {valid: true, reason: "capability delegated"};
+}
+
+/**
+ * Verbraucht eine Verwendung des Tokens — atomar und **vor** der Ausführung.
+ * Dadurch kann eine Autorisierung nicht mehrfach genutzt werden (Replay-Schutz
+ * innerhalb der Lebensdauer), und ein Absturz nach dem Verbrauch führt zu einer
+ * Verweigerung statt zu einer zweiten Ausführung (fail closed).
+ */
+export function consumeCapabilityToken(id: string, actor = "SYSTEM"): {uses: number; maxUses: number} {
+  let consumed: {uses: number; maxUses: number} | null = null;
+  store.update(payload => {
+    const token = payload.tokens.find(t => t.id === id);
+    if (!token) throw new AuthorityDenied("TOKEN_EXISTS", "capability token not found");
+    if (payload.revokedTokens.includes(id) || token.revoked) throw new AuthorityDenied("TOKEN_REVOKED", "capability token is revoked");
+    const maxUses = token.maxUses ?? 1;
+    const uses = token.uses ?? 0;
+    if (uses >= maxUses) {
+      throw new AuthorityDenied("TOKEN_REPLAY", `capability token already used (${uses}/${maxUses}); replay is refused`);
+    }
+    token.uses = uses + 1;
+    consumed = {uses: token.uses, maxUses};
+  });
+  const result = consumed as {uses: number; maxUses: number} | null;
+  if (!result) throw new AuthorityDenied("TOKEN_EXISTS", "capability token not found");
+  observe({
+    type: "authority.token.consumed",
+    message: `Capability-Token verbraucht (${result.uses}/${result.maxUses})`,
+    status: "COMPLETED",
+    actor,
+    action: "authority.consume",
+    resource: id,
+    authorizationRef: id,
+    argumentsValue: {uses: result.uses, maxUses: result.maxUses}
+  });
+  recordAudit({actor, action: "authority.consume", resource: id, decision: "ALLOW"}, {uses: result.uses, maxUses: result.maxUses});
+  return result;
 }
 
 /** Prüft das Token-Geheimnis (`<tokenId>.<secret>`) ohne Klartextspeicherung. */

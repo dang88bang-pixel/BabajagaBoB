@@ -196,12 +196,24 @@ printf "        Incident=%s\n" "$INC"
 step "7. Governance, Approval, Privacy, Provider, Geräte"
 assert_status "Governance lesbar" 200 "$(api "$BASE/api/governance")"
 assert_json "Kill-Switch-Liste vorhanden" '.killSwitches != null'
+# Eine Autorisierung ist genau eine Ausfuehrung: fuer jede weitere Ausfuehrung
+# wird ein eigenes Token ausgestellt (Verbrauch siehe Schritt 10).
+issue_task_token() {
+  api -X POST -d "{\"action\":\"issue\",\"input\":{\"subject\":\"AG-BUILD\",\"taskId\":\"$TID\",\"sandboxId\":\"$SB\",\"environment\":\"$ENV\",\"capabilities\":[\"task:execute\",\"sandbox:run\"],\"risk\":\"LOW\",\"issuedBy\":\"CREATOR\",\"issuedByKind\":\"CREATOR\",\"expiresAt\":\"$EXPIRES\"}}" "$BASE/api/authority" >/dev/null
+  jqv '.token.id'
+}
+LOCK_TOK=$(issue_task_token); LOCK_SEC=$(jqv '.secret')
+RELEASE_TOK=$(issue_task_token); RELEASE_SEC=$(jqv '.secret')
+# Fuehrt eine Ausfuehrung als Creator aus; das Token bleibt der Autorisierungsnachweis.
+lockdown_exec() { # lockdown_exec <token> <secret> <marker>
+  curl -s -b "$JAR" -c "$JAR" -o "$BODY" -w '%{http_code}' -H 'content-type: application/json' -X POST -d "{\"action\":\"execute\",\"taskId\":\"$TID\",\"agentId\":\"AG-BUILD\",\"sandboxId\":\"$SB\",\"capabilityTokenId\":\"$1\",\"argv\":[\"node\",\"-e\",\"process.stdout.write('$3')\"],\"environment\":\"$ENV\"}" "$BASE/api/runtime"
+}
 assert_status "Lockdown aktivieren" 200 "$(api -X POST -d '{"action":"lockdown","locked":true}' "$BASE/api/control")"
 assert_json "Lockdown ist aktiv" '.locked == true'
-assert_status "Ausführung bei Lockdown verweigert" 409 "$(api -X POST -d "{\"action\":\"execute\",\"taskId\":\"$TID\",\"agentId\":\"AG-BUILD\",\"sandboxId\":\"$SB\",\"capabilityTokenId\":\"$TOK\",\"argv\":[\"node\",\"-e\",\"process.stdout.write('x')\"]}" "$BASE/api/runtime")"
+assert_status "Ausführung bei Lockdown verweigert" 409 "$(lockdown_exec "$LOCK_TOK" "$LOCK_SEC" x)"
 assert_json "Verweigerung nennt das Gate" '.error | test("EXECUTION_GATE|lock|kill"; "i")'
 assert_status "Lockdown aufheben" 200 "$(api -X POST -d '{"action":"lockdown","locked":false}' "$BASE/api/control")"
-assert_status "Ausführung nach Freigabe wieder erlaubt" 200 "$(api -X POST -d "{\"action\":\"execute\",\"taskId\":\"$TID\",\"agentId\":\"AG-BUILD\",\"sandboxId\":\"$SB\",\"capabilityTokenId\":\"$TOK\",\"argv\":[\"node\",\"-e\",\"process.stdout.write('again')\"]}" "$BASE/api/runtime")"
+assert_status "Ausführung nach Freigabe wieder erlaubt" 200 "$(lockdown_exec "$RELEASE_TOK" "$RELEASE_SEC" again)"
 assert_status "Privacy-Policy lesbar" 200 "$(api "$BASE/api/privacy")"
 assert_json "Externe Weitergabe standardmäßig DENY" 'tostring | test("DENY")'
 assert_status "Provider-Katalog lesbar" 200 "$(api "$BASE/api/providers")"
@@ -220,6 +232,12 @@ assert_status "Sandbox pausieren" 200 "$(api -X POST -d "{\"action\":\"pause\",\
 assert_status "Sandbox zerstören" 200 "$(api -X POST -d "{\"action\":\"destroy\",\"sandboxId\":\"$SB\"}" "$BASE/api/sandboxes")"
 assert_status "Persistenzbericht lesbar" 200 "$(api "$BASE/api/persistence")"
 assert_json "Stores ohne Integritätsfehler" '(.integrity.ok == true) and (.stores.ok == true) and (.events.ok == true) and ([.stores.stores[] | select(.ok == false)] | length == 0)'
+assert_status "Runtime-Zustand inkl. Isolation lesbar" 200 "$(api "$BASE/api/runtime")"
+assert_json "Isolationszustand wird ausgewiesen (gemessen, nicht behauptet)" '(.isolation.level == "NAMESPACES" or .isolation.level == "FILESYSTEM_ONLY") and ((.isolation.detail // "") | length > 0)'
+if [ -f "${BOB_STORAGE_DIR:-./.bob-data}/ns-rootfs/bin/busybox" ]; then
+  assert_json "Kernel-Isolation ist aktiv (Rootfs vorhanden)" '.isolation.level == "NAMESPACES"'
+  assert_json "Erzwungene Garantien werden benannt" '([.isolation.enforced[]] | index("NETWORK_NAMESPACE")) != null'
+fi
 assert_status "Readiness lesbar" 200 "$(api "$BASE/api/readiness")"
 assert_status "Unbekannter Provider wird abgelehnt" 400 "$(api -X POST -d '{"action":"connect","id":"prov-gibt-es-nicht"}' "$BASE/api/providers")"
 
@@ -255,15 +273,33 @@ ATOK=$(api -X POST -d "{\"action\":\"issue\",\"input\":{\"subject\":\"AG-BUILD\"
 ASECRET=$(jqv '.secret')
 # Kein Cookie: der Agent authentifiziert sich ausschliesslich ueber das Capability-Token.
 agent_call() { curl -s -o "$BODY" -w '%{http_code}' -H 'content-type: application/json' -H "Authorization: Bobcap $ATOK.$ASECRET" -X POST -d "$2" "$BASE$1"; }
+# Weitere Ausfuehrungen brauchen ein eigenes Token (eine Autorisierung = eine Ausfuehrung).
+issue_agent_token() {
+  api -X POST -d "{\"action\":\"issue\",\"input\":{\"subject\":\"AG-BUILD\",\"taskId\":\"$ATID\",\"sandboxId\":\"$ASB\",\"environment\":\"test\",\"capabilities\":[\"task:execute\",\"sandbox:run\"],\"risk\":\"LOW\",\"issuedBy\":\"CREATOR\",\"issuedByKind\":\"CREATOR\",\"expiresAt\":\"$EXPIRES\"}}" "$BASE/api/authority" >/dev/null
+  jqv '.token.id'
+}
+agent_call_with() { # agent_call_with <token> <secret> <pfad> <body>
+  curl -s -o "$BODY" -w '%{http_code}' -H 'content-type: application/json' -H "Authorization: Bobcap $1.$2" -X POST -d "$4" "$BASE$3"
+}
 assert_status "Agentenausfuehrung ohne Session (Capability + argv)" 200 "$(agent_call /api/runtime "{\"action\":\"execute\",\"taskId\":\"$ATID\",\"agentId\":\"AG-BUILD\",\"sandboxId\":\"$ASB\",\"capabilityTokenId\":\"$ATOK\",\"argv\":[\"node\",\"-e\",\"process.stdout.write('agent-live-ok')\"]}")"
 assert_json "Ausfuehrung akzeptiert und liefert stdout" '.accepted == true and .stdout == "agent-live-ok"'
 assert_json "Evidenz ist digest-gebunden und geprueft" '(.evidence.artifactId | startswith("ART-")) and (.evidence.digest | length == 64) and (.evidence.verified == true)'
 AEVID=$(jqv '.evidence.artifactId')
 assert_status "Evidenz ueber Route lesbar" 200 "$(api "$BASE/api/artifacts?verify=$AEVID")"
 assert_json "Digest der Evidenz stimmt erneut (Unversehrtheit)" '.verification.ok == true'
+assert_json "Evidenz nennt die Isolationsstufe des Laufs" '(.artifact.content | fromjson | .isolation) != null'
+# Wiederholungssperre: Eine Autorisierung ist genau eine Ausfuehrung.
+assert_status "Zweiter Lauf mit demselben Token verweigert (Replay)" 409 "$(agent_call /api/runtime "{\"action\":\"execute\",\"taskId\":\"$ATID\",\"agentId\":\"AG-BUILD\",\"sandboxId\":\"$ASB\",\"capabilityTokenId\":\"$ATOK\",\"argv\":[\"node\",\"-e\",\"process.stdout.write('replay')\"],\"environment\":\"test\"}")"
+assert_json "Verweigerung nennt den Replay-Grund" '[.message, .error] | map(tostring) | join(" ") | test("replay|exhaust"; "i")'
+assert_status "Replay ist als Verweigerungsevidenz nachweisbar" 200 "$(api "$BASE/api/artifacts?kind=DENIAL&taskId=$ATID")"
+assert_json "Verweigerungsevidenz benennt den Replay" '[.artifacts[].content] | map(test("replay"; "i")) | any'
 assert_status "Token auf Verwaltungsroute bleibt gesperrt" 401 "$(agent_call /api/missions '{"action":"create-mission","title":"verboten","objective":"verboten"}')"
-assert_status "Shell-Programm im Agentenweg verweigert" 409 "$(agent_call /api/runtime "{\"action\":\"execute\",\"taskId\":\"$ATID\",\"agentId\":\"AG-BUILD\",\"sandboxId\":\"$ASB\",\"capabilityTokenId\":\"$ATOK\",\"argv\":[\"/bin/sh\",\"-c\",\"id\"]}")"
-assert_status "Subjekt-Spoofing verweigert" 409 "$(agent_call /api/runtime "{\"action\":\"execute\",\"taskId\":\"$ATID\",\"agentId\":\"AG-QA\",\"sandboxId\":\"$ASB\",\"capabilityTokenId\":\"$ATOK\",\"argv\":[\"node\",\"-e\",\"1\"]}")"
+SHELL_TOK=$(issue_agent_token); SHELL_SEC=$(jqv '.secret')
+assert_status "Shell-Programm im Agentenweg verweigert" 409 "$(agent_call_with "$SHELL_TOK" "$SHELL_SEC" /api/runtime "{\"action\":\"execute\",\"taskId\":\"$ATID\",\"agentId\":\"AG-BUILD\",\"sandboxId\":\"$ASB\",\"capabilityTokenId\":\"$SHELL_TOK\",\"argv\":[\"/bin/sh\",\"-c\",\"id\"]}")"
+assert_json "Verweigerung nennt das Shell-Programm" '[.message, .error] | map(tostring) | join(" ") | test("sh|interpreter|argv"; "i")'
+SPOOF_TOK=$(issue_agent_token); SPOOF_SEC=$(jqv '.secret')
+assert_status "Subjekt-Spoofing verweigert" 409 "$(agent_call_with "$SPOOF_TOK" "$SPOOF_SEC" /api/runtime "{\"action\":\"execute\",\"taskId\":\"$ATID\",\"agentId\":\"AG-QA\",\"sandboxId\":\"$ASB\",\"capabilityTokenId\":\"$SPOOF_TOK\",\"argv\":[\"node\",\"-e\",\"1\"]}")"
+assert_json "Verweigerung nennt die Bindungsverletzung" '[.message, .error] | map(tostring) | join(" ") | test("subject|binding|AG-BUILD"; "i")' 
 assert_status "Widerrufenes Token verweigert" 200 "$(api -X POST -d "{\"action\":\"revoke\",\"id\":\"$ATOK\"}" "$BASE/api/authority")"
 assert_status "Ausfuehrung nach Widerruf verweigert" 403 "$(agent_call /api/runtime "{\"action\":\"execute\",\"taskId\":\"$ATID\",\"agentId\":\"AG-BUILD\",\"sandboxId\":\"$ASB\",\"capabilityTokenId\":\"$ATOK\",\"argv\":[\"node\",\"-e\",\"1\"]}")"
 # Abschnitt 49: Verweigerung -> Audit -> Evidenz. Eine blockierte Autorisierung
@@ -288,8 +324,33 @@ assert_status "Audit-Aufzeichnungen lesbar" 200 "$(api "$BASE/api/audit")"
 assert_json "Verweigerungen sind auditiert (DENY)" '[.records[] | select(.decision == "DENY" and .action == "sandbox.execute")] | length >= 1'
 assert_json "Audit weist den Aufbewahrungszustand aus" '(.integrity.valid == true) and ((.integrity.retentionIntegrity // "") | length > 0)'
 
+step "11. Kernel-Isolation der Sandbox real gemessen"
+# Der Prozess prueft sich ueber HTTP selbst: Capabilities, no_new_privs, Rootfs
+# read-only, Workspace schreibbar, Netzwerk unerreichbar. Keine Behauptung ohne
+# Messung - die Werte stammen aus /proc/self/status des isolierten Prozesses.
+ISOLATION_REPORT=$(api "$BASE/api/runtime" >/dev/null; cat "$BODY")
+printf "        /api/runtime.isolation = %s\n" "$(printf '%s' "$ISOLATION_REPORT" | jq -c '.isolation')"
+# Das Programm nutzt bewusst keine Shell-Metazeichen (der Broker verbietet sie),
+# sondern nur argv[] + shell:false. Gemessen wird /proc des isolierten Prozesses.
+PROBE_STDIO=$(cat <<'JS'
+const fs=require("fs"),lines=fs.readFileSync("/proc/self/status","utf8").split(String.fromCharCode(10)),pick=function(k){return (lines.find(function(l){return l.slice(0,k.length+1)==k+":"})??"FEHLT").slice(k.length+1).trim()},procs=fs.readdirSync("/proc").filter(function(x){return x.length?"0123456789".indexOf(x[0])!=-1:false}).length,ifaces=String(fs.readFileSync("/proc/net/dev","utf8").match(/^ *[a-z0-9]+:/gm)??""),routeLines=fs.readFileSync("/proc/net/route","utf8").split(String.fromCharCode(10)).filter(function(l){return l.trim().length}).length,ro=(function(){try{return fs.writeFileSync("/verboten","x"),"SCHREIBBAR"}catch(e){return e.code}})(),rw=(function(){try{return fs.writeFileSync("/work/live-probe.txt","ok"),"ok"}catch(e){return e.code}})(),out={capBnd:pick("CapBnd"),capEff:pick("CapEff"),noNewPrivs:pick("NoNewPrivs"),procs:procs,ifaces:ifaces,routeLines:routeLines,ro:ro,rw:rw},done=console.log(JSON.stringify(out))
+JS
+)
+PROBE_TOK=$(issue_agent_token); PROBE_SEC=$(jqv '.secret')
+PROBE_BODY=$(jq -n --arg tid "$ATID" --arg sid "$ASB" --arg tok "$PROBE_TOK" --arg script "$PROBE_STDIO" '{action:"execute",taskId:$tid,agentId:"AG-BUILD",sandboxId:$sid,capabilityTokenId:$tok,argv:["node","-e",$script]}')
+assert_status "Isolierter Lauf ueber den Agentenweg" 200 "$(agent_call_with "$PROBE_TOK" "$PROBE_SEC" /api/runtime "$PROBE_BODY")"
+assert_json "Prozess laeuft ohne Capabilities und ohne neue Rechte" '(.stdout | fromjson | .capEff == "0000000000000000") and (.stdout | fromjson | .capBnd == "0000000000000000") and (.stdout | fromjson | .noNewPrivs == "1")'
+assert_json "Rootfs ist read-only, Workspace bleibt schreibbar" '(.stdout | fromjson | .ro == "EROFS") and (.stdout | fromjson | .rw == "ok")'
+assert_json "Nur das Loopback-Interface existiert" '(.stdout | fromjson | .ifaces) as $i | $i | test("^ *lo: *$")'
+assert_json "Keine Netzwerkroute (leere Routingtabelle im Namespace)" '(.stdout | fromjson | .routeLines) == 0'
+assert_json "Keine Host-Prozesse sichtbar" '(.stdout | fromjson | .procs) as $p | ($p > 0 and $p < 20)'
+# Fail closed: ohne erzwungene Isolation darf gar nicht ausgefuehrt werden.
+assert_status "Isolationsbericht nennt die erzwungenen Garantien" 200 "$(api "$BASE/api/runtime")"
+assert_json "Isolation ist nicht nur angekuendigt" '([.isolation.enforced[]] | index("PID_NAMESPACE")) != null'
+
+
 if [ -n "${BOB_CREATOR_TOTP_SECRET:-}" ]; then
-  step "11. Zweiter Faktor (TOTP) ueber HTTP"
+  step "12. Zweiter Faktor (TOTP) ueber HTTP"
   SECRET="${BOB_CREATOR_LOGIN_SECRET:-}"
   if [ -z "$SECRET" ] && [ -f "${BOB_STORAGE_DIR:-./.bob-data}/creator-token" ]; then SECRET="$(tr -d '\n' < "${BOB_STORAGE_DIR}/creator-token")"; fi
   assert_status "Auth-Status nennt den zweiten Faktor" 200 "$(anony "$BASE/api/auth")"

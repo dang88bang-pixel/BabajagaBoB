@@ -1,5 +1,5 @@
 import {ApiDenied, guardRequest, parseCapabilityHeader} from "./guard";
-import {validateCapabilityToken, verifyCapabilitySecret} from "../authority";
+import {precheckCapabilityToken, verifyCapabilitySecret} from "../authority";
 import {SESSION_COOKIE, resolveSession} from "../session";
 import {recordAudit} from "../audit";
 
@@ -70,7 +70,10 @@ function agentExecutionDecision(request: Request): ApiGateDecision {
   // Bewusst ohne Umgebungs-/Ressourcenbindung: Die Bindung an Task, Sandbox,
   // Risiko und Umgebung kennt das Gate nicht und darf sie nicht raten. Sie
   // wird in der Route (`guardRequest`) und im Broker vollständig geprüft.
-  const validation = validateCapabilityToken(capability.tokenId, ["sandbox:run"], {});
+  // Ebenso bewusst als Vorprüfung: Der Verbrauch des Tokens (eine Autorisierung
+  // = eine Ausführung) wird ausschließlich im Execution Broker durchgesetzt,
+  // damit genau eine Stelle entscheidet und dort die Evidenz entsteht.
+  const validation = precheckCapabilityToken(capability.tokenId, ["sandbox:run"], {});
   if (!validation.valid) {
     recordAudit({actor: "UNKNOWN-AGENT", action: API_GATE_ACTION, decision: "DENY"}, {code: "CAPABILITY_DENIED", tokenId: capability.tokenId, reason: validation.reason});
     return deny(403, "CAPABILITY_DENIED", validation.reason);

@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import {spawn} from "node:child_process";
 import {createStore, storageRoot} from "./persistence/store";
 import {assertArgvPolicy} from "./argv-policy";
+import {isolationActive, isolationReport, runIsolated} from "./ns-isolation";
 import type {
   ExecutionResult,
   RuntimeHandle,
@@ -168,7 +169,8 @@ export class LocalWorkspaceRuntime implements SandboxRuntime {
       network: record.network,
       limits: record.limits,
       mode: "REAL_LOCAL",
-      workspace: record.workspace
+      workspace: record.workspace,
+      isolation: isolationReport().level
     };
   }
 
@@ -303,6 +305,14 @@ export class LocalWorkspaceRuntime implements SandboxRuntime {
     if (record.network.mode === "ALLOWLIST") throw new Error("ALLOWLIST execution is fail-closed in the local runtime");
     const [command, ...args] = argv;
     const timeout = Math.min(timeoutMs ?? record.limits.timeoutMs, record.limits.timeoutMs);
+    // Kernel-Isolation, wenn die Umgebung sie zulässt (BOB_NS_ISOLATION=auto|on).
+    // Ist sie aktiv, gibt es keinen unisolierten Ausführungspfad.
+    if (isolationActive()) {
+      return runIsolated(argv, {workspace: record.workspace, timeoutMs: timeout, sandboxId: record.sandboxId});
+    }
+    if ((process.env.BOB_NS_ISOLATION ?? "auto").toLowerCase() === "on") {
+      throw new Error(`kernel isolation is enforced (BOB_NS_ISOLATION=on) but unavailable: ${isolationReport().detail}`);
+    }
     const started = Date.now();
     return new Promise<ExecutionResult>((resolve, reject) => {
       const child = spawn(command, args, {
@@ -380,9 +390,13 @@ export class LocalWorkspaceRuntime implements SandboxRuntime {
 
   async health() {
     const mode = process.env.BOB_SANDBOX_RUNTIME === "oci" ? "oci" : "real-local";
+    const isolation = isolationReport();
     return {
       ok: true,
-      detail: `REAL local workspace runtime active (${mode}); no kernel isolation, network DENY enforced by policy only, ALLOWLIST fail-closed`
+      detail:
+        isolation.level === "NAMESPACES"
+          ? `REAL local workspace runtime active (${mode}); ${isolation.detail}; network DENY enforced by the kernel (network namespace), ALLOWLIST fail-closed`
+          : `REAL local workspace runtime active (${mode}); ${isolation.detail}; network DENY enforced by policy only, ALLOWLIST fail-closed`
     };
   }
 

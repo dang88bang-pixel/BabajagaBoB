@@ -2,6 +2,7 @@ import {NextResponse} from "next/server";
 import {activeRuntimeMode, reconcileActiveRuntime} from "../../../lib/runtime-factory";
 import {executeAuthorized} from "../../../lib/execution-broker";
 import {listSandboxes} from "../../../lib/sandbox/fabric";
+import {isolationReport} from "../../../lib/ns-isolation";
 import {guardRequest, toDeniedResponse} from "../../../lib/api/guard";
 import {actionField, readJson, stringArray, stringField} from "../../../lib/request-validation";
 
@@ -23,7 +24,15 @@ export async function GET(req: Request) {
   try {
     guardRequest(req, {action: "runtime:read"});
     if (activeRuntimeMode !== "oci") {
-      return NextResponse.json({mode: activeRuntimeMode, health: "READY", network: "DENY", observations: [], summary: {total: 0, running: 0, ready: 0, paused: 0, failed: 0, orphaned: 0}});
+      // Der Isolationszustand wird gemessen, nicht behauptet (siehe lib/ns-isolation.ts).
+      return NextResponse.json({
+        mode: activeRuntimeMode,
+        health: "READY",
+        network: "DENY",
+        isolation: isolationReport(),
+        observations: [],
+        summary: {total: 0, running: 0, ready: 0, paused: 0, failed: 0, orphaned: 0}
+      });
     }
     const observations = await reconcileActiveRuntime();
     const summary = {

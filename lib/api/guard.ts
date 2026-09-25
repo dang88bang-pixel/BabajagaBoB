@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import {SESSION_COOKIE, resolveSession} from "../session";
 import {requireInitialized, bootstrapStatus, BootstrapError} from "../bootstrap";
-import {abacAllows, getCapabilityToken, roleAllows, validateCapabilityToken, verifyCapabilitySecret, type Role} from "../authority";
+import {abacAllows, getCapabilityToken, precheckCapabilityToken, roleAllows, verifyCapabilitySecret, type Role} from "../authority";
 import {isKilled} from "../governance";
 import {recordAudit} from "../audit";
 import {observe} from "../observability";
@@ -199,7 +199,9 @@ export function guardRequest(request: Request, spec: GuardSpec): GuardedRequest 
     }
     const required = spec.requireAgentCapability ? [spec.requireAgentCapability, spec.action] : [spec.action];
     const environment = spec.environment ?? "development";
-    const validation = validateCapabilityToken(capability.tokenId, required, {
+    // Vorprüfung: Der Verbrauch (eine Autorisierung = eine Ausführung) wird im
+    // Execution Broker durchgesetzt und dort als Verweigerungsevidenz belegt.
+    const validation = precheckCapabilityToken(capability.tokenId, required, {
       taskId: spec.taskId,
       sandboxId: spec.sandboxId,
       risk: spec.risk,

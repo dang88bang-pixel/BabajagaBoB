@@ -45,7 +45,7 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 | Creator Inbox | `POST {action:"resolve"}` war unerreichbar (stand hinter einem `return`): jede Anfrage legte einen neuen Eintrag an. Jetzt eigener Zweig, Creator-Pflicht, Validierung, Ablehnung doppelter Beantwortung | `app/api/inbox/route.ts`, `tests/security/inbox-route.test.ts` |
 | Ausführungs-Evidenz | jede autorisierte Ausführung erzeugt einen **digestgebundenen, persistenten** Evidenzdatensatz (`ART-…`, SHA-256 über den gespeicherten Inhalt), verknüpft in Provenance (Knoten `EVIDENCE` + Kante) und Audit (`evidence.record` mit Digest); `GET /api/artifacts?verify=…` prüft erneut; Inhalte > 8 KiB werden sichtbar gekürzt (`truncated`) | `lib/artifacts.ts`, `lib/execution-broker.ts`, `tests/integration/execution-evidence.test.ts` |
 | Schema-Migration | registrierte Migration je Store: Digest-Prüfung → Sicherungskopie `*.pre-v{N}.bak` (0600) → Migration → Journal `migrations.jsonl`; fehlende Kette oder neuere Datei → fail closed; ältere Sicherungen werden als migrierbar erkannt und migrierend wiederhergestellt | `lib/persistence/store.ts`, `lib/creator-auth.ts`, `tests/unit/store-migration.test.ts` |
-| Zweiter Faktor | TOTP (RFC 6238) über `BOB_CREATOR_TOTP_SECRET`: gesetzt ⇒ **verpflichtend** (403 `TOTP_REQUIRED`), Fenster ±1 × 30 s, Replay-Schutz über `totpUsedSteps`, Lockout unverändert 423, Status über `GET /api/auth` (`secondFactor`); **live über HTTP nachgewiesen** (Schritt 11: Pflicht, Ablehnung ohne/mit falschem Code, Akzeptanz, Replay-Ablehnung; drei aufeinanderfolgende Läufe ohne Sperre) | `lib/totp.ts`, `lib/creator-auth.ts`, `app/api/auth/route.ts`, `tests/security/creator-totp.test.ts`, `scripts/verify-live.sh` |
+| Zweiter Faktor | TOTP (RFC 6238) über `BOB_CREATOR_TOTP_SECRET`: gesetzt ⇒ **verpflichtend** (403 `TOTP_REQUIRED`), Fenster ±1 × 30 s, Replay-Schutz über `totpUsedSteps`, Lockout unverändert 423, Status über `GET /api/auth` (`secondFactor`); **live über HTTP nachgewiesen** (Schritt 12: Pflicht, Ablehnung ohne/mit falschem Code, Akzeptanz, Replay-Ablehnung; drei aufeinanderfolgende Läufe ohne Sperre) | `lib/totp.ts`, `lib/creator-auth.ts`, `app/api/auth/route.ts`, `tests/security/creator-totp.test.ts`, `scripts/verify-live.sh` |
 | Persistenz aller Betriebszustände | CI/CD-Pipelines, Skills, Werkstatt-Objekte, Werkstatt-Läufe und Agenten-Übergaben sind persistent (zuvor nur im Speicher); Nachweis durch Neuladen der Laufzeit | `lib/cicd.ts`, `lib/skills.ts`, `lib/workshop*.ts`, `lib/agent-fabric.ts`, `tests/unit/runtime-persistence.test.ts` |
 | Backup/Wiederherstellbarkeit | digest-/versionsgeprüfte Kopien unter `<BOB_STORAGE_DIR>/backups`, Restore nur nach Prüfung, manipuliert → 409 | `lib/persistence/store.ts`, `app/api/persistence/route.ts`, `tests/integration/metrics-backup.test.ts` |
 | Creator-Zugang | einmaliger Bootstrap, danach Login mit server-seitigem Secret (Datei 0600 oder Env), Konstantzeitvergleich, Sperre nach 5 Fehlversuchen (423, 15 min), Rotation | `lib/bootstrap.ts`, `lib/creator-auth.ts`, `app/api/auth/route.ts`, `tests/security/creator-login*.test.ts` |
@@ -71,9 +71,10 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 
 | Nachweis | Ergebnis |
 |---|---|
-| Automatisierte Tests | **30 Dateien / 166 Tests grün** (`npx vitest run`) |
+| Automatisierte Tests | **32 Dateien / 178 Tests grün** (`npx vitest run`) |
 | Statische Gates | `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler (10 Warnungen); `npm run build` erfolgreich (Exit-Code geprüft, nicht nur Ausgabe) |
-| Live über HTTP | `scripts/verify-live.sh` gegen `npx next start`: **130 PASS / 0 FAIL** (frisch initialisiert; 128 bei bereits initialisierter Instanz; mit verpflichtendem zweitem Faktor 136 / 134) – Auth fail closed (428/401/403/201/200), Kette bis Knowledge, Sandbox + Snapshot + Capability, autorisierte Ausführung (`argv`, stdout `live-ok`), Angriffsblockaden mit Audit, Fehlerkette bis `REGRESSION_LOCKED`, Lockdown/Privacy/Provider/Geräte, Restore/Persistenz/Readiness, **Schritt 10: Agentenweg über Capability-Token ohne Browser-Session**, **Evidenz der blockierten Autorisierung** (`kind=DENIAL`, Digest erneut geprüft, ohne Klartext-Argumente) und **Schritt 11: zweiter Faktor live** (Pflicht, Ablehnung ohne/mit falschem Code, Akzeptanz, Replay-Ablehnung) |
+| Live über HTTP | `scripts/verify-live.sh` gegen `npx next start`: **149 PASS / 0 FAIL** (frisch initialisiert; 147 bei bereits initialisierter Instanz; mit verpflichtendem zweitem Faktor 155 / 153), jeweils mit aktiver Kernel-Isolation – Auth fail closed (428/401/403/201/200), Kette bis Knowledge, Sandbox + Snapshot + Capability, autorisierte Ausführung (`argv`, stdout `live-ok`), Angriffsblockaden mit Audit, Fehlerkette bis `REGRESSION_LOCKED`, Lockdown/Privacy/Provider/Geräte, Restore/Persistenz/Readiness, **Schritt 10: Agentenweg über Capability-Token ohne Browser-Session**, **Evidenz der blockierten Autorisierung** (`kind=DENIAL`, Digest erneut geprüft, ohne Klartext-Argumente), **Replay-Verweigerung** (zweiter Lauf mit demselben Token → 409 + Evidenz), **Schritt 11: kernel-gemessene Isolation** (`CapBnd`/`CapEff` = 0, `NoNewPrivs` = 1, `EROFS`, nur `lo`, leere Routingtabelle) und **Schritt 12: zweiter Faktor live** (Pflicht, Ablehnung ohne/mit falschem Code, Akzeptanz, Replay-Ablehnung) |
+| Kernel-Isolation der Ausführung | `NAMESPACES` (real gemessen): User-/Netzwerk-/PID-/IPC-/UTS-/Mount-Namespace, Rootfs `EROFS`, nur `/work` schreibbar, leeres Capability-Bounding-Set, `NoNewPrivs` = 1; `scripts/build-ns-rootfs.sh` (126 MB), `lib/ns-isolation.ts`, `scripts/ns-exec.sh`; `BOB_NS_ISOLATION=on` verweigert ohne Rootfs jede Ausführung (fail closed) |
 | §49-Abnahme 1 (Erfolgspfad) | `tests/e2e/creator-flow.test.ts` + Live-Schritte 2–4 |
 | §49-Abnahme 2 (bewusster Fehler) | `tests/e2e/failure-recovery.test.ts` (Exit-Code 7) + Live-Schritt 6 |
 | §49-Abnahme 3 (blockierter Angriff) | fremder Sandbox-Bindungsversuch 409, unbekanntes Token 409, Shell-Programm/-Metazeichen 409, Audit-DENY + Evidenz; `tests/e2e/creator-flow.test.ts` Test 2, Live-Schritt 5 |
@@ -132,6 +133,7 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 |---|---|---|---|
 | `REAL_LOCAL` | real | Standard in Tests, CI und Live-Nachweis: echte Kindprozesse, echte Snapshots mit SHA-256 | `tests/integration/*`, `scripts/verify-live.sh` |
 | `REAL_OCI` | implementiert, **UNVERIFIED** | gehärtete Container-Isolation, ohne Daemon ungeprüft | `lib/oci-runtime.ts` |
+| `REAL_LOCAL` + Kernel-Isolation | real, gemessen (`NAMESPACES`) | ohne Daemon verfügbare Kernel-Grenzen (Namespaces, read-only Rootfs, Capabilities 0); **kein** OCI-Image, keine cgroup-Quotas | `lib/ns-isolation.ts`, `tests/integration/ns-isolation.test.ts`, `scripts/verify-live.sh` §11 |
 | `MOCK` | MOCK/SIMULATED | nur Entwicklung, nur mit `BOB_ALLOW_MOCK_RUNTIME=1` | `lib/runtime.ts` |
 
 Keine Erfolgsaussage stützt sich auf Mock-Verhalten; Simulationen
@@ -148,8 +150,8 @@ Keine Erfolgsaussage stützt sich auf Mock-Verhalten; Simulationen
 - Regression (1 / 5): Regression Engine (argv-Policy, leere Suite = Fehlschlag).
 - E2E (2 / 4): Erfolgskette Creator → Knowledge; Fehlerkette bis `REGRESSION_LOCKED`.
 - UI (2 / 6): Control Center unter jsdom mit vollständiger Navigation und echten Routen-Handlern.
-- Live: `scripts/verify-live.sh` (**130 Prüfungen, 0 Fehler** bei Erstinitialisierung).
-- Gesamt: **30 Dateien / 166 Tests grün**.
+- Live: `scripts/verify-live.sh` (**149 Prüfungen, 0 Fehler** bei Erstinitialisierung, mit Kernel-Isolation).
+- Gesamt: **32 Dateien / 178 Tests grün**.
 
 Details und Befehle: `docs/TESTING.md`.
 

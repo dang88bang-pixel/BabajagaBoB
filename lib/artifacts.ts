@@ -128,6 +128,8 @@ export function executionEvidenceContent(input: {
   stderr: string;
   timedOut: boolean;
   durationMs: number;
+  /** Isolationsstufe, in der der Lauf tatsächlich stattfand (Nachweis, keine Annahme). */
+  isolation?: string;
 }): string {
   return JSON.stringify(
     {
@@ -142,7 +144,8 @@ export function executionEvidenceContent(input: {
       stdout: input.stdout,
       stderr: input.stderr,
       timedOut: input.timedOut,
-      durationMs: input.durationMs
+      durationMs: input.durationMs,
+      isolation: input.isolation ?? "FILESYSTEM_ONLY"
     },
     null,
     2

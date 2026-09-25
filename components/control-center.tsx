@@ -548,6 +548,7 @@ export default function ControlCenter() {
   const [incidents, setIncidents] = useState<ErrorIncident[] | null>(null);
   const [inbox, setInbox] = useState<InboxItem[] | null>(null);
   const [metricsText, setMetricsText] = useState<string | null>(null);
+  const [runtime, setRuntime] = useState<Row | null>(null);
   const [persistence, setPersistence] = useState<Row | null>(null);
   const [readiness, setReadiness] = useState<Row | null>(null);
   const [audit, setAudit] = useState<Row | null>(null);
@@ -589,7 +590,7 @@ export default function ControlCenter() {
     setSnapshot(control.data);
     setError("");
 
-    const [tl, errRes, inboxRes, gov, caps, prov, auditRes, priv, persistenceRes, readinessRes, artifactsRes] = await Promise.all([
+    const [tl, errRes, inboxRes, gov, caps, prov, auditRes, priv, persistenceRes, readinessRes, artifactsRes, runtimeRes] = await Promise.all([
       fetchJson<{timeline: TimelineEntry[]}>("/api/timeline"),
       fetchJson<{incidents: ErrorIncident[]}>("/api/errors"),
       fetchJson<{items: InboxItem[]}>("/api/inbox"),
@@ -600,7 +601,8 @@ export default function ControlCenter() {
       fetchJson<Row>("/api/privacy"),
       fetchJson<Row>("/api/persistence"),
       fetchJson<Row>("/api/readiness"),
-      fetchJson<{artifacts: Row[]}>("/api/artifacts")
+      fetchJson<{artifacts: Row[]}>("/api/artifacts"),
+      fetchJson<Row>("/api/runtime")
     ]);
     setTimeline(tl.data?.timeline ?? null);
     setIncidents(errRes.data?.incidents ?? null);
@@ -613,6 +615,7 @@ export default function ControlCenter() {
     setPersistence(persistenceRes.data);
     setReadiness(readinessRes.data);
     setArtifacts(artifactsRes.data?.artifacts ?? null);
+    setRuntime(runtimeRes.data);
 
     // Modulare Abschnitte: eine Anfrage je Abschnitt, Fehler bleiben sichtbar.
     const sources = Object.entries(SOURCES) as [SectionId, NonNullable<(typeof SOURCES)[SectionId]>][];
@@ -1445,6 +1448,14 @@ export default function ControlCenter() {
           <div className="headerActions">
             <span className="privacy">
               NETZWERK · {(privacy?.policy as Row | undefined)?.networkDefault ? String((privacy?.policy as Row).networkDefault) : "DENY"}
+            </span>
+            <span className="privacy" title={String((runtime?.isolation as Row | undefined)?.detail ?? "Isolationszustand unbekannt")}>
+              ISOLATION ·{" "}
+              {(runtime?.isolation as Row | undefined)?.level === "NAMESPACES"
+                ? "NAMESPACES"
+                : runtime?.isolation
+                  ? "FILESYSTEM_ONLY"
+                  : "UNBEKANNT"}
             </span>
             <button className="danger" onClick={() => void post("/api/control", {action: "lockdown", locked: !locked})}>
               {locked ? "Lockdown aufheben" : "Emergency Lockdown"}

@@ -1,6 +1,7 @@
 import {localWorkspaceRuntime} from "./runtime-local";
 import {ociContainerRuntime} from "./oci-runtime";
 import {sandboxRuntime as mockRuntime, type SandboxRuntime} from "./runtime";
+import {isolationReport} from "./ns-isolation";
 
 /**
  * Fail-closed Runtime-Auswahl (Abschnitt 12/47).
@@ -45,6 +46,7 @@ export const activeRuntimeMode: RuntimeMode = requestedRuntimeMode();
 
 export async function runtimeHealth() {
   const health = await activeSandboxRuntime.health();
+  const isolation = isolationReport();
   return {
     mode: runtimeModeLabel(),
     requested: activeRuntimeMode,
@@ -52,7 +54,9 @@ export async function runtimeHealth() {
     detail: health.detail,
     networkDefault: "DENY" as const,
     allowlist: "FAIL_CLOSED" as const,
-    isolation: activeRuntimeMode === "oci" ? "CONTAINER" : activeRuntimeMode === "local" ? "FILESYSTEM_ONLY" : "NONE"
+    isolation: activeRuntimeMode === "oci" ? "CONTAINER" : activeRuntimeMode === "local" ? isolation.level : "NONE",
+    isolationDetail: isolation.detail,
+    isolationEnforced: isolation.enforced
   };
 }
 

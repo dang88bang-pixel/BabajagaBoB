@@ -338,7 +338,7 @@ Das Gesamtprojekt darf erst als spezifikationskonform bezeichnet werden, wenn:
 
 | Kriterium | Zustand |
 |---|---|
-| 1. Muss-Anforderungen `VERIFIED` | **PARTIAL** – Autorisierung, Persistenz, Kernkette, Verweigerungsevidenz, Audit-Aufbewahrung und lokale Runtime sind `VERIFIED`; OCI-Runtime ist `NOT_VERIFIED`, Provider/Device/Computer-Use-Integration ist `PARTIAL` (kein Egress, keine Treiber) |
+| 1. Muss-Anforderungen `VERIFIED` | **PARTIAL** – Autorisierung (inkl. Wiederholungssperre für Capability-Token), Persistenz, Kernkette, Verweigerungsevidenz, Audit-Aufbewahrung, lokale Runtime **mit gemessener Kernel-Isolation `NAMESPACES`** sind `VERIFIED`; OCI-Runtime ist `NOT_VERIFIED` (kein Daemon beschaffbar), Provider/Device/Computer-Use-Integration ist `PARTIAL` (kein Egress, keine Treiber) |
 | 2. Offene Punkte markiert | **PASS** – `docs/STATUS.md`, `docs/TODO.md`, `docs/ABSCHLUSSBERICHT.md` §D/§E/§F |
 | 3. Keine stille Sicherheitsreduktion | **PASS** – Netzwerk `DENY`, `ALLOWLIST` fail closed, Audit-/Provenance-Pflicht, Evidenz-/Verifikationspflicht unverändert |
 | 4. Kern-E2E-Flows | **PASS** – `tests/e2e/creator-flow.test.ts`, `tests/e2e/failure-recovery.test.ts`, Live-Schritte 2–6 |

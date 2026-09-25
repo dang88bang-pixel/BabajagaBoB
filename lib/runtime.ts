@@ -7,7 +7,11 @@ export type {ResourceLimits};
  *
  * Klassifizierung der Implementierungen:
  *  - `LocalWorkspaceRuntime` (lib/runtime-local.ts) → REAL (lokales Dateisystem,
- *    echter argv-Prozess, echte Tarball-Snapshots). Keine Netzwerkisolation.
+ *    echter argv-Prozess, echte Tarball-Snapshots). Mit aktivierter
+ *    Kernel-Isolation (`lib/ns-isolation.ts`, `BOB_NS_ISOLATION=auto|on`)
+ *    laufen die Prozesse zusätzlich in eigenen Kernel-Namespaces (Netzwerk,
+ *    PID, IPC, UTS, Mount, User), mit read-only Rootfs, geleertem
+ *    Capability-Bounding-Set und `no_new_privs`.
  *  - `OciContainerRuntimeAdapter` (lib/oci-runtime.ts) → REAL, sofern ein
  *    Docker/OCI-Daemon verfügbar ist; sonst FAIL CLOSED.
  *  - `MockSandboxRuntime`               → MOCK. Nur für Entwicklung/Tests,
@@ -40,6 +44,8 @@ export type RuntimeSnapshot = {
   path?: string;
 };
 
+export type IsolationLevel = "FILESYSTEM_ONLY" | "NAMESPACES";
+
 export type RuntimeHandle = {
   sandboxId: string;
   state: SandboxRuntimeState;
@@ -47,6 +53,8 @@ export type RuntimeHandle = {
   limits: ResourceLimits;
   mode: "REAL_LOCAL" | "REAL_OCI" | "MOCK";
   workspace?: string;
+  /** Tatsächlich erzwungene Isolationsebene (keine Behauptung, sondern Zustand). */
+  isolation?: IsolationLevel;
 };
 
 export type ExecutionResult = {
@@ -62,6 +70,8 @@ export type ExecutionResult = {
    * Fehlt sie, wurde der Lauf nicht über den autorisierten Broker ausgeführt.
    */
   evidence?: {artifactId: string; digest: string; verified: boolean; truncated: boolean};
+  /** Isolationsstufe, in der dieser Lauf tatsächlich ausgeführt wurde. */
+  isolation?: IsolationLevel;
 };
 
 export type RuntimeObservation = {

@@ -28,12 +28,22 @@ Verbote, die beim **Ausstellen** geprüft werden (Verstoß = Denial + Audit):
 - `SELF_GRANT` — ein Agent darf sich **kein** Token selbst ausstellen (Subjekt = Aussteller ist verboten).
 - `WILDCARD_CAPABILITY` — `*` ist nie zulässig.
 - `EMPTY_CAPABILITIES`, `TOKEN_EXPIRED` (bereits abgelaufen), `TOKEN_TTL`.
+- `TOKEN_USES_LIMIT` — `maxUses` muss eine ganze Zahl zwischen 1 und `MAX_TOKEN_USES` (25) sein.
+  Standard ist **1**: eine Autorisierung ist eine Ausführung.
 - Für nicht-`CREATOR`-Aussteller: `TOKEN_DELEGATION` (nur Fähigkeiten, die die eigene Delegationskante abdeckt) und `TOKEN_RISK_ESCALATION` (kein höheres Risiko als die eigene Kante).
 
 Bei der **Nutzung** prüft `validateCapabilityToken(tokenId, capabilities, {subject, taskId, sandboxId, risk, environment})`:
 
-- Widerruf, Ablauf, Fähigkeitenumfang, Subjekt, Task, Sandbox, Risiko, Umgebung.
+- Widerruf, Ablauf, Fähigkeitenumfang, Subjekt, Task, Sandbox, Risiko, Umgebung, **Verbrauch**.
 - Der Vergleich des Secrets läuft über `timingSafeEqual` (`verifyCapabilitySecret`).
+- **Eine Autorisierung = eine Ausführung.** `consumeCapabilityToken` erhöht `uses` atomar **vor** dem
+  Ausführen. Ein zweiter Lauf mit demselben Token ist ein Replay: `409`, Audit-DENY und
+  Verweigerungsevidenz (`TOKEN_REPLAY` bzw. `token exhausted … replay is refused`). Ein Absturz nach dem
+  Verbrauch führt zu einer Verweigerung, nicht zu einer zweiten Ausführung.
+- **Eine Entscheidungsstelle:** Gate, Route-Guard und `requireCapability` nutzen
+  `precheckCapabilityToken` (Authentizität, Scope, Ablauf, Widerruf — ohne Verbrauch). Den Verbrauch
+  setzt ausschließlich der Execution Broker durch, damit die Verweigerungsevidenz dort entsteht, wo
+  entschieden wird. Nicht-ausführende Aktionen (Statusmeldungen) verbrauchen kein Token.
 
 Belegte Grenzen live (HTTP, `scripts/verify-live.sh`, Schritt „Agentenweg"):
 
@@ -49,6 +59,12 @@ Belegte Grenzen live (HTTP, `scripts/verify-live.sh`, Schritt „Agentenweg"):
 | Shell-Interpreter (`/bin/sh -c`) | `409 SHELL_PROGRAM` |
 | Widerrufenes Token | `403 CAPABILITY_DENIED` („token revoked") |
 | System-Lockdown aktiv | `409 EXECUTION_GATE` („System lockdown is active") |
+| **Zweiter Lauf mit demselben Token (Replay)** | `409` („token exhausted … replay is refused") + `kind: "DENIAL"`-Evidenz mit Replay-Grund |
+| Token nach Verbrauch erneut auf `/api/runtime` | Verweigerung im Broker (nicht im Gate) — genau eine Entscheidungsstelle |
+
+Jede weitere Ausführung braucht ein **eigenes** Token; `scripts/verify-live.sh` stellt dafür je Prüfung
+ein frisches Token aus (`issue_task_token`, `issue_agent_token`). Tests:
+`tests/security/token-replay.test.ts` (5 Tests).
 
 ## 3. Rollen der Agent Fabric (11 Rollen)
 
@@ -105,3 +121,5 @@ Der strukturelle Nachweis „keine Route ohne Guard" läuft als Test
 - Externe Identitätsanbieter (OIDC) gibt es nicht; die Creator-Anmeldung erfolgt über
   Server-Secret (`BOB_CREATOR_LOGIN_SECRET`) plus optionalem TOTP (`BOB_CREATOR_TOTP_SECRET`).
 - Der zweite Faktor wird in `docs/BOOTSTRAP.md` beschrieben.
+- Token-Wiederholung ist gesperrt (siehe Abschnitt 2). Offen bleibt: kurzlebige, automatisch rotierende
+  Tokens je Ausführungsschritt sowie ein externer Schlüsseldienst — beides ist hier `NOT_IMPLEMENTED`.

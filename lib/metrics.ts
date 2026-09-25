@@ -16,6 +16,7 @@ import {listProviders} from "./provider-fabric";
 import {listDevices} from "./devices";
 import {listComputers} from "./computer-use";
 import {isKilled} from "./governance";
+import {isolationReport} from "./ns-isolation";
 
 /**
  * Betriebsmetriken im Prometheus-Textformat (Abschnitt 39 / Operations).
@@ -73,6 +74,22 @@ export function collectMetrics(): Metric[] {
   push({name: "bob_audit_chain_ok", help: "1 wenn die HMAC-Kette integer ist", type: "gauge", value: chain.valid ? 1 : 0});
   push({name: "bob_audit_issues", help: "Gemeldete Integritätsprobleme der Audit-Kette", type: "gauge", value: chain.issues.length});
   push({name: "bob_audit_store_ok", help: "1 wenn der Audit-Store integer ist", type: "gauge", value: safe(() => (auditIntegrity().storeOk ? 1 : 0), 0)});
+
+  // --- Ausführungs-Isolation ------------------------------------------------
+  // Gemessener Zustand (kernel-seitig erzwungen oder nur Policy), keine Zusage.
+  const isolation = safe(() => isolationReport(), null);
+  push({
+    name: "bob_isolation_namespaces_ok",
+    help: "1 wenn die Ausführung kernel-isoliert ist (Namespaces, read-only Rootfs, no_new_privs)",
+    type: "gauge",
+    value: isolation?.level === "NAMESPACES" ? 1 : 0
+  });
+  push({
+    name: "bob_isolation_capability_drop_ok",
+    help: "1 wenn das Capability-Bounding-Set im Sandbox geleert wird",
+    type: "gauge",
+    value: isolation?.capabilities === "BOUNDING_SET_EMPTY" ? 1 : 0
+  });
 
   // --- Control Plane --------------------------------------------------------
   const state = safe(() => getControlState(), {

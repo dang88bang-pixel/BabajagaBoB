@@ -27,6 +27,8 @@ Sandbox-Typen: `development`, `experiment`, `test`, `browser`, `security`,
 | Workspace | Eigener Workspace je Sandbox unter `<BOB_STORAGE_DIR>/sandboxes/<sandboxId>`; Logs und Artefakte bleiben darin. |
 | Umgebung | `environment` stammt aus dem Sandbox-Typ (nicht aus dem Request-Default); Token-Umgebung muss passen (`ENVIRONMENT`). |
 | IDs | Snapshot-IDs sind eigenständig und **nie** als Artifact bezeichnet (Snapshot ≠ Artifact). |
+| Kernel-Isolation | Mit gebautem Rootfs läuft jede lokale Ausführung in `NAMESPACES` (`lib/ns-isolation.ts`): eigene Netzwerk-/PID-/IPC-/UTS-/Mount-/User-Namespace, Rootfs `EROFS`, nur `/work` schreibbar, `NoNewPrivs=1`, Capabilities leer. Gemessen: CapBnd/CapEff `0000000000000000`, 1 sichtbarer Prozess, nur `lo`, leere Routingtabelle. Details: `docs/RUNTIME.md` §2a. |
+| Isolation erzwungen | `BOB_NS_ISOLATION=on` ⇒ ohne verfügbare Kernel-Isolation wird die Ausführung verweigert (`409`, „kernel isolation is enforced … but unavailable"), **nichts** läuft unisoliert. |
 
 ## 3. Snapshot und Restore (echt, nicht simuliert)
 
@@ -43,12 +45,14 @@ Sandbox-Typen: `development`, `experiment`, `test`, `browser`, `security`,
 
 | Modus | Datei | Klassifikation |
 |---|---|---|
-| `local` | `lib/runtime-local.ts` | **REAL_LOCAL**: eigener Prozess je Ausführung, `spawn(..., {shell:false})`, Timeout → `SIGKILL`, reduzierte Umgebung, Ausgabe erfasst. Keine Container-Isolation (kein cgroup/namespace). |
+| `local` | `lib/runtime-local.ts`, `lib/ns-isolation.ts` | **REAL_LOCAL**: eigener Prozess je Ausführung, `spawn(..., {shell:false})`, Timeout → `SIGKILL` der Prozessgruppe, reduzierte Umgebung, Ausgabe erfasst. Isolationsstufe `NAMESPACES` (Kernel-Namespaces + Rootfs read-only), sobald ein Rootfs vorhanden ist; sonst `FILESYSTEM_ONLY`. Kein OCI-Image, kein `runc`, keine cgroup-Quotas. |
 | `oci` | `lib/oci-runtime.ts` | **REAL_OCI**: Docker-Adapter mit gehärteten Flags (u. a. `--network none`, `--read-only`, `--cap-drop ALL`, `--security-opt no-new-privileges`, `--pids-limit`, Speicher-/CPU-Limits, `--user`). Benötigt eine vorhandene Docker-Umgebung; sonst fail closed (`UNVERIFIED` in dieser Umgebung). |
 | `mock` | `MockSandboxRuntime` | **MOCK**: nur für Entwicklung/Tests. Nie Produktionslaufzeit. Wird im Status als `mock` ausgewiesen. |
 
 Der aktive Modus kommt aus `BOB_SANDBOX_RUNTIME` (`lib/runtime-factory.ts`) und wird
-über `GET /api/runtime` veröffentlicht; `POST /api/runtime {action:"reconcile"}`
+über `GET /api/runtime` veröffentlicht — zusammen mit der **gemessenen** Isolationsstufe
+(`isolation.level`: `CONTAINER` | `NAMESPACES` | `FILESYSTEM_ONLY` | `NONE`), den erzwungenen
+Garantien (`isolation.enforced[]`) und einer Begründung. `POST /api/runtime {action:"reconcile"}`
 (Creator) gleicht Registrierung und Laufzeit ab und meldet `ORPHANED`-Sandboxes.
 
 ## 5. Diagnose-Sandboxen
@@ -63,4 +67,7 @@ verändern. Auch dort gelten Netzwerk-DENY, argv-Policy und Limits.
 - `tests/integration/app-module-sandbox.test.ts` — Sandbox-Ausführung für App-Module.
 - `tests/security/argv-policy.test.ts` — Shell-Strings, Metazeichen, Länge.
 - `tests/integration/execution-evidence.test.ts` — Evidenz je Ausführung.
-- `scripts/verify-live.sh` — Snapshot/Restore, Sandbox-Ausführung und Verweigerungen über HTTP.
+- `tests/integration/ns-isolation.test.ts` — 7 Tests der Kernel-Isolation (Prozess-Probe,
+  Netzwerk-Namespace, argv-Canary, Timeout, verschwundener Rootfs, fail closed).
+- `scripts/verify-live.sh` — Snapshot/Restore, Sandbox-Ausführung, Verweigerungen und
+  gemessene Isolation über HTTP (Schritt 11).
