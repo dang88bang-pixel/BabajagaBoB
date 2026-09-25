@@ -415,7 +415,8 @@ export function learnFromError(incidentId: string, summary: string, verification
       object: incident.rootCause,
       state,
       sourceIds: [incident.incidentId],
-      evidenceIds: incident.evidenceIds
+      evidenceIds: incident.evidenceIds,
+      verification
     });
     linkKnowledge(node.knowledgeId, semantic.knowledgeId, "DERIVED_FROM");
   }
