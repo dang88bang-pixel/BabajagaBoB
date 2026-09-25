@@ -11,8 +11,8 @@ Eingefroren: 2026-09-25. Quellen: GESAMTAUFTRAG (53 Punkte); docs/MASTER_COMPLET
 
 | Status | Anzahl | Bedeutung |
 |---|---|---|
-| ✅ PASS | 72 | Implementierung + Test + Nachweis vorhanden |
-| 🟡 PARTIAL | 8 | Teilweise umgesetzt, Lücke benannt |
+| ✅ PASS | 73 | Implementierung + Test + Nachweis vorhanden |
+| 🟡 PARTIAL | 7 | Teilweise umgesetzt, Lücke benannt |
 | ❌ FAIL | 0 | Umgesetzt, aber Nachweis fehlgeschlagen |
 | ⚪ NOT_IMPLEMENTED | 2 | Bewusst nicht gebaut (Begründung) |
 | 🔵 NOT_VERIFIED | 3 | Vorhanden, aber Umgebung erlaubt keinen Nachweis |
@@ -71,7 +71,7 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 | INB-001 | Creator-Inbox | Die Creator-Inbox kennt INFORM/ASK/BLOCK/ESCALATE und kann nur vom Creator beantwortet werden. | `lib/inbox.ts` | `tests/security/inbox-route.test.ts` (4) | `GET /api/inbox` | Inbox | ✅ |
 | GOV-001 | Governance | Kill Switches wirken auf den gesamten Ausführungspfad bis in interne Läufe; Lockdown hält Ausführung an. | `lib/governance.ts`<br>`lib/system-execution.ts` | `tests/security/gate-bypass.test.ts` (3) | `GET /api/governance` | Governance | ✅ |
 
-## P2 (9/13 PASS)
+## P2 (10/13 PASS)
 
 | ID | Bereich | Anforderung | Implementierung | Test | Nachweis | UI | Status |
 |---|---|---|---|---|---|---|---|
@@ -81,7 +81,7 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 | WS-001 | Werkstatt | Werkstatt-Objekte durchlaufen Discovery → Spezifikation → Umsetzung → Validierung → Registrierung. | `lib/workshop.ts`<br>`lib/workshop-execution.ts` | `tests/security/api-route-contract.test.ts` (5) | `GET /api/workshop` | Workshop | ✅ |
 | PROVF-001 | Provider Fabric | Provider haben Lifecycle, Health, Bindungen und Credential-Referenzen; Verbindung nur mit Freigabe. | `lib/provider-fabric.ts` | `tests/integration/provider-fabric.test.ts` (8) | `GET /api/providers` | Providers | ✅ |
 | PROVF-002 | Provider Fabric | Echte externe Verbindung eines Providers (live) inklusive Telemetrie.<br><small>Netzwerk ist per Vorgabe DENY und die Umgebung erlaubt keine externen Dienstverbindungen; ein Adapterlauf ist damit nicht belegbar.</small> | `lib/provider-fabric.ts` | — | — | — | 🔵 |
-| DEV-001 | Device Fabric | Geräte-Lebenszyklus mit Discovery ≠ Autorisierung, Allokation nur mit Creator-Freigabe.<br><small>Zustandsmodell, Autorisierung und Allokation sind umgesetzt; eine Auswahl nach CPU/RAM/GPU/Auslastung (Scheduling) fehlt.</small> | `lib/devices.ts`<br>`app/api/devices/route.ts` | `tests/integration/computer-use.test.ts` (4) | `GET /api/devices` | Devices | 🟡 |
+| DEV-001 | Device Fabric | Geräte-Lebenszyklus mit Discovery ≠ Autorisierung, Allokation nur mit Creator-Freigabe.<br><small>Zustandsmodell, Autorisierung, Allokation und capability-aware Scheduling sind umgesetzt und getestet.</small> | `lib/devices.ts`<br>`app/api/devices/route.ts` | `tests/integration/computer-use.test.ts` (4) | `GET /api/devices` | Devices | ✅ |
 | DEV-002 | Device Fabric | Selbstmeldende Geräte-Registrierung (Enrollment) ist minimal berechtigt, fail closed und ohne Selbst-Grant. | `lib/device-enrollment.ts`<br>`scripts/discover-host.mjs` | `tests/security/device-enrollment.test.ts` (8) | `GET /api/devices` | Devices | ✅ |
 | CU-001 | Computer Use | Browser-, Desktop- und CLI-Instanzen sind registriert, erzwungen unautorisiert und nur über Gate/Broker nutzbar.<br><small>Registrierung, Autorisierung und Belegungsgrenze sind umgesetzt; echte Treiber (Browser-Automation, Desktop-Eingabe, Screenshots) fehlen, deshalb kein Ausführungsnachweis.</small> | `lib/computer-use.ts` | `tests/integration/computer-use.test.ts` (4) | `GET /api/computer-use` | ComputerUse | 🟡 |
 | SIM-001 | Simulation/Visualisierung | Visualisierung erzeugt aus dem echten Zustand passive Artefakte (7 Arten) mit Digest und Szenario-Bezug. | `lib/visualization.ts` | `tests/integration/visualization.test.ts` (11) | `GET /api/simulation`<br>`GET /api/simulation/render` | Simulation, Gallery | ✅ |
