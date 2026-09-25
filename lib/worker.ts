@@ -132,6 +132,7 @@ export async function runWorkerCycle(workerId = `worker-${process.pid}`): Promis
         incident: message,
         failureMode: "RUN_EXECUTION_FAILURE",
         contributingFactors: ["worker execution path"],
+        prevention: [],
         evidenceIds: [],
         taskId: run.taskId,
         runId: run.runId,
@@ -139,10 +140,10 @@ export async function runWorkerCycle(workerId = `worker-${process.pid}`): Promis
         sandboxId: run.sandboxId ?? undefined,
         error: message
       });
-      transitionError(incident.id, "TRIAGING");
+      transitionError(incident.incidentId, "TRIAGING");
       // Autonome Untersuchung: Diagnose-Sandbox, Failure-Record, Recovery-Plan.
       try {
-        await investigateError(incident.id);
+        await investigateError(incident.incidentId);
       } catch {
         /* Untersuchung darf den Worker-Zyklus nicht abbrechen */
       }

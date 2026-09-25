@@ -167,6 +167,20 @@ export function delegationIntegrity() {
   };
 }
 
+/** Einheitlicher Auditpfad für Governance-Aktionen (Kill-Switch, Delegation). */
+export function auditGovernance(action: string, target: string, detail: string, actor = "CREATOR") {
+  observe({
+    type: `governance.${action}`,
+    message: `Governance-Aktion ${action} auf ${target}`,
+    status: action === "release" ? "COMPLETED" : "RUNNING",
+    actor,
+    action: `governance.${action}`,
+    resource: target,
+    decision: "ALLOW",
+    argumentsValue: {detail}
+  });
+}
+
 export function governanceStoreIntegrity() {
   return store.integrity();
 }

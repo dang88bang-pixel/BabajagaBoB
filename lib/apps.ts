@@ -103,7 +103,7 @@ export async function startExecutableModule(moduleId:string,taskId?:string){
  const module=moduleStore.get(moduleId); if(!module) throw new Error("module not found");
  const app=appStore.get(module.appId); if(!app) throw new Error("app not found");
  if(module.state!=="INSTALLED"&&module.state!=="PAUSED") throw new Error("module must be installed");
- if(taskId){ const task=getControlState().tasks.find(t=>t.id===taskId); if(!task) throw new Error("task not found"); const gate=executionGate(task,module.userConfirmationApprovalId,getControlState().locked,undefined,undefined,module.sandboxId); if(!gate.allowed) throw new Error(`execution blocked: ${gate.reasons.join("; ")}`); }
+ if(taskId){ const task=getControlState().tasks.find(t=>t.taskId===taskId); if(!task) throw new Error("task not found"); const gate=executionGate(task,module.userConfirmationApprovalId,getControlState().locked,undefined,undefined,module.sandboxId); if(!gate.allowed) throw new Error(`execution blocked: ${gate.reasons.join("; ")}`); }
  if(!module.sandboxId) throw new Error("module has no sandbox");
  await sandboxRuntime.start(module.sandboxId);
  module.state="RUNNING"; app.state="ACTIVE"; app.progress=100; module.updatedAt=new Date().toISOString(); app.updatedAt=module.updatedAt;persist();

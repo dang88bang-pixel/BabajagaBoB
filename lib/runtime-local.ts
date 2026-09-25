@@ -308,7 +308,7 @@ export class LocalWorkspaceRuntime implements SandboxRuntime {
         cwd: record.workspace,
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
-        env: {PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: record.workspace, LANG: "C.UTF-8", BOB_SANDBOX: record.sandboxId}
+        env: {PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: record.workspace, LANG: "C.UTF-8", NODE_ENV: process.env.NODE_ENV ?? "production", BOB_SANDBOX: record.sandboxId}
       });
       let stdout = "";
       let stderr = "";

@@ -295,6 +295,9 @@ export function reliabilitySnapshot() {
   };
 }
 
+/** Alias für API-Schicht/Orchestrator: liefert Failures, Pläne und Runtime-Modus. */
+export const listReliability = reliabilitySnapshot;
+
 export function recoverySummary() {
   const plans = store.read().plans;
   return {

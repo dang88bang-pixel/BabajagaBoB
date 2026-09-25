@@ -4,7 +4,7 @@ import {actionField,readJson,stringArray,stringField} from "@/lib/request-valida
 import type {ErrorLifecycle} from "@/lib/error-intelligence";
 import {requireControlPlaneAuth} from "@/lib/control-auth";
 export const runtime="nodejs"; export const dynamic="force-dynamic";
-const LIFECYCLE:ErrorLifecycle[]=["DETECTED","TRIAGING","CONTAINED","REPRODUCING","DIAGNOSING","HYPOTHESIS","EXPERIMENTING","ROOT_CAUSE_FOUND","FIXING","VERIFYING","RECOVERING","LEARNED","REGRESSION_LOCKED","ESCALATED"];
+const LIFECYCLE:ErrorLifecycle[]=["DETECTED","TRIAGING","CONTAINED","REPRODUCING","DIAGNOSING","HYPOTHESIS","EXPERIMENTING","ROOT_CAUSE_FOUND","FIXING","VERIFYING","LEARNED","REGRESSION_LOCKED","ESCALATED"];
 function lifecycleField(body:Record<string,unknown>):ErrorLifecycle{const value=stringField(body,"status",64);if(!LIFECYCLE.includes(value as ErrorLifecycle))throw new Error("invalid status");return value as ErrorLifecycle}
 export async function GET(){return NextResponse.json({incidents:listErrorIncidents(),summary:errorSummary()},{headers:{"Cache-Control":"no-store"}})}
 export async function POST(req:Request){
@@ -19,7 +19,7 @@ export async function POST(req:Request){
   if(action==="recovery"){const {prepareErrorRecovery}=await import("@/lib/error-intelligence");return NextResponse.json(await prepareErrorRecovery(stringField(b,"id",128)),{status:201});}
   if(action==="recovery.execute"){const {beginRecovery}=await import("@/lib/reliability");return NextResponse.json(await beginRecovery(stringField(b,"id",128)));}
   if(action==="recovery.verify"){const {verifyRecovery}=await import("@/lib/reliability");return NextResponse.json(await verifyRecovery(stringField(b,"id",128)));}
-  if(action==="evidence"){const {recordExperimentEvidence}=await import("@/lib/error-intelligence");return NextResponse.json(recordExperimentEvidence(stringField(b,"id",128),stringField(b,"evidenceId",128)));}
+  if(action==="evidence"){const {recordExperimentEvidence}=await import("@/lib/error-intelligence");return NextResponse.json(recordExperimentEvidence(stringField(b,"id",128),stringField(b,"claim",4096),stringField(b,"value",4096)));}
   if(action==="root_cause")return NextResponse.json(establishRootCause(stringField(b,"id",128),stringField(b,"rootCause",4096),stringArray(b.evidenceIds,"evidenceIds")));
   if(action==="learn")return NextResponse.json(learnFromError(stringField(b,"id",128),stringField(b,"summary",4096),typeof b.regressionTestId==="string"?b.regressionTestId:undefined));
   return NextResponse.json(escalateError(stringField(b,"id",128),stringField(b,"reason",4096)));

@@ -64,21 +64,20 @@ const MAX_EVENTS = 5000;
 const store = createStore<Payload>("events", 1, () => ({events: [], maxRetained: MAX_EVENTS}));
 
 export function appendDomainEvent(input: DomainEventInput): DomainEvent {
-  const event = store.update(payload => {
-    const previous = payload.events[payload.events.length - 1];
-    const next: DomainEvent = {
-      ...input,
-      eventId: `EVT-${crypto.randomUUID()}`,
-      sequence: (previous?.sequence ?? 0) + 1,
-      timestamp: new Date().toISOString(),
-      causalParentId: input.causalParentId ?? previous?.eventId,
-      parentDirection: "PREVIOUS"
-    };
-    payload.events.push(next);
-    if (payload.events.length > payload.maxRetained) payload.events.splice(0, payload.events.length - payload.maxRetained);
-    return next;
-  });
-  return event;
+  const payload = store.read();
+  const previous = payload.events[payload.events.length - 1];
+  const next: DomainEvent = {
+    ...input,
+    eventId: `EVT-${crypto.randomUUID()}`,
+    sequence: (previous?.sequence ?? 0) + 1,
+    timestamp: new Date().toISOString(),
+    causalParentId: input.causalParentId ?? previous?.eventId,
+    parentDirection: "PREVIOUS"
+  };
+  payload.events.push(next);
+  if (payload.events.length > payload.maxRetained) payload.events.splice(0, payload.events.length - payload.maxRetained);
+  store.write(payload);
+  return next;
 }
 
 export type EventQuery = {

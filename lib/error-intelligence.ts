@@ -163,7 +163,8 @@ export async function investigateError(incidentId: string, options: {sandboxType
   else if (incident.status === "TRIAGING") incident = transitionError(incidentId, "CONTAINED");
 
   const state = getControlState();
-  const task = incident.taskId ? state.tasks.find(t => t.taskId === incident.taskId) : undefined;
+  const incidentTaskId = incident.taskId;
+  const task = incidentTaskId ? state.tasks.find(t => t.taskId === incidentTaskId) : undefined;
   const agentId = incident.agentId ?? task?.assignedAgent ?? "AG-RECOVERY";
 
   if (!incident.diagnosticSandboxId && task && task.assignedAgent) {
@@ -200,7 +201,7 @@ export function formHypothesis(incidentId: string, hypothesis: string): ErrorInc
   return transitionError(incidentId, "HYPOTHESIS", {hypothesis});
 }
 
-export function startExperiment(incidentId: string): ErrorIncident {
+export function startExperiment(incidentId: string, objectiveId = "OBJ-003"): ErrorIncident {
   const incident = getErrorIncident(incidentId);
   if (!incident) throw new Error("error incident not found");
   if (!incident.hypothesis) throw new Error("hypothesis required before experimentation");
@@ -210,7 +211,7 @@ export function startExperiment(incidentId: string): ErrorIncident {
   createExperiment({
     experimentId,
     missionId: "MIS-002",
-    objectiveId: "OBJ-003",
+    objectiveId,
     title: `Reproduktion ${incident.incidentId}`,
     sandboxId,
     hypothesis: incident.hypothesis,

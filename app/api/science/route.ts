@@ -17,7 +17,7 @@ export async function POST(req:Request){
    const id=stringField(b,"id",128), kind=stringField(b,"kind",16), sandboxId=stringField(b,"sandboxId",128), agentId=stringField(b,"agentId",128), taskId=stringField(b,"taskId",128), capabilityTokenId=stringField(b,"capabilityTokenId",128);
    if(!["BASELINE","CONTROL","REPLICATION"].includes(kind))throw new Error("invalid experiment run kind");
    const argv=stringArray(b.argv,"argv",64,4096);
-   return NextResponse.json({run:await runExperiment(id,kind as "BASELINE"|"CONTROL"|"REPLICATION",sandboxId,argv,agentId,taskId,capabilityTokenId,typeof b.approvalId==="string"?b.approvalId:undefined)},{status:201});
+   return NextResponse.json({run:await runExperiment({experimentId:id,kind:kind as "BASELINE"|"CONTROL"|"REPLICATION",sandboxId,argv,agentId,taskId,capabilityTokenId,approvalId:typeof b.approvalId==="string"?b.approvalId:undefined})},{status:201});
   }
   if(action==="experiment.validate")return NextResponse.json({validation:validateCausalChain(stringField(b,"id",128))});
   if(action==="evidence")return NextResponse.json({evidence:addEvidence(b.value as never)},{status:201});

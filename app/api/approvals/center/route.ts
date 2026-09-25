@@ -20,7 +20,8 @@ export async function POST(req:Request){
     expectedEffect:stringField(v,"expectedEffect",4000),risks:stringArray(v.risks,"risks"),
     testResults:stringArray(v.testResults,"testResults"),rollbackPlan:stringField(v,"rollbackPlan",4000),
     files:stringArray(v.files,"files"),dbChanges:stringArray(v.dbChanges,"dbChanges"),
-    networkEffects:stringArray(v.networkEffects,"networkEffects")
+    networkEffects:stringArray(v.networkEffects,"networkEffects"),
+    affectedSystems:Array.isArray(v.affectedSystems)?stringArray(v.affectedSystems,"affectedSystems"):[]
    });
    return NextResponse.json({approval},{status:201});
   }

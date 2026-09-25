@@ -1,6 +1,5 @@
 import {NextResponse} from "next/server";
-import {auditGovernance,createDelegation,isKilled,listDelegations,listKillSwitches,revokeDelegation,setKillSwitch,validateDelegation,delegationIntegrity} from "@/lib/governance";
-import {governanceStoreIntegrity} from "@/lib/governance-store";
+import {auditGovernance,createDelegation,isKilled,listDelegations,listKillSwitches,revokeDelegation,setKillSwitch,validateDelegation,delegationIntegrity,governanceStoreIntegrity} from "@/lib/governance";
 import {actionField,readJson,stringArray,stringField,requireCapability} from "@/lib/request-validation";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
