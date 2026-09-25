@@ -14,8 +14,8 @@ export async function POST(req:Request){
   if(action==="investigate")return NextResponse.json(await investigateError(stringField(b,"id",128)));
   if(action==="experiment"){const {startExperiment}=await import("@/lib/error-intelligence");return NextResponse.json(startExperiment(stringField(b,"id",128),stringField(b,"objectiveId",128)),{status:201});}
   if(action==="recovery"){const {prepareErrorRecovery}=await import("@/lib/error-intelligence");return NextResponse.json(await prepareErrorRecovery(stringField(b,"id",128)),{status:201});}
-  if(action==="recovery.execute"){const {beginRecovery}=await import("@/lib/reliability");return NextResponse.json(beginRecovery(stringField(b,"id",128)));}
-  if(action==="recovery.verify"){const {verifyRecovery}=await import("@/lib/reliability");return NextResponse.json(verifyRecovery(stringField(b,"id",128)));}
+  if(action==="recovery.execute"){const {beginRecovery}=await import("@/lib/reliability");return NextResponse.json(await beginRecovery(stringField(b,"id",128)));}
+  if(action==="recovery.verify"){const {verifyRecovery}=await import("@/lib/reliability");return NextResponse.json(await verifyRecovery(stringField(b,"id",128)));}
   if(action==="evidence"){const {recordExperimentEvidence}=await import("@/lib/error-intelligence");return NextResponse.json(recordExperimentEvidence(stringField(b,"id",128),stringField(b,"evidenceId",128)));}
   if(action==="root_cause")return NextResponse.json(establishRootCause(stringField(b,"id",128),stringField(b,"rootCause",4096),stringArray(b.evidenceIds,"evidenceIds")));
   if(action==="learn")return NextResponse.json(learnFromError(stringField(b,"id",128),stringField(b,"summary",4096),typeof b.regressionTestId==="string"?b.regressionTestId:undefined));
