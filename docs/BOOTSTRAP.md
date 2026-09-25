@@ -84,7 +84,7 @@ des Session-Geheimnisses.
 ## 5. Betriebsgrenzen (offen)
 
 - **Zweiter Faktor:** Der Creator-Login ist ein einzelnes Inhaber-Secret (Datei/Umgebungsvariable). Ein
-  zweiter Faktor (z. B. TOTP/WebAuthn) ist nicht implementiert und als offener Punkt geführt.
+  Zweiter Faktor: TOTP ist implementiert (siehe Abschnitt „Zweiter Faktor" unten); WebAuthn bleibt offen.
 - **Fein-granulare RBAC pro Route:** Die Middleware erzwingt die Authentifizierungsgrenze
   (`control-plane:access`). Zusätzlich prüft **jede** Route außer `/api/auth` ihre konkrete Aktion über
   `guardRequest`/`guardOrDeny` (Creator-Pflicht für Mission/Objective/Task, Sandbox-Lebenszyklus, Runs,
@@ -95,3 +95,29 @@ des Session-Geheimnisses.
 - **TLS:** Cookies werden nur dann mit `Secure` gesetzt, wenn die Anfrage über HTTPS kam
   (`x-forwarded-proto: https`) oder `BOB_COOKIE_SECURE=1` gesetzt ist. In Produktion ist TLS über
   einen Reverse Proxy zwingend.
+
+
+## Zweiter Faktor (TOTP)
+
+Aktivierung ist eine reine Deployment-Entscheidung über die Umgebung:
+
+```bash
+BOB_CREATOR_TOTP_SECRET=<BASE32, mind. 16 Zeichen>
+```
+
+- **Nicht gesetzt:** Login verhält sich wie bisher; `GET /api/auth` meldet
+  `secondFactor: "NOT_CONFIGURED"`.
+- **Gesetzt:** Der Faktor ist **verpflichtend** (fail closed). Fehlt `totpCode` oder
+  stimmt er nicht, antwortet `POST /api/auth {action:"login"}` mit `403 TOTP_REQUIRED`
+  und auditiert `creator.login.totp` als `DENY`. Bei erreichter Sperre (5 Fehlversuche /
+  15 Minuten) greift weiterhin `423`.
+- Codes gelten nur im Fenster ±1 × 30 s und **nur einmal**: akzeptierte Zeitschritte
+  werden in `totpUsedSteps` gespeichert (Replay-Schutz).
+- Antwort bei Erfolg: `{ok:true, actor:{…}, secondFactor:"TOTP"}`.
+
+Implementierung: `lib/totp.ts` (RFC 6238, base32, `usedSteps`), `lib/creator-auth.ts`
+(Store-Schema v2 mit Migration v1 → v2), `app/api/auth/route.ts`.
+
+Die Migration eines bestehenden v1-Stores erfolgt automatisch beim ersten Lesen
+(Digest-Prüfung → Sicherungskopie `creator-auth.json.pre-v1.bak` → Journal
+`migrations.jsonl`) — ein Upgrade sperrt den Creator also nicht aus.

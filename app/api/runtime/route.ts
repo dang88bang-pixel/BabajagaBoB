@@ -1,6 +1,7 @@
 import {NextResponse} from "next/server";
 import {activeRuntimeMode, reconcileActiveRuntime} from "../../../lib/runtime-factory";
 import {executeAuthorized} from "../../../lib/execution-broker";
+import {listSandboxes} from "../../../lib/sandbox/fabric";
 import {guardRequest} from "../../../lib/api/guard";
 import {actionField, readJson, stringArray, stringField} from "../../../lib/request-validation";
 
@@ -60,7 +61,11 @@ export async function POST(request: Request) {
     const sandboxId = stringField(body, "sandboxId", 128);
     const agentId = stringField(body, "agentId", 128);
     // Authentifizierung über das Gate; Bindung für Agenten über die Capability.
-    guardRequest(request, {action: "sandbox:run", taskId, sandboxId, requireAgentCapability: "task:execute"});
+    // Die Umgebung ist die der Sandbox (kein Default): ein Token für eine
+    // `test`-Sandbox darf nicht in `development` ausgeführt werden und umgekehrt.
+    const sandbox = listSandboxes().find(entry => entry.sandboxId === sandboxId);
+    if (!sandbox) throw Object.assign(new Error("sandbox not found"), {status: 404, code: "SANDBOX_NOT_FOUND"});
+    guardRequest(request, {action: "sandbox:run", taskId, sandboxId, environment: sandbox.type, requireAgentCapability: "task:execute"});
 
     const argv = stringArray(body.argv, "argv", 64, 4096);
     return NextResponse.json(

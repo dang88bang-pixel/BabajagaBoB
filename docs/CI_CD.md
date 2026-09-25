@@ -1,83 +1,57 @@
-# CI/CD und Promotion
+# CI/CD und Promotion — Abschnitt 40/41
 
-**Stand:** 2026-09-25
-**Workflow:** `.github/workflows/ci.yml`
-**Module:** `lib/cicd.ts` (Pipelines/Checks), `lib/promotion.ts` (Gate),
-`lib/approvals.ts` (Produktionsfreigabe)
+Implementierung: `.github/workflows/ci.yml`, `lib/cicd.ts`, `lib/promotion.ts`,
+`lib/regression.ts`, `app/api/cicd/route.ts`, `app/api/promotion-gate/route.ts`.
 
-**Grundsatz:** Kein Schritt überspringt einen Check. Regression blockiert die
-Promotion, Produktion ist ohne Creator-Freigabe nicht erreichbar.
+## 1. Tatsächliche CI-Pipeline (GitHub Actions)
 
-## 1. CI-Jobs
+Jobs, die bei jedem Push auf den Feature-Branch laufen:
 
-| Job | Inhalt | Blockiert |
-|---|---|---|
-| `lint-and-typecheck` | `npx eslint .`, `npx tsc --noEmit` | alles Weitere (`needs`) |
-| `unit-integration` | Unit-, Integrations- und Regressionstests | Security-Job nicht, aber Gate |
-| `security` | Security- und E2E-Suite, Dependency-Audit (fail closed bei high/critical) | Gate |
-| `build` | `npm run build` (Produktionsbuild) | Gate |
-| `verification-gate` | fasst alle Stufen zusammen | Promotion |
-
-Umgebung im CI: `BOB_SANDBOX_RUNTIME=local` (echte lokale Runtime mit
-`argv[]`/`shell:false`), temporäre Storages je Testdatei.
-
-Letzte Läufe auf diesem Branch (alle grün):
-`36090732676` (`b71c5ff`), `36090186817` (`ac758dd`), `36086611264` (`803c213`),
-`36091730579` (`3d49af1`).
-
-Hinweis: GitHub meldet, dass `actions/checkout@v4` und `actions/setup-node@v4`
-wegen Node-20-Deprecation auf Node 24 ausgeführt werden – informativ, ohne
-Auswirkung auf das Ergebnis.
-
-## 2. Pipeline im Produkt (`lib/cicd.ts`)
-
-Check-Arten (`CheckKind`): `LINT`, `TYPECHECK`, `UNIT`, `INTEGRATION`,
-`SECURITY`, `BUILD`, `BROWSER`, `EVALUATION`, `SMOKE`
-(Status: `PENDING`, `RUNNING`, `PASSED`, `FAILED`, `SKIPPED`).
-
-Promotionsstufen (`PromotionStage`):
-
-```
-BRANCH → SANDBOX → VERIFY → PREVIEW → APPROVAL → STAGING → SMOKE → PRODUCTION → ROLLED_BACK
-```
-
-`createPipeline({taskId, branch, runId?, approvalId?})` → `updateCheck(...)` je
-Prüfung → `promote(pipelineId, next)` in der erlaubten Reihenfolge. Ein
-`ROLLED_BACK`-Zustand ist ein legitimer Endzustand, kein Fehler.
-
-## 3. Promotion-Gate (`lib/promotion.ts`)
-
-`promotionGate(pipeline, "STAGING" | "PRODUCTION")` verweigert, wenn:
-
-1. ein Deployment-Kill-Switch aktiv ist (`deployment kill-switch active`),
-2. irgendein Verifikations-Check (`LINT`, `TYPECHECK`, `UNIT`, `INTEGRATION`,
-   `SECURITY`, `BUILD`, `BROWSER`, `EVALUATION`) nicht `PASSED` ist
-   (`verification checks incomplete`) – hier greift **Regression blockiert Promotion**,
-3. für `PRODUCTION` die Stufe nicht `SMOKE` ist (`smoke stage required`),
-4. für `PRODUCTION` keine **freigegebene** Approval vorliegt
-   (`production approval required`, geprüft über `approvalGranted`).
-
-Nur wenn alle Bedingungen erfüllt sind, lautet das Ergebnis
-`promotion gates satisfied`. Das Gate ist damit fail closed: ein fehlender Check
-ist eine Verweigerung, kein „unbekannt, deshalb erlaubt".
-
-## 4. Schnittstellen
-
-| Zugriff | Wirkung |
+| Job | Schritte |
 |---|---|
-| `GET /api/cicd` | Pipelines, Checks, Stufen |
-| `POST /api/cicd` | `cicd:manage` (Creator) |
-| `POST /api/promotion-gate` | `promotion:evaluate` (Creator); Ergebnis mit `allowed` + `reasons` |
+| `lint-and-typecheck` | `npm ci`, `npm run lint`, `npm run typecheck` |
+| `unit-integration` | `npm ci`, `npm run test:unit`, `npm run test:integration`, `npm run test:regression` |
+| `security` | `npm ci`, `npm run test:security`, `npm run test:e2e`, `npm audit --audit-level=high` |
+| `build` | `npm ci`, `npm run build` |
+| `verification-gate` | Abschlussprüfung („Alle Verifikationsstufen bestanden. Promotion bleibt manuell und Creator-gebunden") |
 
-## 5. Verifikation
+`main` wird nie direkt geändert: Feature-Branch → Commit → CI → Pull Request → Review → Merge.
 
-- `scripts/verify-live.sh` Schritt 7/8 prüft Governance- und Betriebsgrenzen;
-  Promotionsentscheidungen sind über `POST /api/promotion-gate` reproduzierbar.
-- Die CI blockiert Merges bei fehlgeschlagenen Stufen (Workflow-Regeln im Repo).
+## 2. Regressionsblockade
 
-## 6. Offen (PARTIAL)
+- Regressionstests (`tests/regression/`, vom Fehlerpfad erzeugte Fälle) laufen im Job
+  `unit-integration`. Ein Fehlschlag blockiert damit den gesamten Lauf — und ohne
+  grünen Lauf gibt es keinen Merge.
+- Die Promotion ist zusätzlich im Code blockiert (`lib/promotion.ts#promotionGate`):
+  - Deployment-Kill-Switch aktiv → `allowed:false`.
+  - Irgendeine Prüfung aus `LINT, TYPECHECK, UNIT, INTEGRATION, SECURITY, BUILD, BROWSER, EVALUATION`
+    ist nicht `PASSED` → `allowed:false`.
+  - Ziel `PRODUCTION`: Stufe muss `SMOKE` sein **und** eine erteilte Approval (`approvalGranted`) vorliegen.
+- `lib/cicd.ts#promote` verweigert `PRODUCTION` ebenso, wenn ein Prüfstand nicht
+  `PASSED` ist oder die Smoke-Stufe fehlt. Pipelines sind **persistent** — die
+  Freigabe-Grundlage überlebt einen Neustart (`tests/unit/runtime-persistence.test.ts`).
 
-- Kein automatisches Deployment: `promote` verändert den Pipeline-Zustand, führt
-  aber kein Deployment aus (bewusst – Produktion bleibt manuell und Creator-gebunden).
-- Keine Browser-/UI-Checks im CI (Stufe `BROWSER` ist definiert, aber nicht
-  automatisiert ausgeführt).
+## 3. Stufenmodell
+
+```
+BRANCH → SANDBOX → VERIFY → PREVIEW → APPROVAL → STAGING → SMOKE → PRODUCTION (→ ROLLED_BACK)
+```
+
+Jede Stufe ist im Pipeline-Datensatz sichtbar (`GET /api/cicd`). `ROLLED_BACK`
+verweist über `rollbackArtifactId` auf das Rollback-Artefakt (Evidenz).
+
+## 4. Grenzen
+
+- Die Pipeline-Ausführung selbst liegt bei GitHub Actions; die Control Plane
+  **spiegelt** Prüfstände und entscheidet über Promotion. Es gibt keinen eigenen Runner.
+- Ein automatischer Rollback von Deployments ist `NOT_IMPLEMENTED` (Dokumentation in
+  `docs/OPERATIONS.md`); Rollback-Artefakte werden geführt, aber nicht angewendet.
+- Ein Deployment nach außen findet in dieser Umgebung nicht statt: `PRODUCTION`
+  bleibt ein Freigabezustand, kein realer Deploy (`NOT_VERIFIED`).
+
+## 5. Tests und Nachweise
+
+- `tests/regression/regression-engine.test.ts` — Regression blockiert Wissen/Promotion.
+- `tests/unit/runtime-persistence.test.ts` — Promotion-Gates nach Neustart.
+- `tests/security/api-route-contract.test.ts` — jede Route besitzt einen Guard.
+- `gh run list` — reale CI-Läufe je Commit (im Bericht `docs/ABSCHLUSSBERICHT.md` aufgeführt).

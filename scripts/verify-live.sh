@@ -188,5 +188,38 @@ assert_contains "Metriken melden 11 Agenten" '^bob_agents 11$'
 assert_status "Metriken ohne Session verweigert" 401 "$(anony "$BASE/api/metrics")"
 assert_status "Unbekannte Store-Route bleibt geschlossen" 401 "$(anony "$BASE/api/tools")"
 
+step "10. Agentenweg ohne Browser-Session (Capability) und Evidenz"
+# Eigene Task/Sandbox, damit die Bindungen des Agentenwegs unabhaengig sind.
+AMID=$(api -X POST -d '{"action":"create-mission","title":"Agentenweg","objective":"Capability-Pfad"}' "$BASE/api/missions" >/dev/null; jqv '.mission.missionId')
+AOID=$(api -X POST -d "{\"action\":\"create-objective\",\"missionId\":\"$AMID\",\"title\":\"Agent\",\"description\":\"Pfad\"}" "$BASE/api/missions" >/dev/null; jqv '.objective.objectiveId')
+ATID=$(api -X POST -d "{\"action\":\"create\",\"missionId\":\"$AMID\",\"objectiveId\":\"$AOID\",\"title\":\"Agenten-Task\",\"risk\":\"LOW\",\"assignedAgent\":\"AG-BUILD\"}" "$BASE/api/tasks" >/dev/null; jqv '.task.taskId')
+ASB=$(api -X POST -d "{\"action\":\"create\",\"type\":\"test\",\"taskId\":\"$ATID\",\"agentId\":\"AG-BUILD\",\"risk\":\"LOW\"}" "$BASE/api/sandboxes" >/dev/null; jqv '.sandbox.sandboxId')
+api -X POST -d "{\"action\":\"start\",\"sandboxId\":\"$ASB\"}" "$BASE/api/sandboxes" >/dev/null
+EXPIRES=$(date -u -d '+10 minutes' +%Y-%m-%dT%H:%M:%S.000Z)
+ATOK=$(api -X POST -d "{\"action\":\"issue\",\"input\":{\"subject\":\"AG-BUILD\",\"taskId\":\"$ATID\",\"sandboxId\":\"$ASB\",\"environment\":\"test\",\"capabilities\":[\"task:execute\",\"sandbox:run\"],\"risk\":\"LOW\",\"issuedBy\":\"CREATOR\",\"issuedByKind\":\"CREATOR\",\"expiresAt\":\"$EXPIRES\"}}" "$BASE/api/authority" >/dev/null; jqv '.token.id')
+ASECRET=$(jqv '.secret')
+# Kein Cookie: der Agent authentifiziert sich ausschliesslich ueber das Capability-Token.
+agent_call() { curl -s -o "$BODY" -w '%{http_code}' -H 'content-type: application/json' -H "Authorization: Bobcap $ATOK.$ASECRET" -X POST -d "$2" "$BASE$1"; }
+assert_status "Agentenausfuehrung ohne Session (Capability + argv)" 200 "$(agent_call /api/runtime "{\"action\":\"execute\",\"taskId\":\"$ATID\",\"agentId\":\"AG-BUILD\",\"sandboxId\":\"$ASB\",\"capabilityTokenId\":\"$ATOK\",\"argv\":[\"node\",\"-e\",\"process.stdout.write('agent-live-ok')\"]}")"
+assert_json "Ausfuehrung akzeptiert und liefert stdout" '.accepted == true and .stdout == "agent-live-ok"'
+assert_json "Evidenz ist digest-gebunden und geprueft" '(.evidence.artifactId | startswith("ART-")) and (.evidence.digest | length == 64) and (.evidence.verified == true)'
+AEVID=$(jqv '.evidence.artifactId')
+assert_status "Evidenz ueber Route lesbar" 200 "$(api "$BASE/api/artifacts?verify=$AEVID")"
+assert_json "Digest der Evidenz stimmt erneut (Unversehrtheit)" '.verification.ok == true'
+assert_status "Token auf Verwaltungsroute bleibt gesperrt" 401 "$(agent_call /api/missions '{"action":"create-mission","title":"verboten","objective":"verboten"}')"
+assert_status "Shell-Programm im Agentenweg verweigert" 409 "$(agent_call /api/runtime "{\"action\":\"execute\",\"taskId\":\"$ATID\",\"agentId\":\"AG-BUILD\",\"sandboxId\":\"$ASB\",\"capabilityTokenId\":\"$ATOK\",\"argv\":[\"/bin/sh\",\"-c\",\"id\"]}")"
+assert_status "Subjekt-Spoofing verweigert" 409 "$(agent_call /api/runtime "{\"action\":\"execute\",\"taskId\":\"$ATID\",\"agentId\":\"AG-QA\",\"sandboxId\":\"$ASB\",\"capabilityTokenId\":\"$ATOK\",\"argv\":[\"node\",\"-e\",\"1\"]}")"
+assert_status "Widerrufenes Token verweigert" 200 "$(api -X POST -d "{\"action\":\"revoke\",\"id\":\"$ATOK\"}" "$BASE/api/authority")"
+assert_status "Ausfuehrung nach Widerruf verweigert" 403 "$(agent_call /api/runtime "{\"action\":\"execute\",\"taskId\":\"$ATID\",\"agentId\":\"AG-BUILD\",\"sandboxId\":\"$ASB\",\"capabilityTokenId\":\"$ATOK\",\"argv\":[\"node\",\"-e\",\"1\"]}")"
+# Zweites, gueltiges Token: der Lockdown muss unabhaengig vom Widerruf greifen.
+LTOK=$(api -X POST -d "{\"action\":\"issue\",\"input\":{\"subject\":\"AG-BUILD\",\"taskId\":\"$ATID\",\"sandboxId\":\"$ASB\",\"environment\":\"test\",\"capabilities\":[\"task:execute\",\"sandbox:run\"],\"risk\":\"LOW\",\"issuedBy\":\"CREATOR\",\"issuedByKind\":\"CREATOR\",\"expiresAt\":\"$EXPIRES\"}}" "$BASE/api/authority" >/dev/null; jqv '.token.id')
+LSECRET=$(jqv '.secret')
+lockdown_call() { curl -s -o "$BODY" -w '%{http_code}' -H 'content-type: application/json' -H "Authorization: Bobcap $LTOK.$LSECRET" -X POST -d "{\"action\":\"execute\",\"taskId\":\"$ATID\",\"agentId\":\"AG-BUILD\",\"sandboxId\":\"$ASB\",\"capabilityTokenId\":\"$LTOK\",\"argv\":[\"node\",\"-e\",\"1\"]}" "$BASE/api/runtime"; }
+assert_status "Lockdown sperrt den Agentenweg" 200 "$(api -X POST -d '{"action":"lockdown","locked":true}' "$BASE/api/control")"
+assert_status "Agentenausfuehrung im Lockdown verweigert" 409 "$(lockdown_call)"
+assert_status "Lockdown aufheben" 200 "$(api -X POST -d '{"action":"lockdown","locked":false}' "$BASE/api/control")"
+assert_status "Audit-Verifikation nach Agentenweg" 200 "$(api -X POST -d '{"action":"verify"}' "$BASE/api/audit")"
+assert_json "Audit-Kette bleibt integer" '.chain.valid == true'
+
 printf "\n\033[1mErgebnis:\033[0m \033[32m%d bestanden\033[0m, \033[31m%d fehlgeschlagen\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

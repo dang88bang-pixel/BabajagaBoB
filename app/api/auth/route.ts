@@ -7,6 +7,7 @@ import {
   creatorSecretSource,
   verifyCreatorLogin
 } from "../../../lib/creator-auth";
+import {totpConfigured} from "../../../lib/totp";
 import {observe} from "../../../lib/observability";
 
 /**
@@ -51,13 +52,14 @@ function cookieAttributes(request: Request, maxAgeSeconds: number): string {
   return `Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAgeSeconds}${secure ? "; Secure" : ""}`;
 }
 
-async function readAction(request: Request): Promise<{action?: string; secret?: string; creatorName?: string}> {
+async function readAction(request: Request): Promise<{action?: string; secret?: string; creatorName?: string; totpCode?: string}> {
   try {
-    const body = (await request.json()) as {action?: unknown; secret?: unknown; creatorName?: unknown};
+    const body = (await request.json()) as {action?: unknown; secret?: unknown; creatorName?: unknown; totpCode?: unknown};
     return {
       action: typeof body.action === "string" ? body.action : undefined,
       secret: typeof body.secret === "string" ? body.secret : undefined,
-      creatorName: typeof body.creatorName === "string" ? body.creatorName : undefined
+      creatorName: typeof body.creatorName === "string" ? body.creatorName : undefined,
+      totpCode: typeof body.totpCode === "string" ? body.totpCode : undefined
     };
   } catch {
     return {};
@@ -77,12 +79,13 @@ export function GET(request: Request): Response {
     actor: session ? {actorId: session.actorId, role: session.role, expiresAt: session.expiresAt} : null,
     loginAvailable: !status.revokedAt && creatorLoginAvailable(),
     loginSecretSource: creatorSecretSource(),
+    secondFactor: totpConfigured() ? "TOTP" : "NOT_CONFIGURED",
     locked: creatorLockState().locked
   });
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const {action, secret, creatorName} = await readAction(request);
+  const {action, secret, creatorName, totpCode} = await readAction(request);
   const status = bootstrapStatus();
 
   if (action === "bootstrap") {
@@ -124,7 +127,7 @@ export async function POST(request: Request): Promise<Response> {
     if (status.revokedAt) return json({error: "ROOT_REVOKED", message: "root authority is revoked"}, 423);
     if (!secret) return json({error: "CREATOR_SECRET_REQUIRED", message: "creator secret is required"}, 400);
     try {
-      verifyCreatorLogin(secret);
+      const login = verifyCreatorLogin(secret, totpCode);
       const issued = createSession({
         actorId: "CREATOR",
         role: "OWNER",
@@ -132,7 +135,11 @@ export async function POST(request: Request): Promise<Response> {
         userAgent: request.headers.get("user-agent") ?? undefined
       });
       return json(
-        {ok: true, actor: {actorId: issued.session.actorId, role: issued.session.role, expiresAt: issued.session.expiresAt}},
+        {
+          ok: true,
+          actor: {actorId: issued.session.actorId, role: issued.session.role, expiresAt: issued.session.expiresAt},
+          secondFactor: login.secondFactor
+        },
         201,
         `${SESSION_COOKIE}=${issued.token}; ${cookieAttributes(request, DEFAULT_TTL_MS / 1000)}`
       );

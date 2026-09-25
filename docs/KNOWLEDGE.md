@@ -1,75 +1,79 @@
-# Wissen und Gedächtnis
+# Knowledge Graph und Gedächtnis — Abschnitt 19/20/33
 
-**Stand:** 2026-09-25
-**Modul:** `lib/knowledge.ts`, Store `knowledge` (Envelope mit Digest)
-**Grundsatz:** Wissen ohne Nachweis ist kein Wissen. Der Zustand eines Knotens
-wird nicht behauptet, sondern über Quellen und Evidenz klassifiziert.
+Implementierung: `lib/knowledge.ts`, `lib/regression.ts`, `lib/artifacts.ts`,
+`lib/provenance.ts`, Routen `app/api/knowledge/route.ts`, `app/api/gallery/route.ts`.
 
-## 1. Vier Gedächtnisschichten (`MemoryLayer`)
+## 1. Vier Gedächtnisebenen
 
-| Schicht | Inhalt | Beispiel |
-|---|---|---|
-| `WORKING` | aktueller Arbeitskontext, kurzlebig | laufende Hypothese eines Tasks |
-| `EPISODIC` | Ereignisse/Erfahrungen einzelner Läufe | „Lauf RUN-… scheiterte mit Exit 7" |
-| `SEMANTIC` | Ursache-Wirkungs-Aussagen | `failureMode "…" → rootCause "…"` |
-| `NEGATIVE` | „Never Again"-Wissen: was nicht funktioniert hat | Präventionsregel aus einem Incident |
+`MemoryLayer = WORKING | EPISODIC | SEMANTIC | NEGATIVE`
 
-## 2. Zustände (`KnowledgeState`)
-
-`OBSERVED`, `SUPPORTED`, `ESTABLISHED`, daneben `HYPOTHESIS`, `UNVERIFIED`,
-`CONTRADICTED` und `REJECTED` (`lib/types.ts`). Widersprüche werden erkannt
-(`contradictions()`) und nicht stillschweigend überschrieben; ein widerlegter
-Knoten bleibt als `CONTRADICTED`/`REJECTED` sichtbar.
-
-**Klassifikation der Belegqualität** (`classify`, im Knoten als `confidence`):
-
-| Klasse | Bedingung |
+| Ebene | Inhalt |
 |---|---|
-| `EVIDENCE_BASED` | mindestens eine Evidenz-ID vorhanden |
-| `SINGLE_SOURCE` | nur Quellen, keine Evidenz |
-| `UNVERIFIED` | weder Quelle noch Evidenz |
+| `WORKING` | aktueller Task/Arbeitsstand |
+| `EPISODIC` | was konkret passiert ist (Ereignisse, Läufe, Vorfälle) |
+| `SEMANTIC` | verallgemeinerte Erkenntnisse |
+| `NEGATIVE` | **Negativwissen**: bekannte Fehlversuche, Grenzen, „Was funktioniert nicht" |
 
-## 3. Kanten (`KnowledgeRelation`)
+Wissen ist ein Graph: Knoten (`subject`, `predicate`, `object`) und Kanten
+(`SUPPORTS | CONTRADICTS | DERIVED_FROM | REPRODUCED_BY | DEPENDS_ON | OBSERVED_IN`).
+Jeder Knoten trägt `state` (`KnowledgeState`) und eine **Evidenzklasse** statt einer
+„magischen" Konfidenzzahl:
 
-`SUPPORTS`, `CONTRADICTS`, `DERIVED_FROM`, `REPRODUCED_BY`, `DEPENDS_ON`,
-`OBSERVED_IN` – gesetzt über `linkKnowledge(from, to, relation)`. Der Graph ist
-durchsuchbar (`searchKnowledge`), nach Schicht filterbar (`knowledgeByLayer`)
-und als Ganzes lesbar (`GET /api/knowledge` → `{nodes, edges}`).
+```
+EVIDENCE_BASED  – mindestens eine Evidence-ID
+SINGLE_SOURCE   – nur Quellenangabe
+UNVERIFIED      – weder noch
+```
 
-## 4. Negatives Wissen
+Klassifikation erfolgt automatisch in `classify(sourceIds, evidenceIds)`.
 
-`learnFromError(incidentId, summary, verification)` ist **nur** aus dem Zustand
-`LEARNED` möglich, also erst nach:
+## 2. Wissenszustände
 
-1. verifizierter Recovery (`verifyRecovery` → `VERIFIED`),
-2. bestandener Regression im Diagnosesandbox (`verifyFix`).
+`OBSERVED | SUPPORTED | ESTABLISHED | HYPOTHESIS | UNVERIFIED | CONTRADICTED |
+REJECTED | UNKNOWN`
 
-Erzeugt wird ein `NEGATIVE`-Knoten (`Never Again: <Incident>`, Prädikat
-`prevention`) und – bei bekannter Ursache – ein verknüpfter `SEMANTIC`-Knoten
-(`DERIVED_FROM`). Der Zustand ist `ESTABLISHED` nur mit Root Cause **und**
-Evidenz **und** Verifikation, sonst `SUPPORTED`.
+Herkunft der Zustände:
 
-## 5. Schnittstellen
+- Aus **Experimenten**: `lib/science.ts#validateCausalChain` setzt `HYPOTHESIS`,
+  `SUPPORTED`, `ESTABLISHED` oder `CONTRADICTED` nach den dort dokumentierten Regeln
+  (ein einzelner erfolgreicher Lauf reicht nie für `ESTABLISHED`).
+- Aus **Fehlern**: `lib/error-intelligence.ts` überführt verifizierte Fixes in
+  Erkenntnisse (`learn`) und Negativwissen.
+- Aus **Regressionen**: `lib/regression.ts` erzeugt einen Regressionstest mit
+  Referenz auf den auslösenden Vorfall.
 
-| Zugriff | Wirkung |
-|---|---|
-| `GET /api/knowledge` | `{nodes, edges}` |
-| `GET /api/knowledge?q=…` | `{records}` (Suche) |
-| `POST /api/knowledge {action:"upsert"\|"update"\|"link"}` | **Creator-Aktion** (`knowledge:write`) |
-| `knowledgeSummary()`, `negativeKnowledge()`, `unverifiedKnowledge()`, `contradictions()` | Auswertungen für UI und Berichte |
-| `knowledgeStoreReport()` | Integritätsbericht des Stores |
+## 3. Negativwissen und Widersprüche
 
-Agenten dürfen Wissen lesen, aber nicht schreiben: Wissen ist Evidenz und darf
-nicht von dem Subjekt erzeugt werden, das bewertet wird (`tests/security/route-guards.test.ts`).
+`negativeKnowledge()` und `contradictions()` liefern die entsprechenden Sichten.
+Ein widersprüchlicher Knoten wird **nicht** stillschweigend überschrieben: die
+Kante `CONTRADICTS` bleibt bestehen, beide Zustände sind sichtbar. Damit ist auch
+eine widerlegte Annahme nachvollziehbar — sie wird nicht „aufgeräumt".
 
-## 6. Verifikation
+## 4. Regression Lock
 
-- `tests/e2e/failure-recovery.test.ts`: negativer Knoten mit `ESTABLISHED`,
-  semantische Ursache, Link, `knowledgeSummary().total > 0`.
-- `scripts/verify-live.sh` Schritt 6: `fix.verify` → `LEARNED` → Lernen →
-  `REGRESSION_LOCKED`, Knowledge-Graph enthält den negativen Knoten.
+`lockRegressionFromFailure` (in `lib/reliability.ts`) und der Regression-Engine-Pfad
+(`lib/regression.ts`) erzeugen einen Test, der an den Vorfall gebunden ist. Der
+Fehlerlebenszyklus endet erst in `REGRESSION_LOCKED`, wenn ein solcher Test
+existiert und verifiziert wurde. Die CI führt die Regressionstests aus
+(`tests/regression/regression-engine.test.ts` und die generierten Einträge).
 
-## 7. Offen
+## 5. Bezug zur Provenance
 
-- Kein Vektor-/Embedding-Index: Suche ist Text-/Feldbasiert.
-- Keine automatische Alterung/Verfallsprüfung von Wissen (Re-Verifikation über Zeit).
+Jede Erkenntnis verweist über `evidenceIds` auf Evidenz aus `lib/artifacts.ts`
+(digestgebunden, persistent) und über `sourceIds` auf Läufe/Experimente/Vorfälle.
+Der Provenance-Graph (`lib/provenance.ts`) führt Knoten der Art `EVIDENCE`,
+`KNOWLEDGE`, `INCIDENT`, `RECOVERY`, `REGRESSION` und verknüpft sie kausal
+(`CAUSED_BY`, `DERIVED_FROM`, `PRODUCED`, `TESTED_BY`, `SUPPORTED`/`CONTRADICTED_BY`).
+
+## 6. Grenzen
+
+- Es gibt keine automatische Wissenskompression oder Embedding-Suche; die Suche ist
+  eine Teilstring-/Feldabfrage (`searchKnowledge`).
+- Wissen wächst lokal; Export/Import in externe Wissensspeicher ist `NOT_IMPLEMENTED`.
+
+## 7. Tests
+
+- `tests/e2e/failure-recovery.test.ts` — Fehler → Erkenntnis → Regression.
+- `tests/regression/regression-engine.test.ts` — Regressionsexport in die Wissensschicht.
+- `tests/integration/execution-evidence.test.ts` — Evidenzbindung.
+- `scripts/verify-live.sh` — Knowledge-Routen über HTTP.

@@ -1,126 +1,107 @@
-# Autorisierung
+# Autorisierung — Abschnitt 12/13/17/38
 
-**Stand:** 2026-09-25
-**Grundsatz:** Kein Agent kann sich Rechte geben. Jede Ausführung ist auf ein
-Subjekt, eine Aufgabe, eine Sandbox, eine Umgebung und ein Risiko gebunden.
-
-## 1. Kette
+Diese Datei beschreibt die **aktuelle Implementierung** der Autorisierungsstrecke.
+Enforced ist ausschließlich:
 
 ```
 Intent → Policy → Authorization → Execution Gate → Broker → Isolierte Runtime → Evidence
 ```
 
-Der Pfad `Agent → beliebiges Tool → System` existiert nicht: Der Broker
-(`lib/execution-broker.ts`) ist der einzige Weg zur Runtime, und die Runtime
-startet ausschließlich `argv[]` mit `shell:false` (`lib/argv-policy.ts`).
+Verboten (und im Code nicht vorhanden): `Agent → beliebiges Tool → System`.
 
-## 2. Gegenstände (`lib/authority.ts`)
+## 1. Reihung der Prüfungen
 
-| Gegenstand | Bedeutung | Persistenz |
+| # | Stufe | Datei | Wirkung |
+|---|---|---|---|
+| 1 | Server-Authentifizierung (Gate) | `lib/api/api-gate.ts`, `middleware.ts` | jede `/api/*`-Route außer `/api/auth` verlangt gültige HttpOnly-Session; Agenten zusätzlich `Authorization: Bobcap <tokenId>.<secret>` auf `/api/runtime` |
+| 2 | Aktion/Subjekt (Guard) | `lib/api/guard.ts` | `guardRequest(request, {action, taskId, sandboxId, environment, creatorOnly, requireAgentCapability})` — fail closed, jede Verweigerung wird auditiert |
+| 3 | Policy | `lib/policy.ts`, `lib/execution-gate.ts` | Risiko, Umgebung, Kill Switches (System/Agent/Task/Sandbox/Experiment), Approval-Pflicht |
+| 4 | Autorisierung (Token) | `lib/authority.ts` | Capability-Token mit Subjekt-, Task-, Sandbox-, Risiko- und Umgebungsbindung, TTL, Widerruf |
+| 5 | Broker | `lib/execution-broker.ts` | 18 Bedingungen; keine Ausführung ohne vollständige Bindung |
+| 6 | Runtime | `lib/runtime-local.ts`, `lib/oci-runtime.ts` | `argv[]` + `shell: false`, Netzwerk `DENY`, Limits |
+| 7 | Evidenz | `lib/artifacts.ts`, `lib/audit.ts`, `lib/provenance.ts` | digestgebundener Nachweis, Audit-Kette, Provenance-Graph |
+
+## 2. Capability-Token (`lib/authority.ts`)
+
+Verbote, die beim **Ausstellen** geprüft werden (Verstoß = Denial + Audit):
+
+- `SELF_GRANT` — ein Agent darf sich **kein** Token selbst ausstellen (Subjekt = Aussteller ist verboten).
+- `WILDCARD_CAPABILITY` — `*` ist nie zulässig.
+- `EMPTY_CAPABILITIES`, `TOKEN_EXPIRED` (bereits abgelaufen), `TOKEN_TTL`.
+- Für nicht-`CREATOR`-Aussteller: `TOKEN_DELEGATION` (nur Fähigkeiten, die die eigene Delegationskante abdeckt) und `TOKEN_RISK_ESCALATION` (kein höheres Risiko als die eigene Kante).
+
+Bei der **Nutzung** prüft `validateCapabilityToken(tokenId, capabilities, {subject, taskId, sandboxId, risk, environment})`:
+
+- Widerruf, Ablauf, Fähigkeitenumfang, Subjekt, Task, Sandbox, Risiko, Umgebung.
+- Der Vergleich des Secrets läuft über `timingSafeEqual` (`verifyCapabilitySecret`).
+
+Belegte Grenzen live (HTTP, `scripts/verify-live.sh`, Schritt „Agentenweg"):
+
+| Versuch | Ergebnis |
+|---|---|
+| gültiges Token, **ohne** Browser-Session, `POST /api/runtime` | `200 accepted:true`, echter Prozess, Evidenz erzeugt |
+| falsches Secret | `403 TOKEN_SECRET` |
+| Token ohne `sandbox:run` | `403 CAPABILITY_DENIED` |
+| Token einer `test`-Sandbox auf `development`-Sandbox | `403 CAPABILITY_DENIED` (Umgebungs-/Sandboxbindung) |
+| Token auf fremder Sandbox | Denial (Sandbox nicht vorhanden/gebunden) |
+| Token auf Verwaltungsroute (`/api/missions`) | `401 SESSION_REQUIRED` |
+| Subjekt-Spoofing (`agentId` ≠ Token-Subjekt) | `409 AGENT_TASK_BINDING` |
+| Shell-Interpreter (`/bin/sh -c`) | `409 SHELL_PROGRAM` |
+| Widerrufenes Token | `403 CAPABILITY_DENIED` („token revoked") |
+| System-Lockdown aktiv | `409 EXECUTION_GATE` („System lockdown is active") |
+
+## 3. Rollen der Agent Fabric (11 Rollen)
+
+`lib/control-plane.ts` legt elf Agenten an; `lib/agent-fabric.ts` ergänzt je Rolle ein
+Autonomieprofil. Kein Profil erlaubt Selbstautorisierung, Governance-Bypass,
+Produktionsfreigabe oder geheime Datenabflüsse — diese Felder sind für **alle**
+Rollen `false`.
+
+| Rolle | Aufgabe | Autonomie (Auszug) |
 |---|---|---|
-| Roots / Authority-Edges | Delegationsbeziehungen zwischen Subjekten; widerrufbar | `authority`-Store (Envelope mit Digest) |
-| Capability-Token | kurzlebiger Nachweis für konkrete Aktionen | `authority`-Store, Secret nur als Hash |
-| Rollen (RBAC) | OWNER, ADMIN, DEVELOPER, REVIEWER, OPERATOR, VIEWER | Code (`roleCapabilities`) |
-| Attribute (ABAC) | Umgebung, Risiko, Approval-Pflicht auf der Zielressource | Code (`abacAllows`) |
+| `SUPERVISOR` | Orchestrierung, Dispatching | mittlere Autonomie, keine Authority-Änderung |
+| `PLANNER` | Missionszerlegung | Planung, keine Ausführung |
+| `BUILDER` | Code/Artefakte im Sandbox | höchste Ausführungsautonomie, aber ohne Netz/Prod |
+| `RESEARCHER` | Recherche in Materialsammlung | Workspace-read, kein externes Netz |
+| `SCIENTIST` | Experimente/Hypothesen | Experimente über `lib/science.ts` |
+| `QA` | Verifikation, Regression | Verifikationsläufe, Report |
+| `BROWSER` | Computer Use (Bildschirm) | nur registrierte/autoritisierte Geräte |
+| `GUARDIAN` | Policy, Reviewer | Review-Pflicht, keine Ausführung |
+| `OPS` | Runtime/Sandbox-Betrieb | Lifecycle, keine Codeänderung |
+| `RECOVERY` | Fehlerbehebung, Rollback | arbeitet Pläne ab, Stufe 4/5 nur mit Creator-Freigabe |
+| `INTEGRATOR` | Integration, Promotion-Vorschlag | Vorschlag, Freigabe bleibt beim Creator |
 
-## 3. Invarianten (durch Tests belegt)
+## 4. Approval-Pflicht (`lib/approvals.ts`, `lib/execution-gate.ts`)
 
-1. **Keine Selbstvergabe:** `issueCapabilityToken` verweigert `issuedBy === subject`
-   und `issuedByKind: "AGENT"` sowie sog. `privesc`-Capabilitys.
-2. **Keine Wildcards:** Capability-Listen mit `*` werden abgelehnt.
-3. **TTL-Grenzen:** `MAX_TOKEN_TTL_MS = 15 min` (Creator), `MAX_AGENT_TOKEN_TTL_MS = 5 min`
-   (Agent). Ein Live-Lauf mit 11 Stunden TTL wird mit
-   „token lifetime exceeds the allowed maximum of 900000ms" verweigert.
-4. **Bindung:** Token sind an Subjekt, Task, Sandbox, Umgebung und Risiko gebunden;
-   jede Abweichung ergibt `TOKEN_*`-DENY im Broker.
-5. **Keine Rechteausweitung:** Ein Agent kann kein Token ausstellen, das sein
-   `maxRisk` übersteigt.
-6. **Widerruf wirkt sofort:** `revokeCapabilityToken` setzt `revoked`, jede weitere
-   Verwendung schlägt fehl; Root-Widerruf führt zu `423` (fail closed).
-7. **Alles wird auditiert:** Ausstellung, Verwendung, Verweigerung und Widerruf
-   erzeugen Audit-Einträge (`lib/audit.ts`, HMAC-verkettet).
+- Tasks können `requiresApproval` tragen; der Broker verlangt dann ein `approvalId`,
+  dessen Status `GRANTED` ist und dessen `taskId` zur Task passt (`APPROVAL`,
+  `APPROVAL_BINDING`).
+- Freigaben werden nur über `POST /api/control {action:"approval"}` (Creator-only) erteilt.
+- Der Guardian (`POST /api/control {action:"guardian"}`) kann Freigaben anfordern.
 
-Nachweise: `tests/security/authority.test.ts`, `tests/security/api-guard.test.ts`,
-`tests/security/route-guards.test.ts`.
+## 5. Kill Switches (`lib/governance.ts`)
 
-## 4. Zugangswege in die API
+`setKillSwitch(scope, targetId, reason, actor)` mit Scope `SYSTEM | AGENT | TASK | SANDBOX | EXPERIMENT | DEPLOYMENT`.
+`isKilled(scope, id)` wird im Execution Gate geprüft. `engageSystemLockdown()` /
+`releaseSystemLockdown()` sperrt bzw. entsperrt global; jede Änderung wird auditiert
+(`control.lockdown`, `control.unlock`).
 
-| Weg | Merkmal | Gilt für |
-|---|---|---|
-| Browser-Session | Cookie `bob_session`, HttpOnly, SameSite=Strict, 8 h | alle `/api/*` außer `/api/auth` |
-| Agent-Capability | `Authorization: Bobcap <tokenId>.<secret>` | `POST /api/runtime` (Broker) und Routen mit passender Capability |
-| Legacy-Token | `BOB_CONTROL_PLANE_TOKEN` **und** `BOB_ALLOW_LEGACY_CONTROL_TOKEN=1` | lokale Administration/CI; authentifiziert als `ADMIN`, nie als Creator |
+## 6. Rollen der Oberfläche
 
-Ablehnungscodes: `428 BOOTSTRAP_REQUIRED` (vor Initialisierung),
-`401 UNAUTHENTICATED` / `401 SESSION_REQUIRED`, `403 TOKEN_SECRET`,
-`403 CAPABILITY_DENIED`, `403 CREATOR_ONLY`, `403 CSRF_ORIGIN`, `423` (Kill Switch,
-Root-Widerruf, Creator-Sperre).
+Alle `/api/*`-Routen sind durch das Gate geschlossen. Zusätzlich gilt:
 
-## 5. Aktionsspezifische Prüfung pro Route
+- **CREATOR-only**: Missionen/Objectives anlegen, Tasks anlegen/zuweisen, Sandbox-Snapshots,
+  Authority-Ausstellung/-Widerruf, Approvals, Kill Switch, Persistenz-Backup, Runtime-Reconcile.
+- **Agent (Capability)**: ausschließlich `POST /api/runtime` mit gebundenem Token.
+- **Session + Aktion**: alle übrigen Lesezugriffe (`*:read`).
 
-`guardRequest` / `guardOrDeny` (`lib/api/guard.ts`, `lib/api/api-gate.ts`) prüfen
-die konkrete Aktion:
+Der strukturelle Nachweis „keine Route ohne Guard" läuft als Test
+(`tests/security/api-route-contract.test.ts`) und ist damit Teil der CI.
 
-| Route | Aktion | Bedingung |
-|---|---|---|
-| `GET /api/missions` | `mission:read` | Session |
-| `POST /api/missions` | `mission:create` / `objective:create` | Creator |
-| `GET /api/tasks` | `task:read` | Session |
-| `POST /api/tasks` | `task:create` / `task:assign` | Creator (inkl. `risk`) |
-| `POST /api/tasks {action:"status"}` | `task:status` + `task:execute` | Capability `task:execute`, Bindung an Task |
-| `GET /api/sandboxes` | `sandbox:read` | Session |
-| `POST /api/sandboxes` | `sandbox:<action>` (create/clone/start/pause/reset/destroy) | Creator, Task-/Risikobindung |
-| `POST /api/sandboxes {action:"snapshot"/"restore"}` | `sandbox:snapshot` / `sandbox:restore` | Creator, Sandbox-Bindung |
-| `POST /api/runtime {action:"execute"}` | `sandbox:run` + `task:execute` | Session oder Capability; 17 Broker-Prüfungen |
-| `GET /api/runtime` | `runtime:read` | Session |
-| `POST /api/runtime {action:"reconcile"}` | `runtime:reconcile` | Creator |
-| `POST /api/runs` | `run:manage` | Session oder Capability `run:manage` |
-| `GET /api/control` | `control:read` | Session |
-| `POST /api/control` | `control:lockdown`, `governance:guardian`, `approval:resolve` | Creator |
-| `GET /api/governance` | `governance:read` | Session |
-| `POST /api/governance` | `governance:kill` / `governance:delegate` / `governance:revoke` | Creator |
-| `POST /api/authority` | `authority:issue` / `authority:delegate` / `authority:revoke` | Creator |
-| `POST /api/providers` | `provider:manage`; `provider:connect` nur mit Approval | Creator |
-| `POST /api/devices` | `device:manage`; `device:authorize` | Creator für Autorisierung |
-| `POST /api/errors` | `error:manage` (Lifecycle inkl. `fix.verify`) | Session |
-| `POST /api/cicd`, `POST /api/promotion-gate` | `cicd:manage`, `promotion:evaluate` | Creator |
-| `POST /api/worker` | `worker:run` | Creator |
-| `POST /api/secrets` | `secret:manage` | Creator |
-| `POST /api/provenance` | `provenance:write` | **Creator** (Evidenzintegrität) |
-| `POST /api/knowledge` | `knowledge:write` | **Creator** (Wissensintegrität) |
-| `POST /api/agents/fabric` | `agent:heartbeat`; `agent:manage` | Session bzw. Creator |
+## 7. Grenzen / offene Punkte
 
-| `GET /api/audit` | `audit:read` | Session; `POST {action:"verify"}` prüft die Kette (append-only, kein Löschen) |
-| `GET /api/metrics` | `metrics:read` | Session (fail closed); nur Zähler, keine Geheimnisse |
-| `GET /api/persistence` | `persistence:read` | Session |
-| `POST /api/persistence` | `persistence:backup` | **Creator**; `backup`/`restore` (Restore nur mit digest-geprüftem Backup) |
-| `GET /api/apps`, `POST /api/apps` | `app:read`, `app:manage` | Session bzw. Creator (ausführbare Module) |
-| `POST /api/science` | `science:manage` (Creator) bzw. `experiment:run` (Capability) | Modellierung/Evidenz sind Creator-Aktionen, der Experimentlauf ist autorisierte Ausführung |
-| `POST /api/dispatcher` | `task:dispatch` / `worker:cycle` | Session oder Capability |
-| `POST /api/queue`, `POST /api/reliability` | `queue:manage`, `reliability:manage` | Session oder Capability; `resolve`/`lock-regression` nur Creator |
-| `POST /api/tools`, `/api/skills`, `/api/runtimes`, `/api/simulation`, `/api/workshop` | `tool:register`, `skill:manage`, `runtime:registry:register`, `simulation:manage`, `workshop:manage` | Creator |
-| `GET /api/agents`, `/api/approvals`, `/api/events`, `/api/experiments`, `/api/gallery`, `/api/privacy`, `/api/timeline`, `/api/readiness` | jeweilige `:read`-Aktion | Session |
-
-**Vollständigkeit:** jede Route außer `/api/auth` prüft ihre Aktion; der
-strukturelle Regressionstest `tests/security/api-route-contract.test.ts`
-verhindert neue Routen ohne Aktionsprüfung. Ohne Session bleibt zusätzlich die
-Middleware-Grenze geschlossen (401/428).
-
-## 6. Approval und Governance
-
-- Risiko `HIGH`/`CRITICAL` oder `requiresApproval` erzeugt im Gate
-  `REQUIRE_APPROVAL`; ohne Freigabe verweigert der Broker.
-- Freigaben (`lib/approvals.ts`) sind an Anfrage, Antragsteller und Begründung
-  gebunden und werden als Event + Audit geführt.
-- Kill Switches (`lib/governance.ts`) wirken auf SYSTEM, AGENT, TASK, SANDBOX,
-  DEPLOYMENT und EXPERIMENT; nur der Creator kann Sperren aufheben.
-- Guardian-Läufe (`runGuardian`) prüfen Invarianten und melden Verstöße, statt
-  sie stillschweigend zu reparieren.
-
-## 7. Nicht implementiert / offen
-
-- Zweiter Faktor für den Creator-Login (nur Einzel-Secret, siehe `docs/BOOTSTRAP.md` §5).
-- Feingranulare, pro Subjekt konfigurierbare Rollen: die Rollenmatrix ist Code,
-  keine Datenbank.
-- Netzwerk-Allowlist: `ALLOWLIST` ist fail closed, bis ein kontrollierter
-  Egress-Proxy existiert (`docs/SANDBOX.md`).
+- `ALLOWLIST`-Netzwerk ist **fail closed** (`NETWORK_POLICY`): es gibt keine kontrollierte
+  Egress-Schicht, also wird nicht freigegeben. Klassifikation: `NOT_IMPLEMENTED` (bewusst).
+- Externe Identitätsanbieter (OIDC) gibt es nicht; die Creator-Anmeldung erfolgt über
+  Server-Secret (`BOB_CREATOR_LOGIN_SECRET`) plus optionalem TOTP (`BOB_CREATOR_TOTP_SECRET`).
+- Der zweite Faktor wird in `docs/BOOTSTRAP.md` beschrieben.

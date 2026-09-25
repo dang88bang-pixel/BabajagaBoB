@@ -23,7 +23,7 @@ Experiment-Engine mit Kausalvalidierung, Error Intelligence bis
 Knowledge Graph mit negativem Wissen, Agent Fabric (11 Rollen mit
 Autonomie-Vertrag), Provider-Fabric mit Approval-Pflicht, Privacy default `DENY`,
 Device- und Computer-Use-Autorisierung, CI/CD mit Promotion-Gate, 14 §44-Dokumente,
-Live-Nachweis über 101 HTTP-Prüfungen.
+Live-Nachweis über 114 HTTP-Prüfungen (inkl. Agentenweg über Capability-Token).
 
 ## 2. Offen – als `PARTIAL` geführt
 
@@ -36,14 +36,14 @@ Live-Nachweis über 101 HTTP-Prüfungen.
 | Computer Use | kein Browser-/Desktop-Treiber angebunden | Playwright-/VNC-Treiber im Sandbox-Workspace, Aktionen über Broker |
 | Simulation/Visualisierung | Szenarien persistent, keine Renderer | Renderer für `ARCHITECTURE`/`TIMELINE`/`SCENE_3D` ergänzen |
 | Control-Center-UI | keine Browser-E2E-Tests | Playwright-Suite gegen Testserver mit Gate-Prüfung |
-| Recovery-Tier-Ableitung | Tier wird im Plan gesetzt | Klassifikation aus Fehlerbild/Historie ableiten und begründen |
+| ~~Recovery-Tier-Ableitung~~ | erledigt | automatische, begründete Klassifikation in `lib/recovery-tier.ts` (Tests: `tests/unit/recovery-tier.test.ts`) |
 | Alarmierung | Prometheus-Export vorhanden, aber kein Scraper/Alertmanager | Scraper + Alarmregeln aus `docs/OPERATIONS.md` §4a aufsetzen |
 | Backup-Automation | Backup/Restore mit Digest-Prüfung implementiert, aber manuell | geplanten Job und Aufbewahrungsregel ergänzen |
 | Last-/Soak-Tests | nicht durchgeführt | Nebenläufigkeits- und Langzeittest mit definierten SLOs |
 
 ## 3. Nicht implementiert (bewusst)
 
-- Zweiter Faktor für den Creator-Login (TOTP/WebAuthn).
+- WebAuthn als Alternative zu TOTP (TOTP ist implementiert: `BOB_CREATOR_TOTP_SECRET`).
 - Automatisches Deployment (Promotion bleibt manuell und Creator-gebunden).
 - Vektor-/Embedding-Suche im Knowledge Graph.
 - Statistische Signifikanzprüfung in der Kausalvalidierung.

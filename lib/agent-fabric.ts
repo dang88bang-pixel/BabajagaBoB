@@ -1,6 +1,7 @@
 import {getControlState, updateAgentStatus as updateControlAgentStatus} from "./control-plane";
 import {observe} from "./observability";
 import type {AgentKind, Status} from "./types";
+import {createStore} from "./persistence/store";
 
 /**
  * Agent Fabric (Abschnitt 22).
@@ -75,7 +76,8 @@ const profiles: Record<AgentKind, AutonomyProfile> = {
   INTEGRATOR: {...base, codeChanges: false}
 };
 
-const handoffs: Handoff[] = [];
+/** Übergaben zwischen Agenten werden persistiert (Nachvollziehbarkeit). */
+const handoffStore = createStore<{handoffs: Handoff[]}>("agent-handoffs", 1, () => ({handoffs: []}));
 
 function node(agentId: string): AgentNode | null {
   const agent = getControlState().agents.find(a => a.agentId === agentId);
@@ -146,7 +148,7 @@ export function requestHandoff(fromAgentId: string, toAgentId: string, taskId: s
     createdAt: new Date().toISOString(),
     status: "REQUESTED"
   };
-  handoffs.push(handoff);
+  handoffStore.update(payload => {payload.handoffs.push(handoff)});
   observe({
     type: "agent.handoff.requested",
     message: `Übergabe ${fromAgentId} → ${toAgentId}`,
@@ -161,14 +163,18 @@ export function requestHandoff(fromAgentId: string, toAgentId: string, taskId: s
 }
 
 export function resolveHandoff(id: string, status: Handoff["status"]): Handoff {
-  const handoff = handoffs.find(x => x.id === id);
+  const handoff = handoffStore.read().handoffs.find(x => x.id === id);
   if (!handoff) throw new Error("handoff not found");
   handoff.status = status;
+  handoffStore.update(payload => {
+    const index = payload.handoffs.findIndex(entry => entry.id === id);
+    if (index !== -1) payload.handoffs[index] = handoff;
+  });
   return structuredClone(handoff);
 }
 
 export function listHandoffs(): Handoff[] {
-  return structuredClone(handoffs);
+  return handoffStore.read().handoffs.map(entry => structuredClone(entry));
 }
 
 /** Rollenübersicht für UI und Prüfberichte: 11 Rollen mit ihren harten Grenzen. */
@@ -183,6 +189,6 @@ export function agentFabricSummary() {
     authorityChanges: nodes.filter(n => n.profile.authorityChanges).map(n => n.agentId),
     productionAccess: nodes.filter(n => n.profile.production).map(n => n.agentId),
     externalNetwork: nodes.filter(n => n.profile.externalNetwork).map(n => n.agentId),
-    handoffs: handoffs.length
+    handoffs: handoffStore.read().handoffs.length
   };
 }

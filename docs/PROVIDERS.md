@@ -1,83 +1,64 @@
-# Provider-Fabric
+# Provider-Fabric — Abschnitt 22/23
 
-**Stand:** 2026-09-25
-**Modul:** `lib/provider-fabric.ts` (persistenter DurableStore `providers`),
-`lib/privacy.ts`, `lib/data-boundary.ts`, `lib/approvals.ts`
+Implementierung: `lib/provider-fabric.ts`, `lib/data-boundary.ts`, `lib/privacy.ts`,
+Routen `app/api/providers/route.ts`, `app/api/privacy/route.ts`.
 
-**Grundsatz:** Ein Provider wird **entdeckt**, nicht vertraut. Verbinden,
-Binden und Nutzen sind getrennte, einzeln autorisierte Schritte. Alles ist
-standardmäßig deaktiviert.
-
-## 1. Lebenszyklus (`ProviderLifecycle`)
+## 1. Lebenszyklus
 
 ```
-DISCOVERED → EVALUATING → AUTHORIZED → CONNECTING → CONNECTED
-                                   ↘ BLOCKED   ↘ DISCONNECTED → REVOKED
-CONNECTED → DEGRADED (Health-Verlust) → CONNECTED/BLOCKED
+DISCOVERED → EVALUATING → AUTHORIZED → CONNECTING → CONNECTED → DEGRADED/BLOCKED → DISCONNECTED → REVOKED
 ```
 
-- `DISCOVERED`: Katalogeintrag, `enabled: false`, keine Verbindung.
-- `connectProvider(id, endpoint?, credentialRef?, approvalId?)` verlangt bei
-  `requiresApproval` eine **freigegebene** Approval-ID; ohne Freigabe wird der
-  Aufruf mit „third-party provider connection requires explicit approval"
-  verweigert. Ein widerrufener Provider (`REVOKED`) kann nicht erneut verbunden werden.
-- `disconnectProvider` und `revokeProvider` deaktivieren alle Bindungen
-  (`deactivateBindings`) – ein Widerruf lässt keine halbaktive Bindung zurück.
-- `heartbeatProvider` schreibt Health, Latenz und Meldung; `DEGRADED` ist ein
-  beobachteter Zustand, kein stiller Ausfall.
+`ProviderCategory = AGENT_RUNTIME | SANDBOX | WORKFLOW | CODE_AGENT | BUILD |
+COMPUTER | DEPLOYMENT | KNOWLEDGE | OTHER`.
+Gesundheit: `UNKNOWN | HEALTHY | DEGRADED | UNHEALTHY`.
 
-## 2. Kategorien und Katalog
+## 2. Startzustand (fail closed)
 
-`ProviderCategory`: `AGENT_RUNTIME`, `SANDBOX`, `WORKFLOW`, `CODE_AGENT`,
-`BUILD`, `COMPUTER`, `DEPLOYMENT`, `KNOWLEDGE`, `OTHER`.
-Der Katalog enthält Adapter-Beschreibungen (u. a. OpenHands, Daytona, E2B,
-Temporal, LangGraph) mit deklarierten Fähigkeiten, Version, Adapter-Namen und
-`dataPolicy`. **Ein Adapter ist eine Beschreibung, keine Verbindung** – ohne
-Credentials und Freigabe passiert nichts.
+Der Ausgangskatalog umfasst acht Adapter-Platzhalter — OpenHands, Daytona, E2B,
+Temporal, LangGraph, SWE-agent, Dagger, Celesto. **Alle** sind:
 
-## 3. Bindungen
+- `enabled: false`, `lifecycle: "DISCOVERED"`, `health: "UNKNOWN"`
+- `requiresApproval: true`, `dataPolicy: "METADATA_ONLY"`
 
-`bindProvider(providerId, scope, scopeId, capabilities)` verlangt:
+Discovery ist also keine Autorisierung. Kein Provider ist in dieser Umgebung
+tatsächlich verbunden; `GET /api/providers` zeigt genau diesen Zustand. Eine
+Verbindung ist damit `ARCHITECTURE`/`NOT_VERIFIED`, nicht „aktiviert".
 
-1. einen **verbundenen** Provider (`CONNECTED`, `enabled`),
-2. mindestens eine explizit angeforderte Fähigkeit,
-3. dass der Provider jede angeforderte Fähigkeit wirklich anbietet
-   (`provider does not offer: …` sonst Fehler),
-4. Audit + Event (`provider.bind`, `provider.bound`).
+## 3. Übergänge und Bedingungen
 
-Bindungen sind damit an Scope (`TASK`, `AGENT`, `SANDBOX`, …) und Fähigkeitsliste
-gebunden und widerrufbar.
+| Funktion | Wirkung | Bedingung |
+|---|---|---|
+| `bindProvider({providerId, scope, scopeId, capabilities})` | bindet Fähigkeiten an System/Agent/Task/Sandbox | Provider existiert; Fähigkeiten müssen gedeckt sein |
+| `setProviderState(providerId, state, actor)` | Lifecycle-Wechsel | erlaubte Übergänge, Creator für Freigaben |
+| `connectProvider(providerId, actor)` | Verbindung aufbauen | Provider `AUTHORIZED`, `enabled`, Freigabe vorhanden — sonst Denial |
+| `heartbeatProvider(providerId, …)` | Telemetrie/Health | nur bei bekannter Verbindung |
+| `disconnectProvider` / `revokeProvider` | trennen bzw. dauerhaft entziehen | auditiert |
 
-## 4. Datenschutzgrenze
+Jeder Übergang wird über `observe()` im Event-/Auditpfad festgehalten.
 
-- Privacy ist default `DENY`: `lib/privacy.ts` und `lib/data-boundary.ts`
-  entscheiden je Datenklasse, ob eine Übertragung überhaupt zulässig ist.
-- `assertProviderPayloadAllowed(providerId, dataClass)` verweigert bei
-  `METADATA_ONLY` jede geschützte Datenklasse an Dritte
-  (`assertNoProtectedDataForThirdParty` wirft – kein „weiches" Durchreichen).
-- Credentials liegen ausschließlich als Referenz (`credentialRef`) bzw. im
-  Secret-Store (`lib/secrets.ts`); Provider-Secrets werden nie an den Browser
-  ausgeliefert und nicht in Events/Audit geschrieben.
+## 4. Daten- und Privatsphärengrenzen
 
-## 5. Schnittstellen
+- `dataPolicy` ist derzeit **immer** `METADATA_ONLY`: Inhalte (Code, Secrets,
+  personenbezogene Daten) dürfen nicht an Provider gehen.
+- `lib/data-boundary.ts#assertExternalTransmission` und
+  `assertNoProtectedDataForThirdParty` verweigern unzulässige Übermittlungen.
+  `assertProviderPayloadAllowed` (Provider-Fabric) prüft Nutzlasten zusätzlich.
+- Netzwerk: Provider-Einträge tragen `ALLOWLIST` — das ist die **Beschreibung**
+  des Fremdsystems, keine Freigabe der eigenen Seite. Ohne kontrollierte
+  Egress-Schicht bleibt jede echte Außenverbindung fail closed (`NOT_IMPLEMENTED`).
+- `lib/privacy.ts` veröffentlicht die Datenklassifizierungsregeln über `GET /api/privacy`.
 
-| Zugriff | Wirkung |
-|---|---|
-| `GET /api/providers` | Katalog, Bindungen, Lifecycle, Health, `providerSnapshot()` |
-| `POST /api/providers` | `provider:manage` (Creator); `provider:connect` nur mit Approval |
-| `providerStoreReport()`, `providerSnapshot()` | Integrität und Zustandsübersicht |
+## 5. Grenzen
 
-## 6. Verifikation
+- Es gibt **keine** Netzwerkverbindung zu den Providern; die Adapter sind
+  Beschreibungen/Bindings. Ein realer Adapter müsste die Egress-Schicht,
+  Secret-Verwaltung (`lib/secrets.ts`) und Freigabe mitbringen.
+- `autonomousManagement` markiert die Absicht, dass ein Provider Betriebsaufgaben
+  übernehmen darf — solange er nicht autorisiert/verbunden ist, ist das wirkungslos.
 
-- `tests/integration/provider-fabric.test.ts` (8 Tests): Entdeckung ohne
-  Verbindung, Approval-Pflicht, Bindungsfähigkeiten, Health/Heartbeat,
-  Datenvertrag, Persistenz über Neustart.
-- `scripts/verify-live.sh` Schritt 7: alle Provider entdeckt **und** deaktiviert,
-  Verbindung ohne Freigabe → 400, unbekannter Provider → 400.
+## 6. Tests
 
-## 7. Offen (PARTIAL)
-
-- Es gibt **keine** echte Netzwerkverbindung zu externen Anbietern: Egress ist
-  default `DENY` und `ALLOWLIST` fail closed. Die Adapter sind Vertrag +
-  Zustandsmaschine, nicht live erprobt.
-- Kein automatisches Health-Scoring/Quarantäne bei wiederholtem Ausfall.
+- `tests/integration/provider-fabric.test.ts` — Lifecycle, Approval-Pflicht,
+  Datenrichtlinie und Denials.
+- `scripts/verify-live.sh` — Provider-Status über HTTP (alle deaktiviert/unabgenommen).

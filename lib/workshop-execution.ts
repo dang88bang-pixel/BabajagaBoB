@@ -4,15 +4,18 @@ import {appendDomainEvent} from "@/lib/events/log";
 import {recordAudit} from "@/lib/audit";
 import {addProvenanceNode,addProvenanceEdge} from "@/lib/provenance";
 import type {WorkshopStage} from "@/lib/workshop";
+import {createStore} from "@/lib/persistence/store";
 export type WorkshopAction="SPECIFY"|"PROTOTYPE"|"SANDBOX"|"TEST"|"SECURITY_VALIDATE"|"EXPERIMENT"|"VALIDATE"|"REGISTER";
 export type WorkshopExecution={id:string;workshopId:string;action:WorkshopAction;status:"RUNNING"|"BLOCKED"|"SUCCEEDED"|"FAILED";startedAt:string;finishedAt?:string;artifactDigest:string;message:string};
-const runs:WorkshopExecution[]=[];
+/** Ausführungshistorie der Werkstatt (Nachweis, kein Cache). */
+const runStore=createStore<{runs:WorkshopExecution[]}>("workshop-executions",1,()=>({runs:[]}));
+const persistRun=(run:WorkshopExecution)=>{runStore.update(payload=>{const i=payload.runs.findIndex(x=>x.id===run.id);if(i===-1)payload.runs.push(run);else payload.runs[i]=run})};
 const digest=(v:unknown)=>crypto.createHash("sha256").update(JSON.stringify(v)).digest("hex");
 const nextStage:Record<WorkshopAction,WorkshopStage>={SPECIFY:"SPECIFICATION",PROTOTYPE:"PROTOTYPE",SANDBOX:"SANDBOX",TEST:"TESTING",SECURITY_VALIDATE:"SECURITY_VALIDATION",EXPERIMENT:"EXPERIMENT",VALIDATE:"VALIDATED",REGISTER:"REGISTERED"};
 export function executeWorkshopStep(workshopId:string,action:WorkshopAction){
  const item=listWorkshop().find(x=>x.id===workshopId);if(!item)throw new Error("workshop item not found");
  if(action==="REGISTER"&&item.stage!=="VALIDATED")throw new Error("registration requires VALIDATED stage");
- const run:WorkshopExecution={id:"WR-"+crypto.randomUUID(),workshopId,action,status:"RUNNING",startedAt:new Date().toISOString(),artifactDigest:digest(item),message:"Workshop step started"};runs.push(run);
+ const run:WorkshopExecution={id:"WR-"+crypto.randomUUID(),workshopId,action,status:"RUNNING",startedAt:new Date().toISOString(),artifactDigest:digest(item),message:"Workshop step started"};persistRun(run);
  addProvenanceNode({id:workshopId,kind:"WORKSHOP_ITEM",label:item.name});
  addProvenanceNode({id:run.id,kind:"RUN",label:`${action} ${item.name}`});
  addProvenanceEdge({from:run.id,to:workshopId,relation:"DERIVED_FROM"});
@@ -36,4 +39,4 @@ export function executeWorkshopStep(workshopId:string,action:WorkshopAction){
   throw e;
  }
 }
-export function listWorkshopExecutions(){return structuredClone(runs)}
+export function listWorkshopExecutions(){return runStore.read().runs.map(run=>structuredClone(run))}

@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import {createStore} from "./persistence/store";
 import {observe} from "./observability";
+import {classifyRecoveryTier} from "./recovery-tier";
 import {recordFailure, prepareRecovery, resolveFailure, verifyRecovery, listFailures, updateFailure} from "./reliability";
 import {addEvidence, createExperiment} from "./science";
 import {upsertKnowledge, linkKnowledge} from "./knowledge";
@@ -65,6 +66,10 @@ export type ErrorIncident = {
   knowledgeId?: string;
   experimentId?: string;
   error?: string;
+  /** Abgeleitete Recovery-Stufe (1–5) und ihre Begründung (Abschnitt 15). */
+  recoveryTier?: number;
+  recoveryReasons?: string[];
+  recoveryRequiresApproval?: boolean;
   updatedAt: string;
 };
 
@@ -385,15 +390,32 @@ export async function prepareErrorRecovery(incidentId: string): Promise<ErrorInc
       /* ohne Snapshot bleibt die Recovery unbestätigt (kein Fake-Erfolg) */
     }
   }
+  // Stufe nicht raten: aus dem Fehlerbild ableiten und begründen. Stufe 4/5
+  // verlangt zusätzlich eine Creator-Freigabe (siehe docs/RECOVERY.md).
+  const classification = classifyRecoveryTier({
+    severity: incident.severity,
+    failureMode: incident.failureMode,
+    symptom: incident.symptom,
+    incident: incident.incident,
+    contributingFactors: incident.contributingFactors,
+    rootCause: incident.rootCause,
+    hasCheckpoint: Boolean(checkpointSnapshotId),
+    hasDiagnosticSandbox: Boolean(incident.diagnosticSandboxId)
+  });
   const plan = prepareRecovery({
     failureId: incident.failureId ?? incident.incidentId,
-    tier: rank[incident.severity] >= 3 ? 3 : 2,
-    steps: ["betroffene Ausführung isolieren", "Diagnose sammeln", "Snapshot wiederherstellen", "Regression und Smoke ausführen"],
+    tier: classification.tier,
+    steps: classification.steps,
     verificationPlan: ["smoke test", "regression suite"],
     diagnosticSandboxId: incident.diagnosticSandboxId,
     checkpointSnapshotId
   });
-  return transitionError(incidentId, "FIXING", {recoveryId: plan.recoveryId});
+  return transitionError(incidentId, "FIXING", {
+    recoveryId: plan.recoveryId,
+    recoveryTier: classification.tier,
+    recoveryReasons: classification.reasons,
+    recoveryRequiresApproval: classification.requiresCreatorApproval
+  });
 }
 
 export async function executeRecoveryForIncident(incidentId: string) {

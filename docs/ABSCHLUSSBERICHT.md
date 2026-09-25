@@ -39,6 +39,10 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 | API-Grenze | jede `/api/*`-Route außer `/api/auth` verlangt Session; agentenspezifischer Sonderweg nur `POST /api/runtime`; CSRF-Origin-Prüfung; Legacy-Token fail closed | `middleware.ts`, `lib/api/api-gate.ts`, `tests/security/api-guard.test.ts`, `tests/security/api-gate.test.ts` |
 | Aktionsprüfung pro Route | **jede** Route außer `/api/auth` prüft ihre konkrete Aktion (Creator-Pflicht für Kern-/Schreibpfade, `sandbox:run`, `task:execute`, `run:manage`; Provenance-/Knowledge-Schreiben nur Creator); strukturell im Test erzwungen | `lib/api/guard.ts`, `app/api/*/route.ts`, `tests/security/route-guards.test.ts`, `tests/security/api-route-contract.test.ts` |
 | Betriebsmetriken | Prometheus-Text unter `GET /api/metrics` (Session-pflichtig), aus Stores/Integritätsprüfungen, nur Zahlen | `lib/metrics.ts`, `tests/integration/metrics-backup.test.ts` |
+| Ausführungs-Evidenz | jede autorisierte Ausführung erzeugt einen **digestgebundenen, persistenten** Evidenzdatensatz (`ART-…`, SHA-256 über den gespeicherten Inhalt), verknüpft in Provenance (Knoten `EVIDENCE` + Kante) und Audit (`evidence.record` mit Digest); `GET /api/artifacts?verify=…` prüft erneut; Inhalte > 8 KiB werden sichtbar gekürzt (`truncated`) | `lib/artifacts.ts`, `lib/execution-broker.ts`, `tests/integration/execution-evidence.test.ts` |
+| Schema-Migration | registrierte Migration je Store: Digest-Prüfung → Sicherungskopie `*.pre-v{N}.bak` (0600) → Migration → Journal `migrations.jsonl`; fehlende Kette oder neuere Datei → fail closed; ältere Sicherungen werden als migrierbar erkannt und migrierend wiederhergestellt | `lib/persistence/store.ts`, `lib/creator-auth.ts`, `tests/unit/store-migration.test.ts` |
+| Zweiter Faktor | TOTP (RFC 6238) über `BOB_CREATOR_TOTP_SECRET`: gesetzt ⇒ **verpflichtend** (403 `TOTP_REQUIRED`), Fenster ±1 × 30 s, Replay-Schutz über `totpUsedSteps`, Lockout unverändert 423, Status über `GET /api/auth` (`secondFactor`) | `lib/totp.ts`, `lib/creator-auth.ts`, `app/api/auth/route.ts`, `tests/security/creator-totp.test.ts` |
+| Persistenz aller Betriebszustände | CI/CD-Pipelines, Skills, Werkstatt-Objekte, Werkstatt-Läufe und Agenten-Übergaben sind persistent (zuvor nur im Speicher); Nachweis durch Neuladen der Laufzeit | `lib/cicd.ts`, `lib/skills.ts`, `lib/workshop*.ts`, `lib/agent-fabric.ts`, `tests/unit/runtime-persistence.test.ts` |
 | Backup/Wiederherstellbarkeit | digest-/versionsgeprüfte Kopien unter `<BOB_STORAGE_DIR>/backups`, Restore nur nach Prüfung, manipuliert → 409 | `lib/persistence/store.ts`, `app/api/persistence/route.ts`, `tests/integration/metrics-backup.test.ts` |
 | Creator-Zugang | einmaliger Bootstrap, danach Login mit server-seitigem Secret (Datei 0600 oder Env), Konstantzeitvergleich, Sperre nach 5 Fehlversuchen (423, 15 min), Rotation | `lib/bootstrap.ts`, `lib/creator-auth.ts`, `app/api/auth/route.ts`, `tests/security/creator-login*.test.ts` |
 | Execution Gate + Broker | 17 Preflight-Prüfungen (Request-Form, argv-Policy, Task/Agent/Sandbox-Bindung, Risiko, Token, Umgebung, Kill Switches, Approval, Netzwerk, Limits) mit Audit + Observation je Verweigerung | `lib/execution-gate.ts`, `lib/execution-broker.ts`, `tests/e2e/creator-flow.test.ts` |
@@ -47,7 +51,7 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 | Lokale Runtime | echte Kindprozesse in eigener Prozessgruppe, reduziertes Environment, Timeout mit Gruppen-Kill, Netzwerk default `DENY`, `ALLOWLIST` fail closed | `lib/runtime-local.ts`, `tests/integration/sandbox-runtime.test.ts` |
 | Experiment-Engine | Baseline/Kontrolle/Replikation, Evidenzpflicht, neunstufige Kausalprüfung mit Gründen und Wissenszustand | `lib/science.ts`, `tests/e2e/failure-recovery.test.ts` |
 | Error Intelligence | `DETECTED → DIAGNOSING → EXPERIMENTING → ROOT_CAUSE_FOUND → FIXING → VERIFYING → LEARNED → REGRESSION_LOCKED` inkl. Diagnosesandbox, Evidenzpflicht und idempotenter Fix-Verifikation | `lib/error-intelligence.ts`, `app/api/errors/route.ts` |
-| Recovery | gestufte Pläne (Tier 1–5), Checkpoint, Restore, Verifikation mit echten Smoke-/Regressionstests, `REJECTED` statt Scheinerfolg | `lib/reliability.ts`, `docs/RECOVERY.md` |
+| Recovery | **automatische, begründete Stufenklassifikation** (Tier 1–5, `requiresCreatorApproval` ab Stufe 4), Checkpoint, Restore, Verifikation mit echten Smoke-/Regressionstests, `REJECTED` statt Scheinerfolg | `lib/recovery-tier.ts`, `lib/reliability.ts`, `tests/unit/recovery-tier.test.ts`, `docs/RECOVERY.md` |
 | Regression Engine | registrierte `argv[]`-Tests, PASS/FAIL, leere Suite = Fehlschlag, Persistenz | `lib/regression.ts`, `tests/regression/regression-engine.test.ts` |
 | Knowledge/Memory | vier Schichten, sieben Zustände, Kanten, negatives Wissen („Never Again") erst nach verifiziertem Fix | `lib/knowledge.ts`, `docs/KNOWLEDGE.md` |
 | Agent Fabric | 11 Rollen aus der Control Plane mit Autonomie-Vertrag; kein Agent darf Autorität, Produktion oder Infrastruktur | `lib/agent-fabric.ts`, `tests/unit/agent-fabric.test.ts` |
@@ -63,9 +67,9 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 
 | Nachweis | Ergebnis |
 |---|---|
-| Automatisierte Tests | **19 Dateien / 98 Tests grün** (`npx vitest run`) |
-| Statische Gates | `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler (8 Warnungen); `npm run build` erfolgreich |
-| Live über HTTP | `scripts/verify-live.sh` gegen `npx next start`: **101 PASS / 0 FAIL** – Auth fail closed (428/401/403/201/200), Kette bis Knowledge, Sandbox + Snapshot + Capability, autorisierte Ausführung (`argv`, stdout `live-ok`), vier Angriffsblockaden mit Audit, Fehlerkette bis `REGRESSION_LOCKED`, Lockdown/Privacy/Provider/Geräte, Restore/Persistenz/Readiness |
+| Automatisierte Tests | **25 Dateien / 135 Tests grün** (`npx vitest run`) |
+| Statische Gates | `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler (10 Warnungen); `npm run build` erfolgreich (Exit-Code geprüft, nicht nur Ausgabe) |
+| Live über HTTP | `scripts/verify-live.sh` gegen `npx next start`: **114 PASS / 0 FAIL** – Auth fail closed (428/401/403/201/200), Kette bis Knowledge, Sandbox + Snapshot + Capability, autorisierte Ausführung (`argv`, stdout `live-ok`), vier Angriffsblockaden mit Audit, Fehlerkette bis `REGRESSION_LOCKED`, Lockdown/Privacy/Provider/Geräte, Restore/Persistenz/Readiness sowie **Schritt 10: Agentenweg über Capability-Token ohne Browser-Session** (evidenzgebundene Ausführung; Verweigerungen bei Shell-Programm, Subjekt-Spoofing, Widerruf und Lockdown) |
 | §49-Abnahme 1 (Erfolgspfad) | `tests/e2e/creator-flow.test.ts` + Live-Schritte 2–4 |
 | §49-Abnahme 2 (bewusster Fehler) | `tests/e2e/failure-recovery.test.ts` (Exit-Code 7) + Live-Schritt 6 |
 | §49-Abnahme 3 (blockierter Angriff) | fremder Sandbox-Bindungsversuch 409, unbekanntes Token 409, Shell-Programm/-Metazeichen 409, Audit-DENY + Evidenz; `tests/e2e/creator-flow.test.ts` Test 2, Live-Schritt 5 |
@@ -83,14 +87,13 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 | Simulation/Visualisierung | Szenarien und Visualisierungsarten persistent, aber keine Renderer/Ausführung |
 | Runtime-Registry | 3 Definitionen (Node 22, Python 3.13, Custom OCI), erweiterbar; kein automatisches Provisionieren |
 | Control Center UI | Vollständige Navigation und Statusanzeige; keine Browser-E2E-Tests |
-| Tier-Klassifikation Recovery | Tier wird im Plan gesetzt, nicht automatisch aus dem Fehlerbild abgeleitet |
 | Metrik-Alarmierung | Export und Empfehlungen vorhanden; kein Scraper/Alertmanager im Repository |
 | Backup-Automation | Backup/Restore implementiert und geprüft; kein geplanter Job und keine Rotation |
 | Legacy-Token | Standardmäßig deaktiviert; Aktivierung nur mit ausdrücklicher Freigabe (dokumentiert, nicht empfohlen) |
 
 ## E. Nicht implementiert (NOT_IMPLEMENTED)
 
-- Zweiter Faktor (TOTP/WebAuthn) für den Creator-Login.
+- WebAuthn/Multifaktor-Geräteverwaltung (TOTP ist implementiert, siehe Abschnitt B).
 - Automatisches Deployment/Produktionsfreigabe (Promotion ist bewusst manuell und Creator-gebunden).
 - Alarmierung/Scraping (Prometheus-Server, Alertmanager) und geplante Backups mit Aufbewahrungsregel.
 - Vektor-/Embedding-Suche im Knowledge Graph.
@@ -99,7 +102,7 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 ## F. Nicht verifiziert (NOT_VERIFIED)
 
 - OCI-Sandbox-Laufzeit (kein Container-Daemon in der Umgebung verfügbar).
-- Verhalten unter hoher Nebenläufigkeit/Last (keine Lasttests).
+- Nebenläufigkeitsgrenzen sind getestet (12 parallele autorisierte Ausführungen, 6 verweigerte Fremdbindungen: `tests/integration/load-broker.test.ts`), ein Durchsatz-/SLO- oder Langzeitnachweis ist es **nicht**.
 - Verhalten über lange Betriebszeit (kein Langzeit-/Soak-Test).
 - Browserdarstellung im Control Center (keine automatisierten UI-Tests).
 
@@ -136,7 +139,7 @@ Keine Erfolgsaussage stützt sich auf Mock-Verhalten; Simulationen
 - Security: Authority-Invarianten, API-Guard, API-Gate, Routen-Guards, argv-Policy, Creator-Login und Lockout.
 - Regression: Regression Engine (argv-Policy, leere Suite = Fehlschlag).
 - E2E: Erfolgskette Creator → Knowledge; Fehlerkette bis `REGRESSION_LOCKED`.
-- Live: `scripts/verify-live.sh` (89 Prüfungen, 0 Fehler).
+- Live: `scripts/verify-live.sh` (114 Prüfungen, 0 Fehler).
 
 Details und Befehle: `docs/TESTING.md`.
 
@@ -155,6 +158,12 @@ Details und Befehle: `docs/TESTING.md`.
   `0600`; Manipulation führt zu `StoreIntegrityError` (fail closed). Backups sind
   digest-/versionsgeprüfte Kopien (kein zweiter Live-Zustand); ein manipuliertes
   Backup wird beim Restore mit 409 abgelehnt.
+- **Evidenz:** nichts wird angenommen, was nicht nachweisbar ist: jede autorisierte
+  Ausführung hinterlässt einen erneut prüfbaren Nachweis (Digest über stdout/stderr/
+  Exit-Code); gekürzte Inhalte sind als gekürzt gekennzeichnet.
+- **Upgrades:** Schemawechsel migrieren registriert, sichern vorher und protokollieren;
+  eine bestehende Installation wird dadurch nicht ausgesperrt (live an einem realen
+  v1-Store nachgewiesen: Login vorher 500, nach der Migration 201 ohne Datenverlust).
 - **Recovery:** Checkpoint → Plan (Tier/Steps/Verifikationsplan) → Restore →
   Verifikation mit echten Tests; nur `ACCEPT` ergibt `VERIFIED`, sonst `REJECTED`.
 - **Provider:** Discovery ohne Rechte, Verbindung nur mit freigegebener Approval,
@@ -176,7 +185,7 @@ Details und Befehle: `docs/TESTING.md`.
 | Provider/Device/Computer Use | **PARTIAL** | Verträge, Zustandsmaschinen und Autorisierung vollständig; keine echten externen Verbindungen/Treiber |
 | UI/Control Center | **PARTIAL** | Funktion vorhanden, keine Browser-E2E-Abdeckung |
 | Beobachtbarkeit/Betrieb | **PARTIAL** | Statusrouten, Events, Audit, Readiness, Prometheus-Export und geprüftes Backup vorhanden; kein Scraper/Alertmanager, keine geplante Rotation |
-| Last/Robustheit über Zeit | **NOT_VERIFIED** | keine Last- oder Soak-Tests |
+| Last/Robustheit über Zeit | **NOT_VERIFIED** | Nebenläufigkeitsgrenze geprüft (12 parallel), aber keine SLO-/Durchsatz- oder Soak-Nachweise |
 
 **Gesamtaussage:** Die Plattform erfüllt die Sicherheits- und Nachweisziele des
 Auftrags (`PASS` für Autorisierung, Persistenz, Kernkette, lokale Runtime). Sie ist

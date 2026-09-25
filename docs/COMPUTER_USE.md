@@ -1,79 +1,61 @@
-# Computer Use und Simulation
+# Computer Use und Visualisierung — Abschnitt 24/31/32
 
-**Stand:** 2026-09-25
-**Module:** `lib/computer-use.ts` (Browser/Desktop/CLI), `lib/simulation.ts`
-(Szenarien und Visualisierung)
+Implementierung: `lib/computer-use.ts`, `lib/simulation.ts`, `lib/gallery.ts`,
+Routen `app/api/computer-use/route.ts`, `app/api/simulation/route.ts`,
+`app/api/gallery/route.ts`.
 
-**Grundsatz:** Ein registrierter Computer ist **nicht** autorisiert. Die
-Reihenfolge lautet: registrieren → autorisieren (Creator) → allokieren →
-starten → freigeben. Netzwerk ist default `DENY`.
+## 1. Computer-Use-Modell
 
-## 1. Computer Use (`lib/computer-use.ts`)
-
-### Arten und Aktionen
-
-| `ComputerUseKind` | typische Aktionen (`ComputerUseAction`) |
-|---|---|
-| `BROWSER` | `NAVIGATE`, `CLICK`, `TYPE`, `SELECT`, `SCREENSHOT`, `OCR` |
-| `DESKTOP` | wie Browser plus `SCREENSHOT`, `PROCESS_READ`, `FILE_READ` |
-| `CLI` | `TERMINAL_EXECUTE` (über die Sandbox/Broker-Kette, nie direkt) |
-
-Weitere Aktionen: `PROCESS_READ`, `FILE_READ`. Jede Fähigkeit
-(`ComputerCapability`) deklariert Art, Aktionsliste, erlaubte Umgebungen,
-Netzwerkmodus und Risiko.
-
-### Zustände
-
-```
-AVAILABLE → ALLOCATED → EXECUTING → RELEASED      (FAILED / PAUSED als Fehlerpfade)
+```ts
+ComputerUseKind   = BROWSER | DESKTOP | CLI
+ComputerUseAction = NAVIGATE | CLICK | TYPE | SELECT | SCREENSHOT | OCR
+                  | PROCESS_READ | FILE_READ | TERMINAL_EXECUTE
 ```
 
-- `allocateComputer(id, taskId, sandboxId?)` verweigert nicht autorisierte oder
-  nicht verfügbare Instanzen („computer is not authorized" / „not available").
-- `startComputer` verlangt vorher `ALLOCATED` („computer must be allocated first").
-- `authorizeComputer(id, true/false)` ist ein **Creator-Akt** und wird auditiert
-  (`computer.authorize`, `decision` ALLOW/DENY).
-- Der ausgelieferte Standard (`CMP-LOCAL-BROWSER`) ist ein **lokaler** Browser-Sandbox
-  mit `network: "DENY"` und ist **nicht** vorautorisiert – Autorisierung bleibt
-  eine bewusste Entscheidung.
+Jede Fähigkeit ist an Umgebungen gebunden (`environments`), an eine Netzklasse
+(`DENY | ALLOWLIST | INTERNET`) und an ein Risiko (`risk`). Eine Instanz
+(`ComputerInstance`) ist erst nutzbar, wenn sie **autorisiert** wurde.
 
-### Grenzen
+## 2. Ablauf und Verweigerungen
 
-- Kein direkter Systemzugriff: `TERMINAL_EXECUTE` läuft über Sandbox + Broker
-  (`argv[]`, `shell:false`), nicht über die Route selbst.
-- Netzwerk `DENY`/`ALLOWLIST` (fail closed); `INTERNET` ist deklarierbar, aber in
-  der Ausführung nicht erreichbar, solange kein Egress-Proxy existiert.
-- Screenshots/OCR gelten als Evidenz: Ablage mit Digest, nie als verstecktes
-  Zwischenergebnis.
+```
+registerComputer (Creator) → authorizeComputer (Creator) → allocateComputer → startComputer → releaseComputer
+```
 
-### Schnittstellen
+- `allocateComputer(id, taskId, sandboxId?)` verlangt `authorized === true` und
+  Zustand `AVAILABLE`; sonst „computer is not authorized" bzw. „not available".
+- `startComputer(id)` verlangt vorherige Allokation (`EXECUTING` nur nach `ALLOCATED`).
+- `authorizeComputer(id, false)` entzieht die Autorisierung; laufende Allokationen
+  müssen danach freigegeben werden.
+- Der Seed `CMP-LOCAL-BROWSER` ist `network: DENY`, `authorized: false` — Computer Use
+  ist damit **standardmäßig gesperrt**.
 
-| Zugriff | Wirkung |
-|---|---|
-| `GET /api/computer-use` | Instanzen + Fähigkeiten |
-| `POST /api/computer-use` | `register` (Creator), `authorize` (**Creator**), `allocate`, `start`, `release` |
-| `computerUseStoreReport()` | Integritätsbericht |
+## 3. Netz- und Datengrenzen
 
-## 2. Simulation und Visualisierung (`lib/simulation.ts`)
+`network: INTERNET` wäre eine Ausnahme, die ohne kontrollierte Egress-Schicht nicht
+gewährt wird — die Fähigkeiten im Seed verlangen `DENY`. Bildschirminhalte sind
+Daten: `lib/data-boundary.ts` verbietet die Weitergabe an Dritte
+(`assertNoProtectedDataForThirdParty`), und Screenshots landen ausschließlich im
+Sandbox-Workspace.
 
-- `ScenarioState`: `DRAFT → MODELING → SIMULATING → EXPERIMENT → OBSERVING →
-  VALIDATING → COMPLETED | FAILED`.
-- `VisualizationKind`: `ARCHITECTURE`, `FLOW`, `TIMELINE`, `STATE_MACHINE`,
-  `DEPENDENCY`, `NETWORK`, `SCENE_3D`.
-- Szenarien halten `inputs`, `assumptions` und Ergebnis; `advanceScenario`
-  dokumentiert jeden Übergang. Eine Simulation ist **kein** Nachweis: Ergebnisse
-  werden als Szenario-Ergebnis gekennzeichnet und nicht als `VERIFIED` geführt.
+## 4. Simulation und Visualisierung
 
-## 3. Verifikation
+`lib/simulation.ts` erzeugt Szenarien (`createScenario`, `advanceScenario`) für
+Zeitverläufe, Varianten, Vergleiche und Was-wäre-wenn-Fragen. Die Ergebnisse sind
+**SIMULATED** und ausdrücklich keine Messung: sie erzeugen keine Evidenz und
+ändern keinen Wissenszustand. `lib/gallery.ts` sammelt Artefakt-Präsentationen
+(Visualisierungen) und verweist auf die zugrunde liegende Evidenz.
 
-- `scripts/verify-live.sh` Schritt 7 prüft die Geräte-Fabric (gleiches Prinzip);
-  Computer Use folgt demselben Muster und ist über die API prüfbar.
-- Persistenz und Integrität über den kanonischen Store.
+## 5. Grenzen
 
-## 4. Offen (PARTIAL)
+- Es gibt keinen echten Browser-/Desktop-Treiber in dieser Umgebung. Der Pfad ist
+  `IMPLEMENTED` (Modell, Rechte, Persistenz, Denials) und `TESTED`, aber
+  `NOT_VERIFIED` gegen ein reales Gerät.
+- OCR/Prozesslesen sind Aktionsklassen; die Ausführung erfolgt über die Runtime,
+  nicht über eine eigene Steuerungsschicht.
 
-- Kein echter Browser-/Desktop-Treiber (Playwright o. ä.) angebunden: Aktionen
-  sind Vertrag + Zustandsmaschine, die Ausführung wäre über eine Sandbox zu
-  erproben.
-- Keine eigenen automatisierten Tests für Computer Use/Simulation (in
-  `docs/TODO.md` geführt).
+## 6. Tests
+
+- `tests/integration/computer-use.test.ts` — Registrierung, Autorisierungspflicht,
+  Allokation, Start-Reihenfolge, Freigabe.
+- `scripts/verify-live.sh` — Computer-Use-Routen über HTTP.

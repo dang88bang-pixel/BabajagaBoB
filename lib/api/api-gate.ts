@@ -67,7 +67,10 @@ function agentExecutionDecision(request: Request): ApiGateDecision {
     recordAudit({actor: "UNKNOWN-AGENT", action: API_GATE_ACTION, decision: "DENY"}, {code: "TOKEN_SECRET", tokenId: capability.tokenId});
     return deny(403, "TOKEN_SECRET", "capability token secret is invalid");
   }
-  const validation = validateCapabilityToken(capability.tokenId, ["sandbox:run"], {environment: "development"});
+  // Bewusst ohne Umgebungs-/Ressourcenbindung: Die Bindung an Task, Sandbox,
+  // Risiko und Umgebung kennt das Gate nicht und darf sie nicht raten. Sie
+  // wird in der Route (`guardRequest`) und im Broker vollständig geprüft.
+  const validation = validateCapabilityToken(capability.tokenId, ["sandbox:run"], {});
   if (!validation.valid) {
     recordAudit({actor: "UNKNOWN-AGENT", action: API_GATE_ACTION, decision: "DENY"}, {code: "CAPABILITY_DENIED", tokenId: capability.tokenId, reason: validation.reason});
     return deny(403, "CAPABILITY_DENIED", validation.reason);

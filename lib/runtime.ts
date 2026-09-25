@@ -57,6 +57,11 @@ export type ExecutionResult = {
   timedOut: boolean;
   durationMs: number;
   message: string;
+  /**
+   * Digest-gebundene Evidenz zur Ausführung (vom Broker gesetzt, Abschnitt 4).
+   * Fehlt sie, wurde der Lauf nicht über den autorisierten Broker ausgeführt.
+   */
+  evidence?: {artifactId: string; digest: string; verified: boolean; truncated: boolean};
 };
 
 export type RuntimeObservation = {

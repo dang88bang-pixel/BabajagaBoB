@@ -1,97 +1,82 @@
-# Recovery und Regression
+# Recovery-Engine mit Stufen — Abschnitt 15
 
-**Stand:** 2026-09-25
-**Module:** `lib/reliability.ts` (Pläne, Failures, Verifikation),
-`lib/regression.ts` (Regressionstests), `lib/error-intelligence.ts` (Anbindung an
-den Fehler-Lebenszyklus), `lib/recovery-orchestrator.ts` (Bereitschaft)
+Implementierung: `lib/recovery-tier.ts` (Klassifikation), `lib/reliability.ts`
+(Pläne, Checkpoints, Ausführung, Verifikation), `lib/error-intelligence.ts`
+(Fehlerlebenszyklus), `lib/recovery-orchestrator.ts` (Readiness, Isolation),
+`lib/regression.ts` (Regression Lock), Routen `app/api/reliability/route.ts`,
+`app/api/errors/route.ts`, `app/api/readiness/route.ts`.
 
-**Grundsatz:** Recovery gilt erst als erfolgreich, wenn sie **verifiziert** ist.
-Ohne Snapshot und bestandene Regression gibt es kein `ACCEPT` – im Zweifel
-`REJECTED`, nie ein stiller Erfolg.
+## 1. Automatische Stufenklassifikation
 
-## 1. Zustände
+`classifyRecoveryTier(input)` (`lib/recovery-tier.ts`) leitet die Stufe aus dem
+Fehlerbild ab und **begründet** sie in `reasons[]`. Sie ist konservativ: im Zweifel
+wird die eingriffstiefere Stufe gewählt. Sie erteilt **keine** Berechtigung —
+ab Stufe 4 verlangt sie ausdrücklich Creator-Freigabe
+(`requiresCreatorApproval = tier >= 4`).
 
-| Gegenstand | Zustände |
-|---|---|
-| Failure | `OPEN` → `ANALYZING` → `CONTAINED` → `RESOLVED` / `VERIFIED` (`lib/reliability.ts`) |
-| Recovery-Plan | `PREPARED` → `EXECUTING` → `VERIFIED` / `REJECTED` |
-| Fehler-Incident (Anbindung) | `DETECTED` → `DIAGNOSING` → `EXPERIMENTING` → `ROOT_CAUSE_FOUND` → `FIXING` → `VERIFYING` → `LEARNED` → `REGRESSION_LOCKED` |
+| Stufe | Bedeutung | typische Auslöser | Schritte |
+|---|---|---|---|
+| 1 | Beobachtung/Zustandswechsel ohne Eingriff | Wiederholung, Timeout in einem Versuch, fehlende Telemetrie | beobachten, protokollieren, erneut prüfen |
+| 2 | Wiederherstellung aus Snapshot in der Diagnosesandbox | reproduzierbarer Fehllauf mit vorhandenem Checkpoint | Snapshot wählen, in Diagnosesandbox wiederherstellen, verifizieren |
+| 3 | Eingriff in Sandbox/Umgebung (Reset, Neuaufbau) | Umgebungs-/Ressourcenfehler, beschädigter Workspace, erneuter Fehler nach Restore | isolieren, Workspace neu aufbauen, erneut ausführen |
+| 4 | Eingriff in Code/Artefakt (Fix + erneute Ausführung) | Ursache im Artefakt/Code | Fix vorbereiten, Regressionstest, erneut ausführen |
+| 5 | Eingriff in Struktur (Task, Sandbox, Pipeline) | kritische oder sicherheitsrelevante Ursache, Änderung außerhalb der Sandbox | eskalieren, Struktur ändern, Freigabe einholen |
 
-## 2. Gestufte Recovery (`RecoveryTier`)
+Eingangssignale: `severity`, `failureMode`, `symptom`, `incident`, `rootCause`,
+`contributingFactors`, `hasCheckpoint`, `hasDiagnosticSandbox`,
+`previousRecoveryVerified`, `securityRelated`. Die Stichwortlisten sind im Code
+dokumentiert (`ENVIRONMENT_HINTS`, `CODE_HINTS`, …); bewusst enthält `CODE_HINTS`
+**nicht** das Wort „code", damit „Exit-Code 7" nicht als Codefix fehlklassifiziert wird.
+Auch `lib/reliability.ts#prepareRecovery` nutzt die Klassifikation, wenn keine Stufe
+übergeben wird (Standard war zuvor fest 2).
 
-Die Stufen beschreiben den Eingriffsumfang; der Plan hält `tier`, `steps`,
-`checkpointSnapshotId`, `diagnosticSandboxId` und `verificationPlan` fest
-(Default-Tier 2, Default-Verifikationsplan „smoke test" + „regression suite").
-
-| Tier | Bedeutung (Eingriffstiefe) |
-|---|---|
-| 1 | Beobachtung/Zustandswechsel ohne Eingriff (z. B. Retry, Rollback einer Transaktion) |
-| 2 | Wiederherstellung aus Snapshot im Diagnosesandbox (Standard) |
-| 3 | Eingriff in die Sandbox/Umgebung (Reset, Neuaufbau des Workspace) |
-| 4 | Eingriff in Code/Artefakt (Fix + erneute Ausführung) |
-| 5 | Eingriff in Struktur (Task, Sandbox, Pipeline) – immer Creator-gebunden |
-
-Abgrenzung: Tier 4/5 erzeugen Änderungen und müssen über Approval laufen; die
-Module selbst erzwingen den Nachweis (Verifikation), die Freigabe kommt aus
-`lib/approvals.ts`/`lib/governance.ts`.
-
-## 3. Ablauf (`lib/reliability.ts`)
+## 2. Ablauf
 
 ```
-recordFailure(...) → createCheckpoint({failureId, sandboxId})
-   → prepareRecovery({failureId, steps, verificationPlan, diagnosticSandboxId, tier, checkpointSnapshotId})
-   → beginRecovery(recoveryId)          # restoreSandbox(diagnosticSandboxId, snapshot)
-   → verifyRecovery(recoveryId)         # verifySandboxState + Regression
-   → resolveFailure(failureId, rootCause, regressionId)
-   → lockRegressionFromFailure(failureId, argv)
+recordFailure → prepareRecovery → createCheckpoint → beginRecovery
+              → verifyRecovery → resolveFailure → lockRegressionFromFailure
 ```
 
-- `beginRecovery` verlangt `status === "PREPARED"` und setzt den Failure auf
-  `CONTAINED`; der Restore nutzt den echten Workspace-Snapshot mit Digest-Prüfung.
-- `verifyRecovery` verlangt `status === "EXECUTING"` und einen Diagnosesandbox;
-  `verifySandboxState` führt Smoke-/Regressionstests real aus. Nur `ACCEPT`
-  ergibt `VERIFIED`, sonst `REJECTED` und der Failure fällt auf `ANALYZING`
-  zurück. Beide Ausgänge werden beobachtet (`recovery.verified` bzw.
-  `recovery.rejected`).
-- `lockRegressionFromFailure` erzeugt einen dauerhaften Regressionstest („Never
-  Again") mit `argv[]` – kein Shell-String.
+- `recordFailure` protokolliert Betriebsfehler (`lib/reliability.ts`), `listFailures`/`updateFailure` verwalten sie.
+- `createCheckpoint(sandboxId)` legt einen echten Snapshot an und bindet ihn an den Plan.
+- `beginRecovery(recoveryId)` führt die Schritte aus und wechselt in den Zustand `RUNNING` (mit Isolation über den Kill Switch der Task, `lib/recovery-orchestrator.ts#recoverFailure`).
+- `verifyRecovery(recoveryId)` prüft den Plan gegen den Checkpoint: Digest, Workspace-Zustand und Verifikationsschritte. Erst danach ist ein Plan `VERIFIED`.
+- `resolveFailure` schließt den Fehler ab; `lockRegressionFromFailure` überführt die Erkenntnis in eine Regression (`docs/KNOWLEDGE.md`).
 
-## 4. Regression Engine (`lib/regression.ts`)
+Ein Recovery gilt nur dann als erfolgreich, wenn die Verifikation bestanden ist —
+ein „gestarteter" Plan zählt nicht.
 
-- Tests werden mit `argv[]` registriert und laufen über die echte Runtime
-  (argv-Policy gilt auch hier); kein Mock, keine Shell.
-- `runRegressionSuite` wertet PASS/FAIL aus; eine **leere Suite gilt als
-  Fehlschlag** (fail closed) – „keine Tests" ist kein Nachweis.
-- Ergebnis: `passedCount`, `total`, `failed[]`, Digest-gebundene Evidenz.
+## 3. Kopplung an den Fehlerlebenszyklus
 
-## 5. Anbindung an Error Intelligence
+`lib/error-intelligence.ts` speichert an jedem Incident
+`recoveryTier`, `recoveryReasons` und `recoveryRequiresApproval`. Der Übergang
+nach `VERIFYING` erfolgt durch `verifyRecoveryForIncident`; `verifyFix` bleibt für
+den manuellen Pfad (Regression/Fix-Verifikation) nutzbar. Stufe 4/5 ohne
+Creator-Freigabe endet in `ESCALATED` (Creator Inbox, `docs/OPERATIONS.md`).
 
-`prepareErrorRecovery` legt den Plan an, `executeRecoveryForIncident` führt ihn
-aus (Incident → `FIXING`), `verifyRecoveryForIncident` verifiziert und führt den
-Incident nach `VERIFYING`. `verifyFix` führt die Regression im Diagnosesandbox
-aus; nur bei Erfolg wird der Incident `LEARNED` (und danach über
-`learnFromError` → `REGRESSION_LOCKED`). `verifyFix` ist idempotent, damit ein
-wiederholter Nachweis möglich bleibt.
+## 4. Kill Switch und Isolation
 
-## 6. Bereitschaft (`lib/recovery-orchestrator.ts`)
+`recoverFailure` setzt einen Task-Kill-Switch (`Recovery isolation`) bevor
+wiederhergestellt wird. Der Execution Gate verweigert danach jede weitere
+Ausführung dieser Task, bis der Switch wieder gelöst ist. System-Lockdown
+(`engageSystemLockdown`) sperrt zusätzlich alles.
 
-`detectReadiness()` (über `GET /api/readiness`) meldet, ob die Voraussetzungen für
-eine Wiederherstellung erfüllt sind (Runtime, Sandbox-Bindung, Snapshot,
-Regression, Store-Integrität). Fehlt eine Voraussetzung, ist der Zustand
-ausdrücklich „nicht bereit" – ein Recovery-Lauf ohne Snapshot wird nicht
-versucht.
+## 5. Readiness
 
-## 7. Verifikation
+`detectReadiness()` liefert `{activeTasks, blockedTasks, lockdown, ready}`;
+`ready` ist nur wahr, wenn kein Lockdown aktiv ist **und** keine Task blockiert ist.
 
-- `tests/e2e/failure-recovery.test.ts`: echter Fehllauf (Exit 7) → Recovery →
-  Regression → `REGRESSION_LOCKED`; Failure-Status `VERIFIED`, Plan `VERIFIED`,
-  genau ein Regressionstest pro Incident.
-- `tests/regression/regression-engine.test.ts`: argv-Policy, PASS/FAIL,
-  leere Suite = Fehlschlag, Persistenz.
-- `scripts/verify-live.sh` Schritt 6: dieselbe Kette über HTTP.
+## 6. Grenzen
 
-## 8. Offen (PARTIAL)
+- Pläne sind lokal und synchron; es gibt keine verteilte Wiederaufnahme über mehrere Knoten.
+- Ein Rollback wird als eigenes Artefakt geführt (`rollbackArtifactId` am Run); ein
+  automatischer Rollback von Fremdsystemen (Deployments) ist `NOT_IMPLEMENTED`.
+- `previousRecoveryVerified` wird aus den Plänen abgeleitet und ist nur so gut wie
+  die dokumentierte Verifikation.
 
-- Tier-Zuordnung ist eine Konvention im Plan, keine automatische Klassifikation;
-  die Auswahl des minimal nötigen Tiers ist nicht erzwungen.
-- Kein automatischer Rollback von Code-Artefakten (Tier 4) ohne Creator-Aktion.
+## 7. Tests
+
+- `tests/unit/recovery-tier.test.ts` — 6 Fälle der Klassifikation inkl. Sicherheits-/Kritikalitätspfad.
+- `tests/e2e/failure-recovery.test.ts` — Fehler → Untersuchung → Recovery → Verifikation → Regression → Wissen.
+- `tests/regression/regression-engine.test.ts` — Regression Lock aus Fehlern.
+- `scripts/verify-live.sh` — Fehler-, Reliability- und Readiness-Routen über HTTP.

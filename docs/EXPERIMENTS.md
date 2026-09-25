@@ -1,102 +1,67 @@
-# Experimente und Kausalität
+# Experimentierfabric mit kausaler Validierung — Abschnitt 14/21
 
-**Stand:** 2026-09-25
-**Module:** `lib/science.ts` (Experiment-Engine), `lib/error-intelligence.ts`
-(Fehler-getriebene Experimente), `lib/regression.ts` (Nachweis)
+Implementierung: `lib/science.ts`, `app/api/science/route.ts`, `app/api/experiments/route.ts`,
+`lib/error-intelligence.ts` (Fehlerexperimente).
 
-**Grundsatz:** Ein Experiment behauptet nichts. Es läuft über den Broker in einer
-Sandbox, erzeugt Evidenz, und erst die strukturierte Kausalprüfung erlaubt einen
-höheren Wissenszustand.
+## 1. Objekte
 
-## 1. Ablauf
-
-```
-createObjective → createExperiment → runExperiment(BASELINE)
-   → runExperiment(CONTROL) → runExperiment(REPLICATION, n×)
-   → addEvidence(...) → validateCausalChain(...) → createDecision(...)
-```
-
-Jeder `runExperiment`-Aufruf geht durch `executeAuthorized` (Broker, 17 Prüfungen)
-und verlangt ein Capability-Token. Fehlt die Autorisierung, wird der Lauf nicht
-ausgeführt – es entsteht kein „weiches" Ergebnis.
-
-## 2. Laufarten (`ExperimentRun.kind`)
-
-| Art | Zweck |
+| Objekt | Funktion |
 |---|---|
-| `BASELINE` | Ausgangszustand ohne Intervention (muss zuerst beobachtet werden) |
-| `CONTROL` | Kontrollbedingung; ein nicht akzeptierter Kontrolllauf ist ein Widerspruch |
-| `REPLICATION` | Wiederholung; `repeat` steuert die Anzahl |
+| Objective | `createObjective()` — Ziel innerhalb einer Mission |
+| Experiment | `createExperiment()` — Hypothese + Sandbox + Metriken + Konfunder + Alternativerklärungen |
+| Lauf | `runExperiment()` — führt einen Lauf in der Sandbox aus (über den Broker) |
+| Evidenz | `addEvidence()` — digestgebundene Beobachtung zum Experiment |
+| Entscheidung | `createDecision()` — dokumentierte Entscheidung mit Begründung |
+| Validierung | `validateCausalChain()` — bewertet Baseline/Kontrolle/Replikation |
 
-Fortschritt: drei Arten = 100 % (`progress` in `createExperiment`/`runExperiment`).
+## 2. Zustandsmodell (KnowledgeState)
 
-## 3. Kausalprüfung (`validateCausalChain`)
+Erlaubte Zustände: `OBSERVED | SUPPORTED | ESTABLISHED | HYPOTHESIS | UNVERIFIED |
+CONTRADICTED | REJECTED | UNKNOWN`.
 
-Geprüft werden neun Gesichtspunkte; jeder fehlende Punkt ist ein `reason` und
-verhindert `valid: true`:
+Regeln in `validateCausalChain`:
 
-1. zeitliche Reihenfolge (Baseline vor Kontrolle),
-2. notwendige Vorbedingungen (Baseline vorhanden),
-3. Intervention (Kontrollbedingung vorhanden),
-4. Kontrollgruppe,
-5. Reproduktion (mindestens eine Replikation),
-6. Übereinstimmung der Replikationen (`replicationAgreement`, Abweichung → Fehler),
-7. dokumentierte alternative Erklärungen bei vorhandenen Confoundern,
-8. unabhängige Evidenz (mindestens eine Evidenz-ID),
-9. Gegenbeispiel/Widerspruch (nicht akzeptierter Kontrolllauf).
-Zusätzlich fließen `confounders` und `alternativeExplanations` in das Ergebnis ein.
+- Ohne Baseline, Kontrollgruppe, Replikation oder Evidenz bleibt es `HYPOTHESIS`
+  bzw. `SUPPORTED` (Gründe werden im Ergebnis mitgeliefert).
+- **Ein einzelner erfolgreicher Lauf setzt niemals `ESTABLISHED`.**
+- `ESTABLISHED` nur, wenn Baseline, Kontrolle und Replikation vorliegen, die
+  Replikationen **vollständig übereinstimmen** (`replicationAgreement === 1`),
+  Evidenz vorhanden ist, Baseline vor der Kontrolle beobachtet wurde und für alle
+  Konfunder Alternativerklärungen dokumentiert sind.
+- Widerspricht eine Kontrollbedingung oder ist der Zustand bereits `CONTRADICTED`,
+  bleibt der Zustand `CONTRADICTED` — unabhängig von sonstigen Erfolgen.
+- Jeder Ablehnungsgrund steht als Text in `reasons[]`; es gibt keinen stillen „Bestanden"-Pfad.
 
-Wissenszustand des Experiments:
+## 3. Kontrollierte Bedingungen
 
-| Situation | Zustand |
-|---|---|
-| Widerspruch (Kontrolllauf nicht akzeptiert oder bereits `CONTRADICTED`) | `CONTRADICTED` |
-| alle Prüfungen bestanden | `ESTABLISHED` |
-| Replikation oder Evidenz vorhanden, aber Lücken | `SUPPORTED` |
-| nur Hypothese | `HYPOTHESIS` |
+`runExperiment` erzeugt Läufe mit `kind` `BASELINE`, `CONTROL`, `REPLICATION`
+(und Messläufe). Die Zuordnung wird persistiert (`science`-Store und `experiments`-Store).
+Ausführung erfolgt immer über den Execution Broker mit Capability-Token; ein
+Experiment kann die Sandbox- und Risikogrenzen nicht umgehen.
 
-Ergebnis und Gründe werden als `science.causal.validation` beobachtet
-(`decision: DENY` bei `valid: false`) – der Nachweis der Ablehnung ist damit
-genauso sichtbar wie der Erfolg.
+## 4. Verbindung zum Fehlerpfad
 
-## 4. Fehlergetriebene Experimente (`lib/error-intelligence.ts`)
+`POST /api/errors {action:"experiment"}` legt zu einem Fehler ein Experiment an,
+`{action:"evidence"}` nimmt Messwerte auf, `{action:"root_cause"}` bindet die
+Ursache an Evidenz-IDs. Der Zustand des Fehlers folgt der Fehlerintelligenz
+(`docs/RECOVERY.md`), der Wissensteil dem Knowledge Graph (`docs/KNOWLEDGE.md`).
 
-```
-createErrorIncident → investigateError (Diagnosesandbox)
-   → formHypothesis → startExperiment(incidentId, objectiveId)
-   → recordExperimentEvidence → establishRootCause (Evidenzpflicht!)
-   → prepareErrorRecovery → executeRecoveryForIncident → createRegressionTest
-   → verifyRecoveryForIncident (→ VERIFYING) → verifyFix (→ LEARNED)
-   → learnFromError (→ REGRESSION_LOCKED)
-```
+## 5. Visualisierung
 
-- `startExperiment` wechselt nach `EXPERIMENTING` und verlangt ein Objective
-  (Default `OBJ-003`, über HTTP als `objectiveId` übergebbar).
-- `establishRootCause` verweigert ohne Evidenz (`/evidence/i`).
-- `verifyFix` ist idempotent: eine verifizierte Recovery führt den Incident nach
-  `VERIFYING`; ein bereits gelernter Fix bleibt `LEARNED`. Wiederholte
-  Verifikation ist damit möglich, ohne Statusfehler.
-- `learnFromError` ist ausschließlich aus `LEARNED` möglich.
+`lib/simulation.ts` erzeugt Szenarien (Zeitverlauf, Varianten, Vergleichsläufe,
+Was-wäre-wenn) und `POST /api/simulation {action:"advance"}` schaltet sie weiter.
+Die Simulation ist ausdrücklich **SIMULATED** — sie ersetzt keine Messung und
+liefert keine Evidenz im Sinne von `lib/artifacts.ts`.
 
-## 5. Schnittstellen
+## 6. Grenzen
 
-| Zugriff | Wirkung |
-|---|---|
-| `GET /api/science`, `GET /api/experiments` | Experimente, Läufe, Evidenz |
-| `POST /api/errors {action:"create"\|"investigate"\|"hypothesis"\|"experiment"\|"evidence"\|"root_cause"\|"recovery.prepare"\|"recovery.execute"\|"recovery.verify"\|"fix.verify"\|"regression"\|"learn"\|"transition"}` | Lifecycle-Schritte |
-| `GET /api/errors` | Incidents + Zusammenfassung |
+- Keine statistische Signifikanzberechnung (kein p-Wert). Bewertet wird
+  Übereinstimmung der Replikationen und Vollständigkeit der Bedingungen —
+  das ist eine strukturelle, keine statistische Aussage (`UNVERIFIED` bzgl. Signifikanz).
+- Läufe sind lokal begrenzt (Timeout/Limits); sehr lange Experimente sind nicht möglich.
 
-## 6. Verifikation
+## 7. Tests
 
-- `tests/e2e/failure-recovery.test.ts`: vollständige Kette bis
-  `REGRESSION_LOCKED`, Evidenzpflicht negativ geprüft.
-- `scripts/verify-live.sh` Schritt 6: dieselbe Kette über HTTP inkl.
-  `fix.verify`.
-- `tests/regression/regression-engine.test.ts`: Regression als Nachweis
-  (`docs/RECOVERY.md`).
-
-## 7. Offen
-
-- Kein statistischer Test (Signifikanz/Effektstärke); die Prüfung ist strukturell.
-- `runExperiment` verlangt einen explizit übergebenen Sandbox- und Task-Bezug;
-  automatische Sandbox-Provisionierung je Experiment fehlt.
+- `tests/e2e/failure-recovery.test.ts` — Experiment + Evidenz im Fehlerpfad.
+- `tests/regression/regression-engine.test.ts` — Regression aus Erkenntnis.
+- `scripts/verify-live.sh` — Experiment- und Wissenschaftsrouten über HTTP.

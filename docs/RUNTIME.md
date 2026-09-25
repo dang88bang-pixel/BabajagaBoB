@@ -1,74 +1,69 @@
-# Laufzeiten (Runtime)
+# Runtime-Fabric — Abschnitt 10
 
-**Stand:** 2026-09-25
+Implementierung: `lib/runtime.ts` (Vertrag), `lib/runtime-local.ts`, `lib/oci-runtime.ts`,
+`lib/runtime-factory.ts`, `lib/runtime-registry.ts`, `app/api/runtime/route.ts`,
+`app/api/runtimes/route.ts`.
 
-## 1. Auswahl (`lib/runtime-factory.ts`)
+## 1. Vertrag
 
-| Modus | Auswahl | Reifegrad | Einsatz |
-|---|---|---|---|
-| `local` | `BOB_SANDBOX_RUNTIME=local` | **VERIFIED** (Tests + Live-Nachweis) | Entwicklungs-/CI-Standard: echte Kindprozesse im Sandbox-Workspace |
-| `oci` | `BOB_SANDBOX_RUNTIME=oci` | **UNVERIFIED** (kein Daemon in dieser Umgebung) | gehärtete Container-Isolation |
-| `mock` | explizit mit `BOB_ALLOW_MOCK_RUNTIME=1` | MOCK/SIMULATED | deterministische Entwicklung, **nie** Produktionsnachweis |
-
-`activeSandboxRuntime` wählt beim Import; `runtimeHealth()` und
-`reconcileActiveRuntime()` machen den Zustand prüfbar. Ein Wechsel des Modus zur
-Laufzeit ist nicht vorgesehen (fail closed statt Mischbetrieb).
-Wichtig: `runtimeHandle(sandboxId)` liefert **Metadaten**, nicht die Runtime –
-Code muss `activeSandboxRuntime` verwenden.
-
-## 2. Lokale Runtime (`lib/runtime-local.ts`)
-
-- Sandbox-Workspace `<BOB_STORAGE_DIR>/sandboxes/<sandboxId>`, Rechte `0700`.
-- Start über `spawn(programm, argv, {shell:false})` in eigener Prozessgruppe.
-- Reduziertes Environment: nur `PATH`, `HOME` (Workspace), `LANG`, `NODE_ENV`.
-- **Timeout** je Ausführung (`min(request, limits)`), Abbruch der gesamten
-  Prozessgruppe per `SIGKILL` (`process.kill(-pid, "SIGKILL")`).
-- Ergebnis: Exit-Code, stdout/stderr (gekappt), Dauer, Timeout-Flag; jedes
-  Ergebnis wird als Evidence/Event festgehalten.
-- Snapshots: Manifest mit SHA-256-Digest über alle Dateien plus Einzelhashes
-  (`hashFile`), Restore verifiziert zuerst.
-- Netzwerk: `DENY` erzwungen; `ALLOWLIST` fail closed.
-- Ressourcengrenzen werden validiert (`timeoutMs`, `memoryMb`, `cpuMillicores`,
-  `processes` müssen > 0 sein).
-
-## 3. OCI-Runtime (`lib/oci-runtime.ts`) – implementiert, UNVERIFIED
-
-Gehärtete Aufrufform (Docker/Podman):
-
-```
---network none            # kein Netzwerk
---read-only               # Root-Dateisystem schreibgeschützt, tmpfs /tmp (noexec)
---cap-drop ALL            # alle Linux-Capabilities entzogen
---security-opt no-new-privileges
-nicht-root Benutzer, kein Shell-Interpreter, argv[] ohne Interpolation
+```ts
+interface SandboxRuntime {
+  readonly mode: "REAL_LOCAL" | "REAL_OCI" | "MOCK";
+  create(spec): Promise<RuntimeHandle>;
+  start/pause/reset/clone(sandboxId[, spec]): Promise<RuntimeHandle>;
+  snapshot(sandboxId): Promise<RuntimeSnapshot>;
+  restore(sandboxId, snapshotId): Promise<RuntimeHandle>;
+  destroy(sandboxId): Promise<void>;
+  execute(sandboxId, argv, timeoutMs?): Promise<ExecutionResult>;
+  observe?(...): RuntimeObservation[];
+}
 ```
 
-Nachweisgrenze: In dieser Umgebung existiert kein Container-Daemon. Die
-Härtungsflags sind daher **nicht praktisch verifiziert** und werden im Bericht als
-`UNVERIFIED` geführt (keine behauptete Produktionsreife).
+`ExecutionResult = {accepted, exitCode, stdout, stderr, timedOut, durationMs, message, evidence?}` —
+`evidence` wird ausschließlich vom Execution Broker gesetzt (digestgebundene Evidenz,
+siehe `docs/SANDBOX.md` und `lib/artifacts.ts`).
 
-## 4. Runtime-Registry (`lib/runtime-registry.ts`)
+## 2. Modi und Umschaltung
 
-Registrierte Definitionen (Sprachen/Plattformen, `listRuntimes()`):
+- `BOB_SANDBOX_RUNTIME=local` → `REAL_LOCAL` (Standard in Entwicklung und in der Live-Verifikation).
+- `BOB_SANDBOX_RUNTIME=oci` → `REAL_OCI` (Docker, gehärtete Flags — siehe `docs/SANDBOX.md`).
+- `BOB_SANDBOX_RUNTIME=mock` → `MOCK`, im Status sichtbar; **keine** Produktionslaufzeit.
 
-| ID | Name | Version | Kind | Build | Test | Paketmanager |
-|---|---|---|---|---|---|---|
-| `runtime.node` | Node.js | 22 | CONTAINER | `npm run build` | `npm test` | npm |
-| `runtime.python` | Python | 3.13 | CONTAINER | – | `pytest` | pip |
-| `runtime.container.custom` | Custom OCI Runtime | 1 | CONTAINER | – | – | – |
+Der aktive Modus ist über `GET /api/runtime` sichtbar (`mode`, `health`, `network`,
+`observations`, `summary`). `POST /api/runtime {action:"reconcile"}` (Creator-only)
+gleicht Registry und tatsächliche Laufzeit ab; Abweichungen erscheinen als
+`ORPHANED` und senken `health` auf `DEGRADED`.
 
-`registerRuntime()` verweigert doppelte IDs und erlaubt weitere Sprachen/Images
-(`platforms`, `architectures`, `buildCommands`, `testCommands`, `networkDefault`).
-Alle Definitionen haben `networkDefault: "DENY"`.
+## 3. Runtime-Registry (viele Sprachen/Umgebungen)
 
-**Offen (PARTIAL):** Die Registry ist eine Beschreibung; automatisches
-Provisionieren von Toolchains je Sprache ist nicht implementiert. Weitere Sprachen
-(z. B. Go, Rust) sind registrierbar, aber nicht vorbelegt.
+`lib/runtime-registry.ts` führt Runtime-Definitionen:
 
-## 5. Verifikation
+```ts
+{id, name, version, kind: CONTAINER|VM|BROWSER|DESKTOP|CUSTOM, platforms[], architectures[],
+ buildCommands[], testCommands[], debugger?, packageManager?, sandboxSupport, networkDefault: DENY|ALLOWLIST}
+```
 
-- `tests/integration/sandbox-runtime.test.ts` (echte Prozesse, Timeout, Snapshot).
-- `scripts/verify-live.sh` Schritt 4: autorisierte Ausführung mit
-  `argv:["node","-e","..."]`, `shell:false`, stdout `live-ok`.
-- Schritte 5 und 8: Shell-/Metazeichen-Abwehr und Runtime-Lebenszyklus.
-- `GET /api/runtime` liefert Modus, Health und Reconcile-Status.
+Ausgeliefert sind `runtime.node` (Node.js 22), `runtime.python` (Python 3.13) und
+`runtime.container.custom` (OCI). Weitere Laufzeiten lassen sich registrieren:
+`POST /api/runtimes {action:"register", …}` (`runtime:registry:register`, Creator).
+`networkDefault` ist derzeit immer `DENY`; `ALLOWLIST` würde fail closed abgelehnt.
+
+Abgrenzung: Die Registry beschreibt **Laufzeitumgebungen**, die Sandbox-Fabric
+instanziiert sie. Eine Registrierung allein startet nichts und erteilt keine Rechte.
+
+## 4. Betriebsgrenzen
+
+- Eine Ausführung, die nicht über den Broker kommt, existiert nicht: die Route
+  `/api/runtime` prüft das Gate (Session **oder** Capability-Token) und ruft
+  `executeAuthorized` auf.
+- Fehlt der Runtime-Handle einer Sandbox im OCI-Modus, verweigert der Worker die
+  Ausführung (`sandbox runtime handle is missing`).
+- Ressourcenlimits werden vor der Ausführung gegen die Handle-Limits geprüft.
+
+## 5. Tests und Nachweise
+
+- `tests/integration/sandbox-runtime.test.ts` — Adapter-Vertrag, Lifecycle, Fehlerpfade.
+- `tests/integration/execution-evidence.test.ts` — Ausführung erzeugt Evidenz.
+- `tests/integration/load-broker.test.ts` — 12 parallele autorisierte Ausführungen,
+  Bindungen bleiben intakt; 6 fremde Sandbox-Bindungen werden verweigert.
+- `scripts/verify-live.sh` — Runtime-Status, Ausführung mit Capability-Token, Denials.

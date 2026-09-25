@@ -2,6 +2,7 @@ import {getControlState} from "./control-plane";
 import {executionGate} from "./execution-gate";
 import {capabilityTokens, validateCapabilityToken} from "./authority";
 import {recordAudit} from "./audit";
+import {executionEvidenceContent, recordArtifact, verifyArtifact} from "./artifacts";
 import {activeSandboxRuntime, runtimeHandle} from "./runtime-factory";
 import {observe} from "./observability";
 import {addProvenanceEdge, addProvenanceNode} from "./provenance";
@@ -199,7 +200,72 @@ export async function executeAuthorized(request: ExecutionRequest): Promise<Exec
     exitCode: result.exitCode
   });
 
-  return result;
+  // 18. Evidenz: Das Ergebnis wird digest-gebunden und persistent festgehalten.
+  // Der Digest wird im Evidenzmodul über den gespeicherten Inhalt gebildet —
+  // stdout/stderr sind damit nachprüfbar, nicht bloß protokolliert.
+  const artifact = recordArtifact(
+    {
+      name: `Ausführung ${task.taskId} in ${sandbox.sandboxId}`,
+      kind: "EXECUTION",
+      taskId: request.taskId,
+      runId: request.runId ?? "",
+      sandboxId: request.sandboxId,
+      agentId: request.agentId,
+      knowledgeState: "OBSERVED",
+      contentType: "application/json"
+    },
+    executionEvidenceContent({
+      taskId: request.taskId,
+      agentId: request.agentId,
+      sandboxId: request.sandboxId,
+      runId: request.runId,
+      environment,
+      argv: request.argv,
+      accepted: result.accepted,
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      timedOut: result.timedOut,
+      durationMs: result.durationMs
+    })
+  );
+  const anchor = request.runId ?? sandbox.sandboxId;
+  addProvenanceNode({id: artifact.id, kind: "EVIDENCE", label: `Evidenz ${artifact.kind}`, runId: request.runId});
+  addProvenanceEdge({
+    from: anchor,
+    to: artifact.id,
+    relation: anchor === request.runId ? "PRODUCED" : "DERIVED_FROM"
+  });
+  recordAudit(
+    {actor: request.agentId, action: "evidence.record", resource: artifact.id, decision: "ALLOW"},
+    {taskId: request.taskId, runId: request.runId ?? null, digest: artifact.digest, bytes: artifact.bytes, truncated: artifact.truncated}
+  );
+  observe({
+    type: "evidence.recorded",
+    message: `Evidenz ${artifact.id} gespeichert (${artifact.digest.slice(0, 12)}…)`,
+    status: "COMPLETED",
+    actor: request.agentId,
+    agentId: request.agentId,
+    taskId: request.taskId,
+    runId: request.runId,
+    sandboxId: request.sandboxId,
+    action: "evidence.record",
+    resource: artifact.id,
+    decision: "ALLOW",
+    outputRef: artifact.id,
+    authorizationRef: token.id,
+    argumentsValue: {digest: artifact.digest, kind: artifact.kind}
+  });
+
+  return {
+    ...result,
+    evidence: {
+      artifactId: artifact.id,
+      digest: artifact.digest,
+      verified: verifyArtifact(artifact.id).ok,
+      truncated: artifact.truncated
+    }
+  };
 }
 
 /** Prüfprotokoll ohne Ausführung (Dry-Run für UI/Governance). */

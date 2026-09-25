@@ -4,6 +4,7 @@ import path from "node:path";
 import {createStore, storageRoot} from "./persistence/store";
 import {observe} from "./observability";
 import {recordAudit} from "./audit";
+import {totpConfigured, totpStep, verifyTotpCode} from "./totp";
 
 /**
  * Creator-Anmeldung (Abschnitt 38, Re-Authentifizierung).
@@ -33,15 +34,36 @@ type Payload = {
   /** Zeitpunkte fehlgeschlagener Anmeldungen (Aufräumen nach Fensterablauf). */
   failures: string[];
   lockedUntil: string | null;
+  /** Bereits akzeptierte TOTP-Zeitfenster (Replay-Schutz des zweiten Faktors). */
+  totpUsedSteps: number[];
 };
 
-const store = createStore<Payload>("creator-auth", 1, () => ({
-  secretHash: null,
-  secretCreatedAt: null,
-  source: null,
-  failures: [],
-  lockedUntil: null
-}));
+/**
+ * Schema v1 -> v2: zweiter Faktor (TOTP). Bestehende Installationen werden beim
+ * ersten Lesen migriert (Digest-Prüfung, Sicherungskopie, Journal) — ein
+ * Upgrade sperrt damit niemals den Creator aus. Ohne TOTP-Env bleibt der
+ * Login unverändert.
+ */
+const store = createStore<Payload>(
+  "creator-auth",
+  2,
+  () => ({
+    secretHash: null,
+    secretCreatedAt: null,
+    source: null,
+    failures: [],
+    lockedUntil: null,
+    totpUsedSteps: []
+  }),
+  {
+    migrations: {
+      1: payload => {
+        const previous = (payload ?? {}) as Partial<Payload>;
+        return {...previous, totpUsedSteps: Array.isArray(previous.totpUsedSteps) ? previous.totpUsedSteps : []};
+      }
+    }
+  }
+);
 
 export const CREATOR_LOGIN_SECRET_ENV = "BOB_CREATOR_LOGIN_SECRET";
 const LOCKOUT_THRESHOLD = 5;
@@ -140,7 +162,7 @@ function pruneFailures(failures: string[], now: number): string[] {
  * Prüft das Creator-Secret. Bei Erfolg werden Fehlversuche zurückgesetzt.
  * Wirft `CreatorAuthError` mit passendem HTTP-Status bei Ablehnung.
  */
-export function verifyCreatorLogin(secret: string): {ok: true} {
+export function verifyCreatorLogin(secret: string, totpCode?: string): {ok: true; secondFactor: "TOTP" | "NOT_CONFIGURED"} {
   if (typeof secret !== "string" || secret.length === 0) {
     throw new CreatorAuthError("CREATOR_SECRET_REQUIRED", 400, "creator secret is required");
   }
@@ -170,6 +192,54 @@ export function verifyCreatorLogin(secret: string): {ok: true} {
   const matches = supplied.length === reference.length && crypto.timingSafeEqual(supplied, reference);
 
   if (matches) {
+    // Zweiter Faktor: gesetzt = verpflichtend (fail closed), sonst nicht gefordert.
+    if (totpConfigured()) {
+      const verification = verifyTotpCode(totpCode ?? "", {usedSteps: payload.totpUsedSteps});
+      if (!verification.ok) {
+        const failures = pruneFailures([...payload.failures, new Date(now).toISOString()], now);
+        const locked = failures.length >= LOCKOUT_THRESHOLD;
+        store.update(next => {
+          next.failures = failures;
+          next.lockedUntil = locked ? new Date(now + LOCKOUT_DURATION_MS).toISOString() : null;
+        });
+        recordAudit({actor: "ANONYMOUS", action: "creator.login.totp", resource: "CREATOR-AUTH", decision: "DENY"}, {reason: verification.reason});
+        observe({
+          type: "creator.login.totp.denied",
+          message: `Zweiter Faktor verweigert (${verification.reason})`,
+          status: "BLOCKED",
+          actor: "ANONYMOUS",
+          action: "creator.login.totp",
+          resource: "CREATOR-AUTH",
+          decision: "DENY",
+          argumentsValue: {reason: verification.reason, failures: failures.length}
+        });
+        throw new CreatorAuthError(
+          locked ? "CREATOR_LOCKED" : "TOTP_REQUIRED",
+          locked ? 423 : 403,
+          locked
+            ? "too many failed attempts; creator login is locked"
+            : verification.reason === "TOTP_CODE_FORMAT" || verification.reason === "TOTP_REPLAY" || verification.reason === "TOTP_CODE_MISMATCH"
+              ? "second factor (TOTP) is required and must be valid"
+              : "second factor (TOTP) is misconfigured"
+        );
+      }
+      store.update(next => {
+        next.failures = [];
+        next.lockedUntil = null;
+        next.totpUsedSteps = [...(next.totpUsedSteps ?? []), verification.step!].filter(step => Math.abs(step - totpStep(Date.now())) <= 4).slice(-8);
+      });
+      observe({
+        type: "creator.login",
+        message: "Creator-Anmeldung erfolgreich (zweiter Faktor TOTP)",
+        status: "COMPLETED",
+        actor: "CREATOR",
+        action: "creator.login",
+        resource: "CREATOR-AUTH",
+        decision: "ALLOW",
+        argumentsValue: {secondFactor: "TOTP"}
+      });
+      return {ok: true, secondFactor: "TOTP"};
+    }
     store.update(next => {
       next.failures = [];
       next.lockedUntil = null;
@@ -183,7 +253,7 @@ export function verifyCreatorLogin(secret: string): {ok: true} {
       resource: "CREATOR-AUTH",
       decision: "ALLOW"
     });
-    return {ok: true};
+    return {ok: true, secondFactor: "NOT_CONFIGURED"};
   }
 
   const failures = pruneFailures([...payload.failures, new Date(now).toISOString()], now);
