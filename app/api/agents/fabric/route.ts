@@ -13,12 +13,15 @@ export async function POST(req:Request){
   const b=await readJson(req);
   const action=actionField(b,["heartbeat","status","handoff","resolve"]);
   if(action==="heartbeat")return NextResponse.json({agent:heartbeatAgent(stringField(b,"id",128))});
-  if(action==="status")return NextResponse.json({agent:updateAgentStatus(
-   stringField(b,"id",128),
-   b.status as Parameters<typeof updateAgentStatus>[1],
-   typeof b.progress==="number"?b.progress:undefined,
-   typeof b.task==="string"?b.task:undefined
-  )});
+  if(action==="status"){
+   if(typeof b.progress!=="number"||!Number.isFinite(b.progress)||b.progress<0||b.progress>100)throw new Error("progress must be a finite number between 0 and 100");
+   return NextResponse.json({agent:updateAgentStatus(
+    stringField(b,"id",128),
+    b.status as Parameters<typeof updateAgentStatus>[1],
+    b.progress,
+    typeof b.task==="string"?b.task:undefined
+   )});
+  }
   if(action==="handoff")return NextResponse.json({handoff:requestHandoff(
    stringField(b,"fromAgentId",128),
    stringField(b,"toAgentId",128),
