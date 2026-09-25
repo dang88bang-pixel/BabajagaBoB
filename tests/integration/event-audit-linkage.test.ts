@@ -10,7 +10,7 @@ afterEach(()=>{delete process.env.BOB_STORAGE_DIR;fs.rmSync(root,{recursive:true
 describe("canonical event/audit linkage",()=>{
   it("assigns temporal parents and links the audit record to the exact event",async()=>{
     const {observe}=await import("../../lib/observability");
-    const {listDomainEvents,verifyEventChain}=await import("../../lib/events/log");
+    const {verifyEventChain}=await import("../../lib/events/log");
     const {auditSnapshot,verifyAuditChain}=await import("../../lib/audit");
 
     const first=observe({type:"test.first",message:"first",status:"COMPLETED",actor:"TEST",action:"test.first",resource:"TASK-1"});

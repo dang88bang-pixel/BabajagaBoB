@@ -173,7 +173,8 @@ Keine Erfolgsaussage stützt sich auf Mock-Verhalten; Simulationen
   (**176 / 0**), `scripts/audit-actions.mjs` (**502 / 0**, inkl. Ketten „Alarmierung/Backup" und
   Service-Level), `scripts/audit-api.sh` (**204 / 0**), `scripts/audit-ui.mjs` (**88 / 0**),
   `scripts/soak.mjs` (40 autorisierte Ausführungen, p95 2,22 s, Budget 5 s) **`MEETS_BUDGET`**.
-- Gesamt: **43 Dateien / 279 Tests grün**.
+- Gesamt: **48 Dateien / 294 Tests grün** (Unit 66, Security 106, Integration 88,
+  Regression 14, UI 12, E2E 8).
 
 Details und Befehle: `docs/TESTING.md`.
 
