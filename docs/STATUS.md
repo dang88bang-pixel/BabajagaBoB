@@ -111,3 +111,13 @@
 **Produktionsreife: deutlich darunter**, weil reale verteilte Ausführung, Authentifizierung, CI, OCI-Recovery und echte Regressionstests noch fehlen.
 
 Die Prozentwerte sind Architektur-/Implementierungsindikatoren, keine Testabdeckung und keine Garantie für Produktionssicherheit.
+
+
+## Verification Update — 2026-09-25
+
+- CI cache configuration repaired: `setup-node` no longer requests unsupported `cache: false`.
+- Mutating API routes hardened with fail-closed control-plane authentication.
+- Device, knowledge, simulation, provider and CI/CD state now use the durable local JSON fabric store with SHA-256 integrity and atomic writes.
+- CI security route check added to reject future unauthenticated POST API routes.
+- Agent API progress input is range-validated; scenario transitions and CI/CD production approval gates are enforced more strictly.
+- Overall status remains **NOT VERIFIED** until the current CI reaches a successful typecheck/build and the remaining P0/P1 integration tests are executed.
