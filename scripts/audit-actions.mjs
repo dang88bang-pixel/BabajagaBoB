@@ -120,7 +120,7 @@ function bodyFreeRoutes() {
  * Aktionen, die ohne Attribute gültig sind (2xx ist dort korrekt).
  * `logout` würde die laufende Sitzung beenden und wird nur am Ende geprüft.
  */
-const ATTRIBUTE_FREE_ACTIONS = new Set(["renew", "expire", "guardian", "verify", "reconcile", "logout", "is-killed", "worker.cycle", "backup", "repair"]);
+const ATTRIBUTE_FREE_ACTIONS = new Set(["renew", "expire", "guardian", "verify", "reconcile", "logout", "is-killed", "worker.cycle", "backup", "repair", "backup.run", "backup.prune"]);
 const DESTRUCTIVE_ACTIONS = new Set(["logout"]);
 
 /** Attribute, die in einer Route aus dem Body gelesen werden. */
@@ -343,6 +343,18 @@ async function chainFabricAndOps() {
   expectStatus("Simulation anlegen", scenario, 201);
   state.scenarioId = scenario.json?.scenario?.id ?? scenario.json?.id;
   expectStatus("Simulation fortschreiben", await post("/api/simulation", {action: "advance", id: state.scenarioId, state: "RUNNING", result: {detail: "ok"}}), 200);
+  // Visualisierung: jeder Render muss ein passives, wohlgeformtes SVG sein und
+  // als digest-geprüftes Evidenzartefakt ankommen.
+  for (const kind of ["ARCHITECTURE", "FLOW", "TIMELINE", "STATE_MACHINE", "DEPENDENCY", "NETWORK", "SCENE_3D"]) {
+    const render = await post("/api/simulation", {action: "render", id: state.scenarioId, kind});
+    expectStatus(`Visualisierung rendern (${kind})`, render, 201);
+    expectField(`Render ${kind} liefert Artefakt mit Digest`, render, j => String(j.render?.artifactId ?? "").startsWith("ART-") && /^[0-9a-f]{64}$/.test(String(j.render?.digest ?? "")) && Number(j.render?.bytes ?? 0) > 200, "artifactId + digest + bytes");
+    const image = await api("GET", `/api/simulation/render?id=${encodeURIComponent(state.scenarioId)}&kind=${kind}`);
+    if (image.status === 200 && /^<svg\b/.test(image.text.trim()) && !/<script/i.test(image.text)) ok(`Bildroute liefert passives SVG (${kind})`, `${image.text.length} Zeichen`);
+    else bad(`Bildroute liefert passives SVG (${kind})`, `Status ${image.status}`);
+  }
+  expectStatus("Unbekannte Visualisierungsart wird verweigert", await post("/api/simulation", {action: "render", id: state.scenarioId, kind: "HOLOGRAMM"}), 400);
+  expectStatus("Visualisierung für unbekanntes Szenario wird verweigert", await post("/api/simulation", {action: "render", id: "SCN-GIBTSNICHT", kind: "FLOW"}), 404);
 
   const module = await post("/api/apps", {action: "register-module", value: {id: `MOD-${STAMP}`, name: "Audit-Modul", description: "Prüfmodul", version: "1.0.0", kind: "SCRIPT", entrypoint: "index.js", digest: "a".repeat(64), validated: true}});
   expectStatus("Ausführbares Modul registrieren", module, [201, 400]);
@@ -373,6 +385,32 @@ async function chainDevicesAndProviders() {
   expectStatus("Gerät autorisieren", await post("/api/devices", {action: "authorize", id: state.deviceId, authorized: true}), 200);
   expectStatus("Gerät reservieren", await post("/api/devices", {action: "allocate", id: state.deviceId, taskId: state.taskId}), 200);
   expectStatus("Gerät freigeben", await post("/api/devices", {action: "release", id: state.deviceId}), 200);
+
+  // Geräte-Registrierung (Enrollment): eigener, minimal berechtigter Weg.
+  // Ohne konfiguriertes Geheimnis fail closed; mit Geheimnis nur Discovery und
+  // Lebenszeichen — niemals Autorisierung, Reservierung oder Freigabe.
+  const enrollmentSecret = process.env.BOB_DEVICE_ENROLLMENT_SECRET ?? "";
+  const enrollIdentity = {id: `DEV-ENROLL-${STAMP}`, name: "Enrollment-Host", os: "linux", arch: "x64", cpu: 2, ramMb: 2048, network: "NONE", trust: "EPHEMERAL", capabilities: ["node"]};
+  const noSecret = await post("/api/devices", {action: "enroll", device: enrollIdentity});
+  expectStatus("Enrollment ohne Geheimnis wird verweigert", noSecret, [403, 503]);
+  if (enrollmentSecret.length >= 16) {
+    const enrolled = await post("/api/devices", {action: "enroll", secret: enrollmentSecret, device: {...enrollIdentity, authorized: true}});
+    expectStatus("Enrollment mit gültigem Geheimnis", enrolled, 201);
+    expectField("Enrollment verwirft die behauptete Autorisierung", enrolled, j => j.device?.authorized === false, "authorized=false");
+    const beat = await post("/api/devices", {action: "heartbeat", secret: enrollmentSecret, device: enrollIdentity});
+    expectStatus("Enrollment-Lebenszeichen", beat, 200);
+    expectField("Lebenszeichen ändert die Autorisierung nicht", beat, j => j.authorized === false && j.device?.authorized === false, "authorized=false");
+    // Ohne Creator-Session: das Enrollment-Geheimnis allein erlaubt keine Creator-Akte.
+    expectStatus("Enrollment-Geheimnis allein autorisiert nicht", await post("/api/devices", {action: "authorize", secret: enrollmentSecret, id: enrollIdentity.id, authorized: true}, {session: false}), [401, 403, 428]);
+    expectStatus("Enrollment-Geheimnis allein reserviert nicht", await post("/api/devices", {action: "allocate", secret: enrollmentSecret, id: enrollIdentity.id, taskId: state.taskId}, {session: false}), [401, 403, 428]);
+    // Mit Creator-Session bleibt die Freigabe ein ausdrücklicher Creator-Akt.
+    const afterAttempt = await get("/api/devices");
+    const attempted = (afterAttempt.json?.devices ?? []).find(entry => entry.id === enrollIdentity.id);
+    if (attempted?.authorized === false) ok("Gerät bleibt bis zur ausdrücklichen Freigabe unautorisiert", "authorized=false");
+    else bad("Gerät bleibt bis zur ausdrücklichen Freigabe unautorisiert", JSON.stringify(attempted ?? {}).slice(0, 120));
+  } else {
+    ok("Enrollment-Fluss übersprungen", "BOB_DEVICE_ENROLLMENT_SECRET nicht gesetzt — fail-closed-Verhalten geprüft");
+  }
 
   const computer = await post("/api/computer-use", {action: "register", computer: {id: `CU-${STAMP}`, name: "Audit-Computer", kind: "DESKTOP", description: "Prüfgerät"}});
   expectStatus("Computer registrieren", computer, [201, 400]);
@@ -442,6 +480,36 @@ async function chainInboxApprovalsKnowledge() {
     j => Array.isArray(j.stores?.stores) && j.stores.stores.every(entry => entry.ok !== false),
     "stores.stores[] alle ok"
   );
+  return true;
+}
+
+async function chainAlertingBackupRecovery() {
+  step("8b. Alarmierung, Backup-Automation und Wiederherstellung");
+  // Alarmregeln: gebunden an die **real ausgelieferten** Kennzahlen. Eine Regel,
+  // die auf eine unbekannte Kennzahl zeigt, macht die Regeldatei ungültig
+  // (fail closed) statt wirkungslos zu sein.
+  const alerts = await get("/api/alerts");
+  expectStatus("Alarmregeln lesen", alerts, 200);
+  expectField("Alarmregeln sind gegen die Exporter-Kennzahlen geprüft", alerts, j => j.validation?.ok === true && Number(j.validation?.rules) > 0 && Array.isArray(j.validation?.unknownMetrics), "validation.ok + rules");
+  expectField("Jede Regel hat Ausdruck, Schwere und Runbook", alerts, j => Array.isArray(j.rules) && j.rules.length > 0 && j.rules.every(r => typeof r.expr === "string" && typeof r.severity === "string" && typeof r.runbook === "string"), "rules[].expr/severity/runbook");
+  const rules = await api("GET", "/api/alerts?format=prometheus");
+  if (rules.status === 200 && /groups:/.test(rules.text) && /alert:/.test(rules.text) && !/unknown metric/i.test(rules.text)) ok("Regeldatei für Prometheus", `${rules.text.length} Zeichen YAML`);
+  else bad("Regeldatei für Prometheus", `Status ${rules.status}`);
+
+  // Backup-Automation: idempotent, verifiziert, mit Aufbewahrungsgrenze.
+  const first = await post("/api/persistence", {action: "backup.run"});
+  expectStatus("Geplante Sicherung ausführen", first, [200, 201]);
+  expectField("Geplante Sicherung meldet Ergebnis", first, j => typeof j.ran === "boolean" && Array.isArray(j.createdAt) && typeof j.verified === "number", "ran + createdAt + verified");
+  const second = await post("/api/persistence", {action: "backup.run"});
+  expectField("Zweiter Lauf im Intervall ist idempotent", second, j => j.ran === false && Array.isArray(j.createdAt) && j.createdAt.length === 0, "ran=false, keine neuen Kopien");
+  const forced = await post("/api/persistence", {action: "backup.run", force: true});
+  expectField("Erzwungener Lauf erzeugt Kopien", forced, j => j.ran === true && j.verified > 0, "ran=true + verified>0");
+  const prune = await post("/api/persistence", {action: "backup.prune"});
+  expectStatus("Aufbewahrungsregel ausführen", prune, 200);
+  expectField("Aufbewahrung schützt das neueste Backup", prune, j => Array.isArray(j.deleted) && Array.isArray(j.corrupted) && typeof j.kept === "number" && Array.isArray(j.skipped), "deleted + corrupted + kept(Zahl) + skipped");
+  const status = await get("/api/persistence");
+  expectField("Persistenz-Status zeigt die Backup-Automation", status, j => Number(j.backupAutomation?.policy?.keepPerStore) >= 1 && typeof j.backupAutomation?.due === "boolean", "policy.keepPerStore + due");
+  expectField("Keine fehlgeschlagenen Sicherungen im Status", status, j => Array.isArray(j.backups?.failed) && j.backups.failed.length === 0, "backups.failed leer");
   return true;
 }
 
@@ -656,6 +724,7 @@ async function main() {
     ["Fabric und Betrieb", chainFabricAndOps],
     ["Geräte/Provider", chainDevicesAndProviders],
     ["Inbox/Approvals/Wissen", chainInboxApprovalsKnowledge],
+    ["Alarmierung/Backup", chainAlertingBackupRecovery],
     ["Worker/Queue", chainWorkersAndGates],
     ["Science", chainScience],
     ["Governance", chainGovernance],

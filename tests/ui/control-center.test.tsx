@@ -74,19 +74,62 @@ const payloads: Record<string, unknown> = {
   "/api/approvals": [{id: "APR-001", taskId: "TASK-001", status: "PENDING", reason: "Capability-Änderung", createdAt: "2026-01-01T00:00:00.000Z"}],
   "/api/cicd": {pipelines: [{id: "PIPE-1", taskId: "TASK-001", branch: "arena/x", stage: "TEST", checks: [{kind: "UNIT", status: "PASSED"}], updatedAt: "2026-01-01T00:00:00.000Z"}]},
   "/api/artifacts": {artifacts: [{id: "ART-1", name: "Ausführung", kind: "EXECUTION", taskId: "TASK-001", runId: "", sandboxId: "SB-001", agentId: "AG-BUILD", knowledgeState: "OBSERVED", digest: "a".repeat(64), createdAt: "2026-01-01T00:00:00.000Z"}]},
-  "/api/devices": {devices: [{id: "DEV-1", name: "Host", os: "linux", arch: "x64", trust: "LOCAL_TRUSTED", state: "AVAILABLE", capabilities: ["node"], network: "NONE"}]},
+  "/api/devices": {
+    devices: [
+      {id: "DEV-1", name: "Host", os: "linux", arch: "x64", trust: "LOCAL_TRUSTED", state: "AVAILABLE", authorized: false, capabilities: ["node"], network: "NONE"}
+    ],
+    enrollment: {available: false}
+  },
+  "/api/persistence": {
+    provider: "local-json",
+    root: "/tmp/bob",
+    integrity: {ok: true},
+    stores: {ok: true, stores: [{store: "control", version: 1, exists: true, ok: true, writtenAt: "2026-01-01T00:00:00.000Z"}]},
+    events: {ok: true},
+    provenance: {nodes: 3, edges: 2},
+    backupPath: "/tmp/bob/backups",
+    backups: {count: 4, verified: 4, failed: [], newest: []},
+    backupAutomation: {
+      policy: {intervalMs: 3600000, keepPerStore: 5},
+      runs: 7,
+      due: false,
+      backups: {count: 4, verified: 4, failed: 0, location: "/tmp/bob/backups"},
+      integrity: {ok: true},
+      lastRunAt: "2026-01-01T00:00:00.000Z"
+    }
+  },
   "/api/computer-use": {computers: [{id: "CU-1", name: "Browser", kind: "BROWSER", network: "DENY", authorized: false, state: "AVAILABLE"}]},
   "/api/knowledge": {nodes: [{knowledgeId: "KN-1", layer: "NEGATIVE", subject: "Never Again: ERR-1", predicate: "prevention", object: "Fehlerbedingung behandeln", state: "SUPPORTED", confidence: "EVIDENCE_BASED"}]},
   "/api/simulation": {scenarios: [{id: "SIM-1", name: "Fluss", kind: "FLOW", state: "MODELING", assumptions: ["A"], expectedStates: ["B"]}]},
+  "/api/alerts": {
+    rules: [
+      {id: "BobAuditChainBroken", expr: "bob_audit_chain_ok == 0", for: "1m", severity: "CRITICAL", summary: "Audit-Kette unterbrochen", runbook: "docs/SECURITY.md §8"},
+      {id: "BobQueueBacklog", expr: "bob_queue_jobs - bob_queue_leased > 10", for: "15m", severity: "WARNING", summary: "Warteschlange wächst", runbook: "docs/OPERATIONS.md §5"}
+    ],
+    validation: {ok: true, rules: 2, metrics: 48, unknownMetrics: [], duplicateIds: [], missingRunbook: [], invalidFor: []}
+  },
   "/api/providers": {providers: [{id: "PRV-1", name: "Beispiel", category: "MODEL", lifecycle: "REGISTERED", health: "UNKNOWN", enabled: false}]},
   "/api/audit": {records: [{}, {}], chain: {valid: true}},
   "/api/readiness": {ready: true, activeTasks: 3, blockedTasks: 0}
 };
 
 function stubFetch(denied: string[] = []) {
-  vi.stubGlobal("fetch", (input: RequestInfo | URL) => {
+  vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (denied.includes(url)) return Promise.resolve(new Response("{}", {status: 500}));
+    // Schreibaktionen: der Renderer meldet ein Evidenz-Artefakt mit Digest.
+    if (init?.method === "POST" && url === "/api/simulation") {
+      const body = JSON.parse(String(init.body ?? "{}")) as {action?: string; id?: string; kind?: string};
+      if (body.action === "render") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({render: {artifactId: "ART-RENDER-1", digest: "a1b2c3d4e5f60718" + "0".repeat(48), kind: body.kind, scenarioId: body.id, bytes: 4096, nodes: 12, truncated: false}}),
+            {status: 201, headers: {"content-type": "application/json"}}
+          )
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify({ok: true}), {status: 200, headers: {"content-type": "application/json"}}));
+    }
     const body = payloads[url];
     if (body === undefined) return Promise.resolve(new Response("{}", {status: 404}));
     return Promise.resolve(new Response(JSON.stringify(body), {status: 200, headers: {"content-type": "application/json"}}));
@@ -164,6 +207,67 @@ describe("Control Center Oberfläche", () => {
 
     // Der frühere Platzhalter darf nicht mehr auftauchen.
     expect(container.textContent).not.toContain("explicit integration boundary");
+  });
+
+  it("zeigt Geräte als nicht autorisiert (Discovery ≠ Autorisierung)", async () => {
+    await render();
+    await click("Geräte");
+    expect(container.textContent).toContain("DEV-1");
+    expect(container.textContent).toContain("Discovery ≠ Autorisierung");
+    expect(container.textContent).toContain("Autorisiert");
+  });
+
+  it("zeigt die Backup-Automation mit Intervall, Aufbewahrung und Idempotenz-Hinweis", async () => {
+    await render();
+    await click("Betrieb/Persistenz");
+    expect(container.textContent).toContain("Backup-Automation");
+    expect(container.textContent).toContain("1 h");
+    expect(container.textContent).toContain("5 je Store");
+    expect(container.textContent).toContain("Geplante Sicherung ausführen");
+    expect(container.textContent).toContain("nie die neueste oder einzige eines Stores");
+    expect(container.textContent).toContain("idempotent");
+  });
+
+  it("zeigt die geprüften Alarmregeln im Metriken-Abschnitt", async () => {
+    await render();
+    await click("Metriken");
+    expect(container.textContent).toContain("Alarmregeln");
+    expect(container.textContent).toContain("BobAuditChainBroken");
+    expect(container.textContent).toContain("CRITICAL");
+    expect(container.textContent).toContain("Prüfung BESTANDEN");
+  });
+
+  it("bindet den Simulationsabschnitt an den Visualisierungs-Renderer", async () => {
+    await render();
+    await click("Simulation");
+    // Der Renderer ist bedienbar: Szenario-Auswahl, Art-Auswahl und Renderknopf.
+    expect(container.textContent).toContain("Visualisierung");
+    expect(container.textContent).toContain("SIMULATION");
+    const kindSelect = [...container.querySelectorAll("select")].find(select => [...select.options].some(option => option.value === "SCENE_3D"));
+    expect(kindSelect, "Art-Auswahl fehlt").toBeTruthy();
+    const kinds = [...(kindSelect as HTMLSelectElement).options].map(option => option.value);
+    expect(kinds).toEqual(["ARCHITECTURE", "FLOW", "TIMELINE", "STATE_MACHINE", "DEPENDENCY", "NETWORK", "SCENE_3D"]);
+    const button = [...container.querySelectorAll("button")].find(entry => entry.textContent?.includes("Visualisierung rendern"));
+    expect(button, "Renderknopf fehlt").toBeTruthy();
+    expect(container.textContent).toContain("Noch keine Visualisierung gerendert");
+  });
+
+  it("zeigt einen Render mit Digest, Größe und erneuter Digest-Prüfung", async () => {
+    await render();
+    await click("Simulation");
+    const button = [...container.querySelectorAll("button")].find(entry => entry.textContent?.includes("Visualisierung rendern"));
+    await act(async () => {
+      button?.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    // Das Bild wird über die geschützte Route eingebunden (kein Markup im DOM).
+    const image = container.querySelector("img.visualization") as HTMLImageElement | null;
+    expect(image, "Vorschaubild fehlt").toBeTruthy();
+    expect(image?.getAttribute("src")).toContain("/api/simulation/render?id=SIM-1&kind=ARCHITECTURE");
+    expect(container.textContent).toContain("a1b2c3d4e5f60718");
+    expect([...container.querySelectorAll("button")].some(entry => entry.textContent?.includes("Digest erneut prüfen"))).toBe(true);
   });
 
   it("meldet fehlende Daten ausdrücklich als nicht verfügbar", async () => {

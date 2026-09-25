@@ -8,6 +8,7 @@ import {listRuns} from "./runs";
 import {queueSnapshot} from "./queue";
 import {listSandboxes} from "./sandbox/fabric";
 import {capabilityTokens} from "./authority";
+import {artifactSnapshot} from "./artifacts";
 import {errorSummary, listErrorIncidents} from "./error-intelligence";
 import {knowledgeSummary} from "./knowledge";
 import {listFailures, listRecoveryPlans} from "./reliability";
@@ -16,7 +17,7 @@ import {listProviders} from "./provider-fabric";
 import {listDevices} from "./devices";
 import {listComputers} from "./computer-use";
 import {isKilled} from "./governance";
-import {isolationReport} from "./ns-isolation";
+import {isolationReport, requestedIsolation} from "./ns-isolation";
 
 /**
  * Betriebsmetriken im Prometheus-Textformat (Abschnitt 39 / Operations).
@@ -78,9 +79,25 @@ export function collectMetrics(): Metric[] {
   // --- Ausführungs-Isolation ------------------------------------------------
   // Gemessener Zustand (kernel-seitig erzwungen oder nur Policy), keine Zusage.
   const isolation = safe(() => isolationReport(), null);
+  // Angefordert ≠ erzwungen: die Differenz ist genau der Zustand, in dem
+  // Ausführungen gesperrt sind (fail closed) — ohne diese Zahl wäre der
+  // Unterschied zwischen „Isolation aus" und „Isolation kaputt" unsichtbar.
+  const isolationRequested = safe(() => requestedIsolation(), "auto");
   push({
     name: "bob_isolation_namespaces_ok",
     help: "1 wenn die Ausführung kernel-isoliert ist (Namespaces, read-only Rootfs, no_new_privs)",
+    type: "gauge",
+    value: isolation?.level === "NAMESPACES" ? 1 : 0
+  });
+  push({
+    name: "bob_isolation_requested",
+    help: "1 wenn Kernel-Isolation angefordert ist (on/auto), 0 bei off",
+    type: "gauge",
+    value: isolationRequested === "off" ? 0 : 1
+  });
+  push({
+    name: "bob_isolation_enforced_state",
+    help: "1 wenn die angeforderte Isolationsstufe tatsächlich erzwungen wird",
     type: "gauge",
     value: isolation?.level === "NAMESPACES" ? 1 : 0
   });
@@ -126,6 +143,10 @@ export function collectMetrics(): Metric[] {
   }
   const queue = safe(() => queueSnapshot(), [] as ReturnType<typeof queueSnapshot>);
   push({name: "bob_queue_jobs", help: "Jobs in der Queue", type: "gauge", value: queue.length});
+  // Belegte (geleaste) Jobs: ohne diese Zahl wäre „Queue wächst" nicht von
+  // „Queue hängt in Leases" unterscheidbar — zwei verschiedene Störungen.
+  push({name: "bob_queue_leased", help: "Jobs im Zustand LEASED", type: "gauge", value: queue.filter(job => job.state === "LEASED").length});
+  push({name: "bob_queue_failed", help: "Jobs im Zustand FAILED", type: "gauge", value: queue.filter(job => job.state === "FAILED").length});
   const sandboxes = safe(() => listSandboxes(), []);
   push({name: "bob_sandboxes", help: "Anzahl Sandboxes", type: "gauge", value: sandboxes.length});
   push({
@@ -145,6 +166,11 @@ export function collectMetrics(): Metric[] {
     type: "gauge",
     value: tokens.filter(token => !token.revoked && new Date(token.expiresAt).getTime() > now).length
   });
+
+  // Verweigerungs-Evidenz: der Broker legt für jede Verweigerung ein Artefakt
+  // (kind DENIAL) ab. Diese Zahl ist damit **belegt**, nicht geschätzt.
+  const denials = safe(() => artifactSnapshot({kind: "DENIAL"}), [] as Array<{id: string}>);
+  push({name: "bob_executions_denied", help: "Belegte Verweigerungen an Gate/Broker (Evidenzartefakte)", type: "gauge", value: denials.length});
 
   // --- Fehler, Recovery, Wissen --------------------------------------------
   const incidents = safe(() => listErrorIncidents(), []);

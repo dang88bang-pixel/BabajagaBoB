@@ -150,21 +150,24 @@ Keine Erfolgsaussage stützt sich auf Mock-Verhalten; Simulationen
 
 - Unit (**7 Dateien / 53 Tests**): Persistenz, Store-Migration, Control Plane, Agent Fabric (11 Rollen,
   harte Grenzen), Recovery-Tier, Betriebszustand, Audit-Aufbewahrung.
-- Integration (**9 / 56**): Sandbox-Runtime, Provider-Fabric, App-Modul-Sandbox, Computer Use
+- Integration (**12 / 84**): Sandbox-Runtime, Provider-Fabric, App-Modul-Sandbox, Computer Use
   (Registrierung erzwingt unauthorisiert, Autorisierung nur als Creator-Akt), Ausführungs- und
-  Verweigerungs-Evidenz, Backup/Metriken, Nebenläufigkeit, Kernel-Isolation, Worker-Fehlerkette.
-- Security (**15 / 95**): Authority-Invarianten (inkl. Token-Ablauf als Pflicht), API-Guard, API-Gate,
+  Verweigerungs-Evidenz, Backup/Metriken, Nebenläufigkeit, Kernel-Isolation (11 Tests), Worker-Fehlerkette,
+  Visualisierung (7 Renderarten) sowie **Alarmierung** (16 Regeln an reale Kennzahlen gebunden) und
+  **Backup-Automation** (idempotenter Lauf, Aufbewahrung schützt das neueste Backup).
+- Security (**16 / 103**): Authority-Invarianten (inkl. Token-Ablauf als Pflicht), API-Guard, API-Gate,
   Routen-Guards, direkt aufgerufene Routen ohne Gate, argv-Policy, Creator-Login, Lockout, TOTP, Inbox,
-  Routenvertrag, Token-Leseprojektion ohne `secretHash`.
-- Regression (1 / 5): Regression Engine (argv-Policy, leere Suite = Fehlschlag).
+  Routenvertrag, Token-Leseprojektion ohne `secretHash`, **Geräte-Registrierung** (fail closed, kein
+  Selbst-Grant, Lebenszeichen ohne Rechteänderung).
 - E2E (2 / 4): Erfolgskette Creator → Knowledge; Fehlerkette bis `REGRESSION_LOCKED`.
-- UI (2 / 6): Control Center unter jsdom mit vollständiger Navigation und echten Routen-Handlern.
+- UI (2 / 11): Control Center unter jsdom mit vollständiger Navigation, echten Routen-Handlern,
+  ausgewiesener Geräte-Autorisierung und Backup-Automation.
 - Regression (**3 / 14**): Regression Engine sowie Quellvertrag der Oberfläche
   (`ui-contract.test.ts`) und der Isolationsbericht (`ns-report-cache.test.ts`).
-- Live: `scripts/verify-live.sh` (**169 Prüfungen, 0 Fehler**, zweimal auf derselben Instanz, mit
-  Kernel-Isolation und Ressourcenlimits), `scripts/audit-api.sh` (**184 / 0**),
-  `scripts/audit-actions.mjs` (**440 / 0**, zweimal), `scripts/audit-ui.mjs` (**65 / 0**).
-- Gesamt: **38 Dateien / 228 Tests grün**.
+- Live auf der Frischinstanz `:3100` (cgroup-delegiert, Kernel-Isolation): `scripts/verify-live.sh`
+  (**174 / 0**), `scripts/audit-actions.mjs` (**488 / 0**, inkl. Kette „Alarmierung/Backup"),
+  `scripts/audit-api.sh` (**201 / 0**), `scripts/audit-ui.mjs` (**82 / 0**).
+- Gesamt: **42 Dateien / 269 Tests grün**.
 
 Details und Befehle: `docs/TESTING.md`.
 

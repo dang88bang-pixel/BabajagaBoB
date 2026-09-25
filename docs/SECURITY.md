@@ -211,10 +211,11 @@ Pflicht, Ablehnung ohne/mit falschem Code, Akzeptanz und Replay-Ablehnung des zw
 echtes HTTP), `tests/security/inbox-route.test.ts`,
 `tests/security/api-route-contract.test.ts`, `tests/security/direct-route-denial.test.ts`,
 `tests/security/gate-bypass.test.ts`, `tests/security/token-read-projection.test.ts` (kein
-`secretHash` in Leseantworten), `tests/e2e/creator-flow.test.ts`, `tests/e2e/failure-recovery.test.ts`
-(**15 Dateien / 95 Tests** in der Security-Suite, 38 Dateien / 228 Tests gesamt) und der Live-Nachweis
-`scripts/verify-live.sh` (**169 Prüfungen / 0 Fehler**, zweimal wiederholt auf derselben Instanz, mit
-aktiver Kernel-Isolation) sowie `scripts/audit-ui.mjs` (**65 / 0**, u. a. „kein Geheimnisfeld in einer
-Antwort an den Browser").
+`secretHash` in Leseantworten), `tests/security/device-enrollment.test.ts` (Enrollment fail closed,
+kein Selbst-Grant, Geheimnis nie in Antworten), `tests/e2e/creator-flow.test.ts`,
+`tests/e2e/failure-recovery.test.ts` (**16 Dateien / 103 Tests** in der Security-Suite, 42 Dateien /
+269 Tests gesamt) und der Live-Nachweis `scripts/verify-live.sh` (**174 Prüfungen / 0 Fehler** auf der
+Frischinstanz mit aktiver Kernel-Isolation) sowie `scripts/audit-ui.mjs` (**82 / 0**, u. a. „kein
+Geheimnisfeld in einer Antwort an den Browser", „kein Gerät ohne Creator-Freigabe autorisiert").
 Zusammenfassung: `docs/TESTING.md`. Offene, als `PARTIAL`/`UNVERIFIED` gekennzeichnete Punkte sind dort und in
 `docs/TODO.md` gelistet.

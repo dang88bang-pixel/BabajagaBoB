@@ -26,5 +26,23 @@ export function discoverDevice(device:Omit<Device,"authorized"|"state">){
 export function authorizeDevice(id:string,authorized=true,actor="CREATOR"){const d=devices.find(x=>x.id===id);if(!d)throw new Error("device not found");if(actor!=="CREATOR")throw new Error("device authorization requires Creator authority");if(d.state==="UNKNOWN"||d.state==="DISCOVERED"||d.state==="IDENTIFIED")d.state=authorized?"AUTHORIZED":"RELEASED";d.authorized=authorized;persist();observe({type:authorized?"device.authorized":"device.revoked",message:`Gerät ${id}: ${authorized?"autorisiert":"widerrufen"}`,status:authorized?"COMPLETED":"BLOCKED",actor,action:"device.authorize",resource:id,decision:authorized?"ALLOW":"DENY"});return clone(d)}
 export function allocateDevice(id:string,taskId:string){const d=devices.find(x=>x.id===id);if(!d)throw new Error("device not found");if(!d.authorized||!["AUTHORIZED","AVAILABLE"].includes(d.state))throw new Error("device is not authorized/available");d.state="ALLOCATED";d.currentTaskId=taskId;persist();observe({type:"device.allocated",message:`Gerät ${id} an ${taskId} gebunden`,status:"RUNNING",actor:"AG-OPS",agentId:"AG-OPS",taskId,action:"device.allocate",resource:id});return clone(d)}
 export function releaseDevice(id:string){const d=devices.find(x=>x.id===id);if(!d)throw new Error("device not found");d.state="RELEASED";delete d.currentTaskId;persist();observe({type:"device.released",message:`Gerät ${id} freigegeben`,status:"COMPLETED",actor:"AG-OPS",agentId:"AG-OPS",action:"device.release",resource:id});return clone(d)}
+/**
+ * Lebenszeichen eines gemeldeten Geräts.
+ *
+ * Setzt ausschließlich `lastSeen` (und bei Bedarf die gemeldeten Fähigkeiten).
+ * **Nicht** änderbar sind hier `authorized`, `state` und `currentTaskId` — ein
+ * Heartbeat darf keine Autorisierung erzeugen oder verändern (Discovery ≠
+ * Autorisierung).
+ */
+export function heartbeatDevice(id:string,reported?:{capabilities?:string[];network?:DeviceNetwork}){
+  const d=devices.find(x=>x.id===id);if(!d)throw new Error("device not found");
+  d.lastSeen=new Date().toISOString();
+  if(reported?.capabilities&&Array.isArray(reported.capabilities))d.capabilities=reported.capabilities.slice(0,32).map(String);
+  if(reported?.network&&["INTERNET","LAN","VPN","NONE","ALLOWLIST"].includes(reported.network))d.network=reported.network;
+  persist();
+  observe({type:"device.heartbeat",message:`Gerät ${id} meldet sich (nicht autorisiert: ${!d.authorized})`,status:"COMPLETED",actor:"AGENT-ENROLLMENT",agentId:"AGENT-ENROLLMENT",action:"device.heartbeat",resource:id});
+  return clone(d);
+}
+
 export function deviceSummary(){return {total:devices.length,authorized:devices.filter(d=>d.authorized).length,allocated:devices.filter(d=>d.state==="ALLOCATED").length}}
 export function deviceStoreReport(){return store.integrity()}

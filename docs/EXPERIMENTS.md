@@ -53,6 +53,45 @@ Was-wäre-wenn) und `POST /api/simulation {action:"advance"}` schaltet sie weite
 Die Simulation ist ausdrücklich **SIMULATED** — sie ersetzt keine Messung und
 liefert keine Evidenz im Sinne von `lib/artifacts.ts`.
 
+### 5a. Renderer (`lib/visualization.ts`)
+
+Szenarien werden **deterministisch als SVG gerendert** — aus dem echten
+Plattformzustand, nicht aus Beispielwerten:
+
+| Art | Inhalt | Quelle |
+|---|---|---|
+| `ARCHITECTURE` | Durchsetzungskette Intent → Policy → Authorization → Execution Gate → Broker → Isolated Runtime → Evidence | Control Plane, Authority, Runs, Sandboxes, Events |
+| `FLOW` | Creator → Mission → Objective → Task → Agent → Sandbox → Run → Evidence | Control Plane, Runs |
+| `TIMELINE` | die jüngsten Ereignisse mit Zeitstempel | Event-Log (kausal) |
+| `STATE_MACHINE` | Fehler-Lebenszyklus mit den **erlaubten** Übergängen und Vorkommen je Zustand | `ERROR_TRANSITIONS`, offene Vorfälle |
+| `DEPENDENCY` | Laufzeiten mit Art, Version, Netzwerk-Default, Sandbox-Unterstützung | Runtime-Registry |
+| `NETWORK` | Anteil der Objekte ohne externen Pfad (Sandboxes, Geräte, Provider, Computer) | Sandbox-/Device-/Provider-/Computer-Use-Fabric |
+| `SCENE_3D` | axonometrische Projektion der Sandbox-Flotte, Höhe = Lebenszykluszustand | Sandbox-Fabric |
+
+Aufruf:
+
+```bash
+# Bild (passiv, für <img>; ohne Skriptausführung im Browser)
+GET  /api/simulation/render?id=<SCN-…>&kind=<ART>
+# Render + Evidenzartefakt mit SHA-256-Digest (Creator-Akt)
+POST /api/simulation {action:"render", id:"SCN-…", kind:"ARCHITECTURE"}
+```
+
+Sicherheitsgrenzen:
+
+- **Escaping + Prüfung:** jeder eingefügte Wert wird XML-escaped; `assertPassiveSvg`
+  prüft zusätzlich auf `<script`, `javascript:`, Ereignis-Attribute in Tag-Innenräumen,
+  externe `href`/`src`, `<!ENTITY`, `<?xml-stylesheet`, `iframe`/`object`/`embed`/`foreignObject`
+  und `data:text/html`. Ein Verstoß bricht den Render ab (fail closed).
+- **Größe:** die Ausgabe bleibt unter 75 % von `MAX_CONTENT_BYTES`, damit sie als
+  **vollständiges** Evidenzartefakt gespeichert wird; bei zu vielen Objekten werden
+  Knoten weggelassen, nicht das Bild abgeschnitten (max. 24 Knoten je Bild).
+- **Auslieferung:** `content-type: image/svg+xml`, `Content-Security-Policy: default-src 'none'`,
+  `x-content-type-options: nosniff`. Das Bildroute-Ergebnis ist eine passive Ressource
+  und wird in der Oberfläche als `<img>` eingebunden — nicht als eingebettetes Markup.
+- Der Kopf jedes Bildes nennt Szenario und Zustand („Szenario SCN-… (DRAFT)") und trägt
+  den Vermerk **SIMULATION — kein Nachweis**.
+
 ## 6. Grenzen
 
 - Keine statistische Signifikanzberechnung (kein p-Wert). Bewertet wird
@@ -64,4 +103,9 @@ liefert keine Evidenz im Sinne von `lib/artifacts.ts`.
 
 - `tests/e2e/failure-recovery.test.ts` — Experiment + Evidenz im Fehlerpfad.
 - `tests/regression/regression-engine.test.ts` — Regression aus Erkenntnis.
+- `tests/integration/visualization.test.ts` (11 Tests) — jede der sieben Arten wird als
+  **XML geparst**, Determinismus, Escaping feindlicher Szenarionamen, Größenlimit,
+  Evidenzartefakt mit Digest, Route-Verträge (`image/svg+xml`, CSP, 401/428, 404, 400).
 - `scripts/verify-live.sh` — Experiment- und Wissenschaftsrouten über HTTP.
+- `scripts/audit-actions.mjs` — jede Visualisierungsart wird gerendert und als
+  passives SVG über die Bildroute geprüft.

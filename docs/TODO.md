@@ -35,13 +35,13 @@ Smoke-Test laufen als SYSTEM-WORKER über Gate, Broker und Evidenz).
 | OCI-Runtime verifizieren | kein Container-Daemon in der Umgebung | Lauf mit Docker/Podman auf einem Host mit Daemon; Härtungsflags und Snapshot prüfen |
 | Egress-Allowlist | bewusst fail closed, bis ein kontrollierter Proxy existiert | Egress-Proxy + DNS-Pinning implementieren, dann `ALLOWLIST` freischalten |
 | Provider live verbinden | keine externen Verbindungen erlaubt (Netzwerk `DENY`) | mit Allowlist + Approval einen Adapter real anbinden und Telemetrie prüfen |
-| Geräte-Discovery | Registrierung nur über API | Discovery-Dienst/Agent-Heartbeat ergänzen, Autorisierung bleibt Creator-Akt |
+| ~~Geräte-Discovery~~ | erledigt: `lib/device-enrollment.ts` + `scripts/discover-host.mjs` (Meldung mit Geheimnis, fail closed, nur Discovery/Heartbeat), Autorisierung bleibt Creator-Akt | offen: Netz-Scan (ARP/mDNS) und Attestierung sind `NOT_IMPLEMENTED` |
 | Computer Use | kein Browser-/Desktop-Treiber angebunden | Playwright-/VNC-Treiber im Sandbox-Workspace, Aktionen über Broker |
-| Simulation/Visualisierung | Szenarien persistent, keine Renderer | Renderer für `ARCHITECTURE`/`TIMELINE`/`SCENE_3D` ergänzen |
+| ~~Simulation/Visualisierung~~ | erledigt | Renderer `lib/visualization.ts` für alle sieben Arten (aus dem echten Zustand), Bildroute + Evidenzartefakt, `tests/integration/visualization.test.ts` |
 | Control-Center-UI | keine Browser-E2E-Tests | Playwright-Suite gegen Testserver mit Gate-Prüfung |
 | ~~Recovery-Tier-Ableitung~~ | erledigt | automatische, begründete Klassifikation in `lib/recovery-tier.ts` (Tests: `tests/unit/recovery-tier.test.ts`) |
-| Alarmierung | Prometheus-Export vorhanden, aber kein Scraper/Alertmanager | Scraper + Alarmregeln aus `docs/OPERATIONS.md` §4a aufsetzen |
-| Backup-Automation | Backup/Restore mit Digest-Prüfung implementiert, aber manuell | geplanten Job und Aufbewahrungsregel ergänzen |
+| ~~Alarmierung (Regeln)~~ | erledigt | 16 Regeln in `lib/alerting.ts`, an die echten Kennzahlen gebunden, `GET /api/alerts[?format=prometheus]`, UI-Anzeige, Tests; offen bleibt der Betrieb von Scraper/Alertmanager (`NOT_VERIFIED`) |
+| ~~Backup-Automation~~ | erledigt: `lib/backup-policy.ts` (idempotenter geplanter Lauf, Aufbewahrungsgrenze je Store, Audit + Ereignis, UI-Panel) | offen bleibt ein echter Scheduler-Daemon (externer Auslöser, `NOT_VERIFIED`) |
 | ~~Last-/Soak-Tests~~ | begrenzter Nachweis erbracht (`scripts/soak.mjs`, 2 × 120 Ausführungen, Zahlen in `docs/OPERATIONS.md` §5a) | offen bleibt ein Langzeittest mit definierten SLO-Schwellen |
 
 ## 3. Nicht implementiert (bewusst)

@@ -312,7 +312,8 @@ const CUSTOM_SECTIONS = {
   Security: ["/api/governance", "/api/capabilities"],
   Operations: ["/api/persistence", "/api/readiness"],
   Metrics: ["/api/metrics"],
-  Secrets: [] // bewusst keine Datenroute: keine Leseoperation auf Geheimnisse
+  Secrets: [], // bewusst keine Datenroute: keine Leseoperation auf Geheimnisse
+  Simulation: ["/api/simulation"]
 };
 
 /** Felder, die niemals mit Wert im Browser landen dürfen. */
@@ -334,6 +335,109 @@ function scanForSecrets(label, text) {
   walk(parsed, "");
   if (found.length > 0) bad(`Keine Geheimnisfelder: ${label}`, [...new Set(found)].join(", "));
   return found.length === 0;
+}
+
+/**
+ * Stufe B2: Bildroute der Visualisierung. Sie muss ohne gültige Session
+ * verweigern und mit Session ein passives SVG liefern — geprüft wird der
+ * echte Inhalt (kein `<script`, echtes `<svg`).
+ */
+async function visualizationRouteChecks() {
+  step("B2. Visualisierung (Bildroute)");
+  const anonymous = await fetch(`${BASE}/api/simulation/render?id=SCN-PROBE&kind=ARCHITECTURE`, {redirect: "manual"});
+  if ([401, 403, 428].includes(anonymous.status)) ok("Bildroute verweigert ohne Session", String(anonymous.status));
+  else if (!anonymous.ok) ok("Bildroute verweigert ohne Session (Fehlerantwort)", String(anonymous.status));
+  else bad("Bildroute verweigert ohne Session", `Status ${anonymous.status}`);
+
+  const scenarios = await request("GET", "/api/simulation");
+  const list = Array.isArray(scenarios.json?.scenarios) ? (scenarios.json.scenarios) : [];
+  // Ein Szenario wird nicht angelegt (das ist ein Creator-Schreibakt) — es wird
+  // das erste vorhandene genutzt; ohne Szenario bleibt nur die Verweigerung.
+  const first = list[0]?.id;
+  if (!first) {
+    const missing = await fetch(`${BASE}/api/simulation/render?id=SCN-PROBE&kind=ARCHITECTURE`, {headers: {cookie: cookieHeader()}});
+    if (missing.status >= 400 && missing.status < 500) ok("Bildroute verweigert unbekanntes Szenario sauber", String(missing.status));
+    else bad("Bildroute verweigert unbekanntes Szenario sauber", `Status ${missing.status}`);
+    return;
+  }
+  for (const kind of ["ARCHITECTURE", "TIMELINE", "SCENE_3D"]) {
+    const response = await fetch(`${BASE}/api/simulation/render?id=${encodeURIComponent(first)}&kind=${kind}`, {headers: {cookie: cookieHeader()}});
+    const svg = await response.text();
+    const passive = /^<svg\b/.test(svg.trim()) && !/<script/i.test(svg) && !/javascript:/i.test(svg);
+    if (response.ok && passive) ok(`Bildroute liefert passives SVG (${kind})`, `${svg.length} Zeichen`);
+    else bad(`Bildroute liefert passives SVG (${kind})`, `Status ${response.status}`);
+  }
+  const badKind = await fetch(`${BASE}/api/simulation/render?id=${encodeURIComponent(first)}&kind=HOLOGRAMM`, {headers: {cookie: cookieHeader()}});
+  if (badKind.status === 400) ok("Bildroute verweigert unbekannte Art", "400");
+  else bad("Bildroute verweigert unbekannte Art", `Status ${badKind.status}`);
+}
+
+/**
+ * Stufe B3: Alarmierung, Backup-Automation und Geräte-Autorisierung.
+ *
+ * Diese drei Bereiche tragen Sicherheitsaussagen, die in der Oberfläche
+ * sichtbar sein müssen: Regeln sind an **reale** Kennzahlen gebunden (sonst
+ * wäre die Regeldatei wirkungslos), die Aufbewahrungsregel löscht nie die
+ * neueste Sicherung, und Discovery ist ausdrücklich **keine** Autorisierung.
+ */
+async function alertingBackupDeviceChecks(text) {
+  step("B3. Alarmierung, Backup-Automation, Geräte-Autorisierung");
+  for (const [needle, label] of [
+    ["Alarmregeln", "Oberfläche zeigt die Alarmregeln"],
+    ["/api/alerts", "Oberfläche liest die Regelroute"],
+    ["Backup-Automation", "Oberfläche zeigt die Backup-Automation"],
+    ["backup.run", "Oberfläche kann den geplanten Lauf auslösen"],
+    ["Discovery ≠ Autorisierung", "Geräte-Abschnitt benennt Discovery ≠ Autorisierung"]
+  ]) {
+    if (text.includes(needle)) ok(label, needle);
+    else bad(label, `„${needle}“ fehlt in ${COMPONENT}`);
+  }
+
+  const alerts = await request("GET", "/api/alerts");
+  if (alerts.status !== 200) bad("Alarmregeln abrufbar", `Status ${alerts.status}`);
+  else {
+    const validation = alerts.json?.validation ?? {};
+    const rules = Array.isArray(alerts.json?.rules) ? alerts.json.rules : [];
+    if (validation.ok === true && rules.length > 0) ok("Regeln gegen reale Kennzahlen geprüft", `${rules.length} Regeln, ${validation.metrics} Kennzahlen`);
+    else bad("Regeln gegen reale Kennzahlen geprüft", JSON.stringify(validation).slice(0, 160));
+    const incomplete = rules.filter(rule => !rule.expr || !rule.severity || !rule.runbook);
+    if (incomplete.length === 0) ok("Jede Regel hat Ausdruck, Schwere und Runbook");
+    else bad("Jede Regel hat Ausdruck, Schwere und Runbook", incomplete.map(rule => rule.id).join(", "));
+  }
+
+  const yaml = await fetch(`${BASE}/api/alerts?format=prometheus`, {headers: {cookie: cookieHeader()}});
+  const yamlText = await yaml.text();
+  if (yaml.ok && /groups:/.test(yamlText) && /alert:/.test(yamlText) && !/unknown metric/i.test(yamlText)) {
+    ok("Regeldatei für Prometheus (YAML)", `${yamlText.length} Zeichen`);
+  } else {
+    bad("Regeldatei für Prometheus (YAML)", `Status ${yaml.status}`);
+  }
+
+  const persistence = await request("GET", "/api/persistence");
+  const automation = persistence.json?.backupAutomation ?? {};
+  if (persistence.status === 200 && Number(automation?.policy?.keepPerStore) >= 1 && typeof automation?.due === "boolean") {
+    ok("Persistenz-Status zeigt Intervall, Aufbewahrung und Fälligkeit", `${automation.policy.intervalMs} ms, keep ${automation.policy.keepPerStore}`);
+  } else {
+    bad("Persistenz-Status zeigt die Backup-Automation", `Status ${persistence.status} ${JSON.stringify(automation).slice(0, 140)}`);
+  }
+  const failed = Array.isArray(persistence.json?.backups?.failed) ? persistence.json.backups.failed.length : -1;
+  if (failed === 0) ok("Keine fehlgeschlagenen Sicherungen gemeldet");
+  else bad("Keine fehlgeschlagenen Sicherungen gemeldet", `${failed} fehlgeschlagen`);
+
+  const devices = await request("GET", "/api/devices");
+  if (devices.status === 200 && devices.json?.enrollment && typeof devices.json.enrollment.available === "boolean") {
+    ok("Geräte melden den Enrollment-Zustand", `verfügbar: ${devices.json.enrollment.available}`);
+  } else {
+    bad("Geräte melden den Enrollment-Zustand", `Status ${devices.status}`);
+  }
+  const unauthorized = (devices.json?.devices ?? []).filter(device => device.authorized !== true);
+  if (unauthorized.length === (devices.json?.devices ?? []).length && unauthorized.length > 0) {
+    ok("Kein Gerät ist ohne Creator-Freigabe autorisiert", `${unauthorized.length} unautorisiert`);
+  } else if (unauthorized.length > 0) {
+    ok("Unautorisierte Geräte sind einzeln ausgewiesen", `${unauthorized.length} Geräte ohne Freigabe`);
+  } else {
+    bad("Geräte-Autorisierung", "kein Gerät gemeldet oder alle vorautorisiert");
+  }
 }
 
 async function contractChecks(nav, sourceEntries) {
@@ -396,6 +500,8 @@ async function main() {
   const text = source();
   const {nav, sources: sourceEntries} = staticChecks(text);
   await deliveryChecks();
+  await visualizationRouteChecks();
+  await alertingBackupDeviceChecks(text);
   await contractChecks(nav, sourceEntries);
 
   step("Ergebnis");

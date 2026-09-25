@@ -8,6 +8,8 @@ import {eventStoreIntegrity} from "../../../lib/event-store";
 import {controlStateReport} from "../../../lib/control-plane";
 import {listProvenance} from "../../../lib/provenance";
 import {guardOrDeny} from "../../../lib/api/api-gate";
+import {backupAutomationStatus, pruneBackups, runScheduledBackup} from "../../../lib/backup-policy";
+import {observe} from "../../../lib/observability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,6 +41,10 @@ export async function GET(request: Request) {
       stores: storeIntegrityReport(),
       events: eventStoreIntegrity(),
       provenance: {nodes: provenance.nodes.length, edges: provenance.edges.length},
+      // Zustand der geplanten Sicherung: Intervall, Aufbewahrung, Fälligkeit,
+      // Integrität. Rein lesend — der Lauf selbst ist eine Creator-Aktion.
+      backupAutomation: backupAutomationStatus(),
+      backupAutomationActions: ["backup.run", "backup.prune"],
       backupPath: `${storageRoot()}/backups`,
       backups: {
         count: backups.length,
@@ -86,6 +92,19 @@ export async function POST(request: Request) {
       );
     }
   }
+  if (body.action === "backup.run") {
+    // Geplanter Lauf: idempotent über das Intervall; `force` ist ausdrücklich.
+    // Ein Aufruf ohne Intervallablauf führt zu **keinem** stillen Zweitlauf.
+    const run = runScheduledBackup({force: body.force === true, prune: body.prune !== false, actor: "CREATOR"});
+    return NextResponse.json(run, {status: run.ran ? 201 : 200, headers: {"Cache-Control": "no-store"}});
+  }
+  if (body.action === "backup.prune") {
+    const policy = backupAutomationStatus().policy;
+    const prune = pruneBackups(policy);
+    recordAudit({actor: "CREATOR", action: "persistence.backup.prune", resource: String(prune.deleted.length), decision: "ALLOW"}, {deleted: prune.deleted.map(entry => entry.file)});
+    observe({type: "persistence.backup.pruned", message: `${prune.deleted.length} alte Sicherungen entfernt (${prune.kept} behalten)`, status: "COMPLETED", actor: "CREATOR", action: "persistence.backup.prune"});
+    return NextResponse.json(prune, {headers: {"Cache-Control": "no-store"}});
+  }
   if (body.action === "repair") {
     // Repariert inhaltslose Envelopes (`payload: null`) — sie enthalten keine
     // Information, brechen aber jeden Lesezugriff. Jede Reparatur wird auditiert.
@@ -96,5 +115,5 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({repaired, results}, {headers: {"Cache-Control": "no-store"}});
   }
-  return NextResponse.json({error: "unsupported persistence action", supported: ["backup", "restore", "repair"]}, {status: 400});
+  return NextResponse.json({error: "unsupported persistence action", supported: ["backup", "backup.run", "backup.prune", "restore", "repair"]}, {status: 400});
 }

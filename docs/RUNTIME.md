@@ -190,7 +190,7 @@ instanziiert sie. Eine Registrierung allein startet nichts und erteilt keine Rec
 - `tests/integration/execution-evidence.test.ts` — Ausführung erzeugt Evidenz.
 - `tests/integration/load-broker.test.ts` — 12 parallele autorisierte Ausführungen,
   Bindungen bleiben intakt; 6 fremde Sandbox-Bindungen werden verweigert.
-- `tests/integration/ns-isolation.test.ts` — 7 Tests der Kernel-Isolation: Bericht und
+- `tests/integration/ns-isolation.test.ts` — 11 Tests der Kernel-Isolation: Bericht und
   Garantien, Prozess-Probe (Capabilities/`NoNewPrivs`/`EROFS`/RW/`procs<5`),
   Netzwerk-Namespace, argv-Canary (keine Shell-Interpretation), Timeout der
   Prozessgruppe, verschwundener Rootfs (Bericht darf `NAMESPACES` nicht behaupten),

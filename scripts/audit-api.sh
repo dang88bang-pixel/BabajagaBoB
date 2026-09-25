@@ -53,6 +53,9 @@ fi
 SECRET="${BOB_CREATOR_LOGIN_SECRET:-}"
 assert_status "Creator-Login" 201 "$(api -X POST -d "{\"action\":\"login\",\"secret\":\"$SECRET\"}" "$BASE/api/auth")"
 
+# Routen, die ohne Parameter korrekt mit 4xx antworten (Pflichtparameter).
+PARAM_ROUTES="simulation/render"
+
 # ------------------------------------------------------- 1. GET-Routen
 step "1. Jede GET-Route mit Session (kein 5xx, keine leere Antwort)"
 for route in $(find app/api -name route.ts | sed 's|app/api/||; s|/route.ts||' | sort); do
@@ -61,6 +64,9 @@ for route in $(find app/api -name route.ts | sed 's|app/api/||; s|/route.ts||' |
   case "$code" in
     2*) if [ -s "$BODY" ]; then ok "GET /api/$route ($code)"; else bad "GET /api/$route: leere Antwort"; fi;;
     405) ok "GET /api/$route (405 = nur POST)";;
+    # Routen mit Pflichtparametern (z. B. die Bildroute der Visualisierung)
+    # verweigern ohne Parameter mit 4xx — das ist korrekt und kein Fehler.
+    4*) case " $PARAM_ROUTES " in *" $route "*) ok "GET /api/$route ($code = Pflichtparameter fehlt)";; *) bad "GET /api/$route: unerwartet $code" "$(body)";; esac;;
     5*) bad "GET /api/$route: Serverfehler $code" "$(body)";;
     *) bad "GET /api/$route: unerwartet $code" "$(body)";;
   esac
@@ -167,6 +173,27 @@ case "$RUN_STATE" in
   VERIFYING|RECOVERING) ok "Lauf ist in Behandlung ($RUN_STATE) statt erneut ausgeführt";;
   *) bad "Lauf in unerwartetem Zustand: $RUN_STATE" "";;
 esac
+
+# ---------------------- 7. Alarmierung und Backup-Automation
+step "7. Alarmierung an reale Kennzahlen gebunden, Sicherung idempotent"
+api "$BASE/api/alerts" >/dev/null
+assert_json "Alarmregeln sind gegen die Exporter-Kennzahlen geprüft" '(.validation.ok == true) and ((.validation.rules | length) > 0) and ((.validation.unknownMetrics | length) == 0)'
+assert_json "Jede Alarmregel hat Ausdruck, Schwere und Runbook" '[.rules[] | select(((.expr // "") == "") or ((.severity // "") == "") or ((.runbook // "") == ""))] | length == 0'
+code=$(api -H 'accept: application/yaml' "$BASE/api/alerts?format=prometheus")
+case "$code" in
+  200) if grep -q 'alert:' "$BODY" && grep -q 'groups:' "$BODY"; then ok "Regeldatei für Prometheus (YAML)"; else bad "Regeldatei ohne alert-/groups-Blöcke" "$(body)"; fi;;
+  *) bad "Regeldatei für Prometheus: erwartet 200, erhalten $code" "$(body)";;
+esac
+assert_status "Geplante Sicherung (erzwungen)" 201 "$(api -X POST -d '{"action":"backup.run","force":true}' "$BASE/api/persistence")"
+assert_json "Geplante Sicherung meldet verifizierte Kopien" '(.ran == true) and ((.verified | length) > 0)'
+code=$(api -X POST -d '{"action":"backup.run"}' "$BASE/api/persistence")
+case "$code" in 200|201) assert_json "Zweiter Lauf im Intervall ist idempotent" '(.ran == false) and ((.createdAt | length) == 0)';; *) bad "Zweiter Lauf: erwartet 200/201, erhalten $code" "$(body)";; esac
+assert_status "Aufbewahrungsregel ausführen" 200 "$(api -X POST -d '{"action":"backup.prune"}' "$BASE/api/persistence")"
+assert_json "Aufbewahrung schützt das neueste Backup" '((.deleted | type) == "array") and ((.kept | type) == "number") and ((.corrupted | type) == "array")'
+api "$BASE/api/persistence" >/dev/null
+assert_json "Persistenz-Status zeigt die Backup-Automation" '((.backupAutomation.policy.keepPerStore // 0) >= 1) and ((.backupAutomation.due | type) == "boolean")'
+assert_json "Keine fehlgeschlagenen Sicherungen" '((.backups.failed | length) == 0)'
+assert_status "Unbekannte Persistenz-Aktion wird verweigert" 400 "$(api -X POST -d '{"action":"gibtsnicht"}' "$BASE/api/persistence")"
 
 step "Ergebnis"
 printf "Ergebnis: \033[32m%d bestanden\033[0m, \033[31m%d fehlgeschlagen\033[0m\n" "$PASS" "$FAIL"

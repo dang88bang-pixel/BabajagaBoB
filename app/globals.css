@@ -21,3 +21,15 @@ form button{justify-self:start;font-size:11px;padding:10px 14px;border:1px solid
 /* --- Metriktext (Prometheus) --- */
 .metricsText{margin-top:14px;max-height:460px;overflow:auto;background:#0d1117;border:1px solid #212733;border-radius:9px;padding:12px;font-size:11px;line-height:1.55;color:#9fb0c4;white-space:pre-wrap}
 
+
+/* Visualisierung: SVG-Render aus dem echten Plattformzustand. */
+.visualization {
+  display: block;
+  width: 100%;
+  max-width: 960px;
+  height: auto;
+  margin: 12px 0 0;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  background: #ffffff;
+}

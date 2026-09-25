@@ -350,6 +350,7 @@ const SOURCES: Partial<Record<SectionId, {url: string; path?: string[]; columns:
       {key: "arch", label: "Architektur"},
       {key: "trust", label: "Vertrauen"},
       {key: "state", label: "Zustand"},
+      {key: "authorized", label: "Autorisiert", render: row => (row.authorized ? "ja (Creator-Freigabe)" : "nein — Discovery ≠ Autorisierung")},
       {key: "network", label: "Netzwerk"},
       {key: "capabilities", label: "Capabilities", render: row => (Array.isArray(row.capabilities) ? (row.capabilities as string[]).join(", ") : "—")}
     ]
@@ -556,6 +557,14 @@ export default function ControlCenter() {
   const [metricsText, setMetricsText] = useState<string | null>(null);
   const [runtime, setRuntime] = useState<Row | null>(null);
   const [persistence, setPersistence] = useState<Row | null>(null);
+  /** Intervall in lesbarer Form (rein darstellend, keine Zustandsänderung). */
+  const formatInterval = (value: unknown): string => {
+    const ms = typeof value === "number" && Number.isFinite(value) ? value : Number(value);
+    if (!Number.isFinite(ms) || ms <= 0) return "—";
+    if (ms % 3_600_000 === 0) return `${ms / 3_600_000} h`;
+    if (ms % 60_000 === 0) return `${ms / 60_000} min`;
+    return `${Math.round(ms / 1000)} s`;
+  };
   const [readiness, setReadiness] = useState<Row | null>(null);
   const [audit, setAudit] = useState<Row | null>(null);
   const [provenance, setProvenance] = useState<Row | null>(null);
@@ -564,6 +573,11 @@ export default function ControlCenter() {
   const [privacy, setPrivacy] = useState<Row | null>(null);
   const [artifacts, setArtifacts] = useState<Row[] | null>(null);
   const [verifyResult, setVerifyResult] = useState("");
+  const [alertRules, setAlertRules] = useState<Row[] | null>(null);
+  const [alertValidation, setAlertValidation] = useState<Row | null>(null);
+  const [renderKind, setRenderKind] = useState("ARCHITECTURE");
+  const [renderBusy, setRenderBusy] = useState(false);
+  const [render, setRender] = useState<{artifactId: string; digest: string; kind: string; scenarioId: string; bytes: number; nodes: number; truncated: boolean} | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [auth, setAuth] = useState<{authenticated: boolean; requiresBootstrap: boolean; revoked: boolean; loginAvailable?: boolean; locked?: boolean; secondFactor?: string} | null>(null);
@@ -659,6 +673,7 @@ export default function ControlCenter() {
     if (section !== "Metrics" || metricsRead.current) return;
     metricsRead.current = true;
     void loadMetrics();
+    void loadAlerts();
   }, [section, loadMetrics]);
 
   const post = async (url: string, body: Record<string, unknown>) => {
@@ -671,6 +686,74 @@ export default function ControlCenter() {
       setNotice(cause instanceof Error ? cause.message : "Aktion fehlgeschlagen");
     }
     await load();
+  };
+
+  /** Alarmregeln samt Prüfergebnis (nur Metadaten, keine Geheimnisse). */
+  const loadAlerts = useCallback(async () => {
+    try {
+      const response = await fetch("/api/alerts");
+      if (!response.ok) {
+        setAlertRules(null);
+        setAlertValidation(null);
+        return;
+      }
+      const body = (await response.json()) as {rules?: Row[]; validation?: Row};
+      setAlertRules(body.rules ?? []);
+      setAlertValidation(body.validation ?? null);
+    } catch {
+      setAlertRules(null);
+      setAlertValidation(null);
+    }
+  }, []);
+
+  /** Wie `post`, gibt aber Status und Nutzdaten zurück (für bedingte Anzeigen). */
+  const postResult = async (url: string, body: Record<string, unknown>) => {
+    try {
+      const response = await fetch(url, {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify(body)});
+      const json = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+      return {ok: response.ok, status: response.status, json};
+    } catch (cause) {
+      return {ok: false, status: 0, json: {message: cause instanceof Error ? cause.message : "Aktion fehlgeschlagen"}};
+    }
+  };
+
+  /**
+   * Rendert ein Szenario serverseitig als SVG. Der Renderer prüft aktiv auf
+   * aktive Inhalte und begrenzt die Größe; das Ergebnis wird als Evidenz-
+   * Artefakt mit Digest abgelegt (SIMULATION — kein Nachweis).
+   */
+  const renderScenario = async (id: string, kind: string) => {
+    if (!id) {
+      setNotice("Kein Szenario vorhanden — zuerst ein Szenario anlegen.");
+      return;
+    }
+    setRenderBusy(true);
+    setNotice("");
+    try {
+      const result = await postResult("/api/simulation", {action: "render", id, kind});
+      const payload = result.json as {render?: {artifactId?: string; digest?: string; bytes?: number; nodes?: number; truncated?: boolean}; message?: string; error?: string} | null;
+      const rendered = payload?.render;
+      if (!result.ok || !rendered) {
+        setRender(null);
+        setNotice(`Verweigert: ${String(payload?.message ?? payload?.error ?? "Visualisierung nicht möglich")}`);
+        return;
+      }
+      setRender({
+        artifactId: String(rendered.artifactId ?? ""),
+        digest: String(rendered.digest ?? ""),
+        kind,
+        scenarioId: id,
+        bytes: Number(rendered.bytes ?? 0),
+        nodes: Number(rendered.nodes ?? 0),
+        truncated: Boolean(rendered.truncated)
+      });
+      setNotice(`Visualisierung gerendert (HTTP ${result.status}) · Artefakt ${String(rendered.artifactId ?? "—")}`);
+      await load();
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : "Visualisierung fehlgeschlagen");
+    } finally {
+      setRenderBusy(false);
+    }
   };
 
   const verifyArtifact = async (id: string) => {
@@ -1321,6 +1404,7 @@ export default function ControlCenter() {
               <button onClick={() => void post("/api/persistence", {action: "backup"})}>Backup erstellen</button>
               <button onClick={() => void post("/api/persistence", {action: "repair"})}>Leere Envelopes reparieren</button>
             </div>
+            <p>Jeder Store ist ein digest-geprüfter Envelope (0600, atomares Schreiben). Ein beschädigter Store wird als Befund gemeldet, nicht stillschweigend ersetzt.</p>
             {stores.length === 0 ? (
               <p className="emptyNote">{persistence === null ? "nicht verfügbar" : "keine Stores gemeldet"}</p>
             ) : (
@@ -1341,21 +1425,171 @@ export default function ControlCenter() {
               </div>
             )}
           </section>
+          <section className="panel sectionPanel">
+            <small>PLATTFORM / PERSISTENZ</small>
+            <h2>Backup-Automation</h2>
+            <p>
+              Der geplante Lauf ist <strong>idempotent</strong>: innerhalb des Intervalls passiert nichts, ein zweiter Lauf nur mit ausdrücklichem{" "}
+              <code>force</code>. Jeder Lauf wird verifiziert (Digest) und als Ereignis plus Audit-Eintrag festgehalten.
+            </p>
+            <div className="dataTable">
+              <div className="dataRow head">
+                {["Geplante Sicherung", "Intervall", "Aufbewahrung", "Läufe", "Fällig", "Verifiziert"].map(column => <span key={column}>{column}</span>)}
+              </div>
+              <div className="dataRow">
+                <span>{persistence?.backupAutomation ? "konfiguriert" : "nicht verfügbar"}</span>
+                <span>{formatInterval(((persistence?.backupAutomation as Row | undefined)?.policy as Row | undefined)?.intervalMs)}</span>
+                <span>{String(((persistence?.backupAutomation as Row | undefined)?.policy as Row | undefined)?.keepPerStore ?? "—")} je Store</span>
+                <span>{String(((persistence?.backupAutomation as Row | undefined)?.runs as number | undefined) ?? 0)}</span>
+                <span className="state">{((persistence?.backupAutomation as Row | undefined)?.due as boolean | undefined) ? "ja — Lauf ausstehend" : "nein"}</span>
+                <span>{String(((persistence?.backupAutomation as Row | undefined)?.backups as Row | undefined)?.verified ?? 0)} von {String(((persistence?.backupAutomation as Row | undefined)?.backups as Row | undefined)?.count ?? 0)}</span>
+              </div>
+            </div>
+            <div className="headerActions">
+              <button onClick={() => void post("/api/persistence", {action: "backup.run"})}>Geplante Sicherung ausführen</button>
+              <button onClick={() => void post("/api/persistence", {action: "backup.prune"})}>Alte Sicherungen aufräumen</button>
+            </div>
+            <p className="privacy">
+              Die Aufbewahrungsregel löscht nur verifizierte Sicherungen jenseits der Grenze – nie die neueste oder einzige eines Stores. Beschädigte Sicherungen werden gemeldet, nicht gelöscht.
+            </p>
+            <p>Jeder Store ist ein digest-geprüfter Envelope (0600, atomares Schreiben). Ein beschädigter Store wird als Befund gemeldet, nicht stillschweigend ersetzt.</p>
+          </section>
         </>
       );
     }
 
     if (section === "Metrics") {
+      const rules = alertRules ?? [];
+      const valid = alertValidation?.ok === true;
+      const unknown = Array.isArray(alertValidation?.unknownMetrics) ? (alertValidation?.unknownMetrics as Row[]) : [];
       return (
-        <section className="panel sectionPanel">
-          <small>PLATTFORM / METRIKEN</small>
-          <h2>Prometheus-Export</h2>
-          <p>Nur Zahlen und Zählerstände, keine Geheimnisse. Der Endpunkt ist session-pflichtig (fail closed).</p>
-          <div className="headerActions">
-            <button onClick={() => void loadMetrics()}>Metriken laden</button>
-          </div>
-          <pre className="metricsText">{metricsText ?? "noch nicht geladen"}</pre>
-        </section>
+        <>
+          <section className="panel sectionPanel">
+            <small>PLATTFORM / BETRIEB</small>
+            <h2>Alarmregeln</h2>
+            <p>
+              Die Regeln liegen im Code und werden bei jeder Abfrage gegen die <strong>real ausgelieferten Kennzahlen</strong> geprüft: eine umbenannte
+              Kennzahl macht die Regel ungültig statt wirkungslos. Abholbar als Regeldatei unter <code>/api/alerts?format=prometheus</code>.
+            </p>
+            <div className="headerActions">
+              <button onClick={() => void loadAlerts()}>Regeln prüfen</button>
+              <span className="privacy">{rules.length} Regeln · Prüfung {valid ? "BESTANDEN" : alertValidation ? "FEHLGESCHLAGEN" : "offen"}</span>
+            </div>
+            {alertValidation === null ? (
+              <p className="emptyNote">nicht verfügbar (keine Session oder Route gesperrt)</p>
+            ) : (
+              <>
+                {unknown.length > 0 && (
+                  <div className="integrity">
+                    <strong>UNBEKANNTE KENNZAHLEN</strong>
+                    <span>{unknown.map(entry => `${String(entry.rule)} → ${String(entry.metric)}`).join(", ")}</span>
+                  </div>
+                )}
+                <div className="dataTable">
+                  <div className="dataRow head">
+                    {["Regel", "Schwere", "Wartezeit", "Ausdruck", "Runbook"].map(column => (
+                      <span key={column}>{column}</span>
+                    ))}
+                  </div>
+                  {rules.map(rule => (
+                    <div className="dataRow" key={String(rule.id)}>
+                      <span>{String(rule.id)}</span>
+                      <span className="state">{String(rule.severity)}</span>
+                      <span>{String(rule.for)}</span>
+                      <span title={String(rule.expr)}>{String(rule.expr)}</span>
+                      <span title={String(rule.runbook)}>{String(rule.summary ?? "")}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </section>
+          <section className="panel sectionPanel">
+            <small>PLATTFORM / METRIKEN</small>
+            <h2>Prometheus-Export</h2>
+            <p>Nur Zahlen und Zählerstände, keine Geheimnisse. Der Endpunkt ist session-pflichtig (fail closed).</p>
+            <div className="headerActions">
+              <button onClick={() => void loadMetrics()}>Metriken laden</button>
+            </div>
+            <pre className="metricsText">{metricsText ?? "noch nicht geladen"}</pre>
+          </section>
+        </>
+      );
+    }
+
+    if (section === "Simulation") {
+      const scenarios = rowsFor("Simulation").rows ?? [];
+      const previewId = render?.scenarioId ?? String(scenarios[0]?.id ?? "");
+      return (
+        <>
+          {genericTable("Simulation")}
+          <section className="panel sectionPanel">
+            <small>PLATTFORM / VISUALISIERUNG</small>
+            <h2>Visualisierung</h2>
+            <p>
+              Die Visualisierung wird serverseitig <strong>aus dem echten Plattformzustand</strong> gerendert (Durchsetzungskette, Ereignis-Zeitachse,
+              Fehler-Lebenszyklus, Laufzeit-Matrix, Netzwerk-Politik, Sandbox-Flotte). Der Renderer entfernt aktive Inhalte fail closed und legt das
+              Ergebnis mit SHA-256-Digest als Evidenz-Artefakt ab — ein Szenario bleibt eine Annahme, kein Nachweis.
+            </p>
+            <div className="headerActions">
+              <label>
+                Szenario
+                <select value={previewId} onChange={event => setRender(current => (current ? {...current, scenarioId: event.target.value} : current))}>
+                  {scenarios.length === 0 && <option value="">kein Szenario</option>}
+                  {scenarios.map(scenario => (
+                    <option key={String(scenario.id)} value={String(scenario.id)}>
+                      {String(scenario.id)} · {String(scenario.name ?? "")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Art
+                <select value={renderKind} onChange={event => setRenderKind(event.target.value)}>
+                  {["ARCHITECTURE", "FLOW", "TIMELINE", "STATE_MACHINE", "DEPENDENCY", "NETWORK", "SCENE_3D"].map(kind => (
+                    <option key={kind} value={kind}>
+                      {kind}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button onClick={() => void renderScenario(previewId, renderKind)} disabled={renderBusy || !previewId}>
+                {renderBusy ? "rendere…" : "Visualisierung rendern"}
+              </button>
+            </div>
+            {render ? (
+              <>
+                <div className="dataTable">
+                  <div className="dataRow head">
+                    {["Artefakt", "Art", "Knoten", "Bytes", "Gekürzt", "Digest"].map(column => (
+                      <span key={column}>{column}</span>
+                    ))}
+                  </div>
+                  <div className="dataRow">
+                    <span>{render.artifactId}</span>
+                    <span>{render.kind}</span>
+                    <span>{String(render.nodes)}</span>
+                    <span>{String(render.bytes)}</span>
+                    <span className="state">{render.truncated ? "ja" : "nein"}</span>
+                    <span>{`${render.digest.slice(0, 16)}…`}</span>
+                  </div>
+                </div>
+                {previewId && (
+                  <img
+                    className="visualization"
+                    alt={`Visualisierung ${render.kind} für ${previewId} (SIMULATION)`}
+                    src={`/api/simulation/render?id=${encodeURIComponent(previewId)}&kind=${encodeURIComponent(renderKind)}`}
+                  />
+                )}
+                <div className="headerActions">
+                  <button onClick={() => void verifyArtifact(render.artifactId)}>Digest erneut prüfen</button>
+                </div>
+              </>
+            ) : (
+              <p className="emptyNote">Noch keine Visualisierung gerendert.</p>
+            )}
+          </section>
+        </>
       );
     }
 

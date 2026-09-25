@@ -77,7 +77,8 @@ verändern. Auch dort gelten Netzwerk-DENY, argv-Policy und Limits.
 - `tests/integration/app-module-sandbox.test.ts` — Sandbox-Ausführung für App-Module.
 - `tests/security/argv-policy.test.ts` — Shell-Strings, Metazeichen, Länge.
 - `tests/integration/execution-evidence.test.ts` — Evidenz je Ausführung.
-- `tests/integration/ns-isolation.test.ts` — 7 Tests der Kernel-Isolation (Prozess-Probe,
-  Netzwerk-Namespace, argv-Canary, Timeout, verschwundener Rootfs, fail closed).
+- `tests/integration/ns-isolation.test.ts` — 11 Tests der Kernel-Isolation (Prozess-Probe,
+  Netzwerk-Namespace, argv-Canary, Timeout, verschwundener Rootfs, Ressourcenlimits über
+  rlimit/cgroup, Aufräumen des cgroup-Zweigs, fail closed).
 - `scripts/verify-live.sh` — Snapshot/Restore, Sandbox-Ausführung, Verweigerungen und
   gemessene Isolation über HTTP (Schritt 11).

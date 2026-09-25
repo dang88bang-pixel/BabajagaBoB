@@ -72,6 +72,10 @@ beforeAll(async () => {
   });
   const inbox = await import("../../lib/inbox");
   inbox.notifyInbox({mode: "INFORM", title: "UI-Hinweis", message: "Oberfläche gebunden"});
+  // Ein entdecktes, aber **nicht** autorisiertes Gerät: die Oberfläche muss
+  // diesen Unterschied ausweisen (Discovery ≠ Autorisierung).
+  const devices = await import("../../lib/devices");
+  devices.discoverDevice({id: "DEV-UI-1", name: "UI-Gerät", os: "linux", arch: "x64", cpu: 2, ramMb: 2048, network: "NONE", trust: "EPHEMERAL", capabilities: ["node"], lastSeen: new Date().toISOString()} as never);
   const errors = await import("../../lib/error-intelligence");
   errors.createErrorIncident({
     severity: "HIGH",
@@ -120,7 +124,8 @@ beforeAll(async () => {
     "/api/sandboxes": (await import("../../app/api/sandboxes/route")).GET as Handler,
     "/api/experiments": (await import("../../app/api/experiments/route")).GET as Handler,
     "/api/provenance": (await import("../../app/api/provenance/route")).GET as Handler,
-    "/api/metrics": (await import("../../app/api/metrics/route")).GET as Handler
+    "/api/metrics": (await import("../../app/api/metrics/route")).GET as Handler,
+    "/api/alerts": (await import("../../app/api/alerts/route")).GET as Handler
   };
   expect(bootstrap.completeBootstrap).toBeTypeOf("function");
   expect(root).toContain("ui-real-api");
@@ -188,10 +193,23 @@ describe("Control Center gegen echte Routen", () => {
     await click("Creator-Inbox");
     expect(container.textContent).toContain("UI-Hinweis");
 
+    // Geräte: Discovery ist keine Autorisierung — das muss sichtbar sein.
+    await click("Geräte");
+    expect(container.textContent).toContain("DEV-UI-1");
+    expect(container.textContent).toContain("nein — Discovery ≠ Autorisierung");
+
+    // Betrieb/Persistenz: geplante Sicherung mit Aufbewahrungsgrenze.
+    await click("Betrieb/Persistenz");
+    expect(container.textContent).toContain("Backup-Automation");
+    expect(container.textContent).not.toContain("nicht verfügbar");
+
     // Metriken sind Prometheus-Text der echten Route, keine erfundene Anzeige.
     await click("Metriken");
     expect(container.textContent).toContain("bob_");
     expect(container.textContent).not.toContain("nicht verfügbar");
+    // Alarmregeln der echten Route: an die ausgelieferten Kennzahlen gebunden.
+    expect(container.textContent).toContain("Alarmregeln");
+    expect(container.textContent).toContain("Prüfung BESTANDEN");
 
     // Secrets sind bewusst nur als Grenze dargestellt: die Oberfläche liest sie
     // nicht (kein Lesezugriff auf Geheimnisse), es gibt keine Platzhalterwerte.

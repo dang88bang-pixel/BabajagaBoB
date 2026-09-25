@@ -97,10 +97,126 @@ Kürzung dauerhaft falschen Alarm ausgelöst und echte Manipulation verdeckt. Be
   `bob_capability_tokens`, `bob_capability_tokens_active`, `bob_error_incidents`,
   `bob_error_incidents_open`, `bob_error_incidents_learned`,
   `bob_error_incidents_escalated`, `bob_error_incidents_critical_open`,
-  `bob_failures`, `bob_failures_verified`, `bob_recovery_plans` u. a.
+  `bob_failures`, `bob_failures_verified`, `bob_recovery_plans`,
+  `bob_queue_leased`, `bob_queue_failed`, `bob_executions_denied`,
+  `bob_isolation_requested`, `bob_isolation_enforced_state` u. a.
 - Ereignisse: `lib/events/log.ts` (kausale Kette, `causalParentId`), sichtbar über
   `GET /api/events` und `GET /api/timeline`.
 - Werte sind Zählerstände, keine Erfolgsversprechen; fehlende Daten werden nicht „geschätzt".
+  `bob_executions_denied` zählt **belegte** Verweigerungen (Evidenzartefakte `kind=DENIAL`),
+  `bob_queue_leased` trennt „Queue wächst" von „Queue hängt in Leases".
+
+## 3a. Alarmierung (`lib/alerting.ts`)
+
+Die Regeln liegen im Code und werden bei jeder Abfrage gegen die real ausgelieferten
+Kennzahlen geprüft: wird eine Kennzahl umbenannt oder entfernt, ist die Regel
+**ungültig** statt wirkungslos. Ausgeliefert wird:
+
+```bash
+GET /api/alerts                      # JSON: Regeln + Prüfergebnis (Session erforderlich)
+GET /api/alerts?format=prometheus    # YAML-Regeldatei für Prometheus/Alertmanager
+```
+
+Ist eine Regel ungültig (unbekannte Kennzahl, doppelte Kennung, fehlende
+Handlungsanweisung), liefert die YAML-Ausgabe **500 mit Grund** statt einer
+wirkungslosen Regeldatei (fail closed).
+
+Abdeckung (16 Regeln, Severity `CRITICAL`/`WARNING`/`INFO`):
+
+| Regel | Ausdruck | Bedeutung |
+|---|---|---|
+| `BobStoreIntegrityBroken` | `bob_store_integrity_ok == 0` | Store-Manipulation/-Beschädigung |
+| `BobStoresUnhealthy` | `bob_stores_healthy < bob_stores_total` | nicht alle Stores gesund |
+| `BobAuditChainBroken` | `bob_audit_chain_ok == 0` | Audit-Kette gebrochen |
+| `BobAuditIssuesReported` | `bob_audit_issues > 0` | gemeldete Integritätsprobleme |
+| `BobEventStoreBroken` | `bob_event_store_ok == 0` | Ereignis-Log nicht integer |
+| `BobIsolationNotEnforced` | `bob_isolation_namespaces_ok == 0` | Isolation angefordert, nicht aktiv (Ausführungen gesperrt) |
+| `BobIsolationFailed` | `bob_isolation_enforced_state == 0 and bob_isolation_requested == 1` | Zwischenzustand „angefordert, nicht erzwungen" |
+| `BobKillSwitchActive` | `bob_kill_switches_active > 0` | Kill Switch aktiv |
+| `BobCriticalIncidentOpen` | `bob_error_incidents_critical_open > 0` | offener kritischer Fehlerfall |
+| `BobIncidentsEscalated` | `bob_error_incidents_escalated > 0` | Eskalation wartet auf Entscheidung |
+| `BobQueueBacklog` | `bob_queue_jobs - bob_queue_leased > 10` | Queue wächst |
+| `BobQueueLeasesStale` | `bob_queue_leased > 0 and bob_queue_jobs == bob_queue_leased` | alles belegt, nichts läuft |
+| `BobSandboxFailures` | `bob_sandboxes - bob_sandboxes_running > 5` | viele Sandboxes nicht laufend |
+| `BobRecoveryRejected` | `bob_recovery_rejected > 0` | Verifikation abgelehnt |
+| `BobDeviceUnauthorizedInUse` | `bob_devices > bob_devices_authorized` | bekannte, nicht autorisierte Geräte (erwartet) |
+| `BobExecutionsDenied` | `bob_executions_denied > 5` | häufige Verweigerungen (Angriff/Fehlkonfiguration) |
+
+Jede Regel trägt `severity`, `summary` und `runbook` (Verweis auf Dokument oder Route).
+Sichtbar im Control Center unter **Metriken → Alarmregeln** (Anzahl, Prüfergebnis,
+Regeltabelle).
+
+### Scraper-Anbindung (Betriebshandbuch, nicht in dieser Umgebung ausgeführt)
+
+`GET /api/metrics` und `GET /api/alerts?format=prometheus` verlangen eine
+**Session** — es gibt bewusst keinen öffentlichen Probe-Endpunkt. Ein Scraper
+braucht daher ein Creator-fähiges Vorgehen (z. B. ein internes Sidecar mit
+eigener Session, das die Werte lokal bereitstellt), statt eines offenen
+Endpunkts. Beispielkonfiguration (Werte aus einer solchen Bridge):
+
+```yaml
+# prometheus.yml (Auszug) — Endpunkt bewusst nur im internen Netz erreichbar
+scrape_configs:
+  - job_name: babajagabob
+    metrics_path: /api/metrics
+    scheme: http
+    static_configs:
+      - targets: ["127.0.0.1:3000"]
+    authorization:
+      credentials_file: /etc/bob/scraper-session   # HttpOnly-Session eines internen Creators
+rule_files:
+  - /etc/bob/bob-alerts.yml                        # Inhalt von /api/alerts?format=prometheus
+```
+
+**Offen und als solches geführt:** Scraper und Alertmanager laufen hier nicht
+(`NOT_VERIFIED`); geprüft sind die Regelbasis, ihre Bindung an die echten
+Kennzahlen und die deterministische Auslieferung (`tests/integration/alerting.test.ts`).
+
+## 3b. Backup-Automation (`lib/backup-policy.ts`)
+
+Backups waren bisher ein Creator-Klick. Die Automation ergänzt den **geplanten
+Lauf** und eine **Aufbewahrungsregel** — ohne die Sicherheitsgrenzen von
+`lib/persistence/store.ts` zu umgehen (Digest-Prüfung, Versionsbindung,
+Pfadbindung auf `<BOB_STORAGE_DIR>/backups`).
+
+| Einstellung | Vorgabe | Bedeutung |
+|---|---|---|
+| `BOB_BACKUP_INTERVAL_MS` | `3600000` (1 h) | Mindestabstand zweier geplanter Läufe |
+| `BOB_BACKUP_KEEP` | `5` | Höchstzahl **verifizierter** Kopien je Store |
+
+Unsinnige Werte (0, negativ, keine Zahl) fallen auf die Vorgabe zurück — eine
+Aufbewahrungsgrenze von 0 würde sonst alles löschen.
+
+```bash
+POST /api/persistence {"action":"backup.run"}     # geplant, idempotent
+POST /api/persistence {"action":"backup.run","force":true}   # ausdrücklich erzwingen
+POST /api/persistence {"action":"backup.prune"}   # Aufbewahrungsregel anwenden
+GET  /api/persistence                             # Status: backupAutomation
+```
+
+Verhalten:
+
+- **Idempotent:** innerhalb des Intervalls legt ein Aufruf ohne `force` nichts an
+  (`ran: false`, leere Liste) — es gibt keinen stillen Zweitlauf im Minutentakt.
+- **Nur verifizierte Kopien** werden gelöscht, und **nie** die neueste oder die
+  einzige Kopie eines Stores. Beschädigte Sicherungen sind ein Befund und werden
+  gemeldet (`corrupted`), nicht gelöscht.
+- Jeder Lauf wird **verifiziert** (Digest je Datei) und erzeugt ein Ereignis
+  (`persistence.backup.scheduled`) sowie einen Audit-Eintrag
+  (`persistence.backup.run`, `ALLOW`); das Aufräumen ist ebenfalls auditiert
+  (`persistence.backup.prune`).
+- Der Zustand liegt im Store `backup-automation` (digest-geprüfter Envelope) und
+  ist im Control Center unter **Betrieb/Persistenz → Backup-Automation** sichtbar
+  (Intervall, Aufbewahrung, Läufe, Fälligkeit, verifizierte Kopien).
+
+Nachweise: `tests/integration/backup-automation.test.ts` (9 Tests, u. a.
+„löscht nie die einzige Sicherung", Negativnachweis gegen eine absichtlich
+abgeschwächte Grenze, Route 201/401/400), `scripts/audit-actions.mjs`
+(Kette „Alarmierung/Backup") und `scripts/audit-api.sh` §7.
+
+**Grenze:** die Automation ist ein *geplanter* Lauf, aber es gibt in dieser
+Umgebung **keinen Scheduler-Daemon** — der Lauf wird vom Creator oder einem
+externen Timer ausgelöst. Ein Betrieb ohne Auslöser ist damit `NOT_VERIFIED`.
 
 ## 4. Bereitschaft, Lockdown, Recovery
 
