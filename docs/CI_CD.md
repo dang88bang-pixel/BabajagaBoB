@@ -10,12 +10,17 @@ Jobs, die bei jedem Push auf den Feature-Branch laufen:
 | Job | Schritte |
 |---|---|
 | `lint-and-typecheck` | `npm ci`, `npm run lint`, `npm run typecheck` |
-| `unit-integration` | `npm ci`, `npm run test:unit`, `npm run test:integration`, `npm run test:regression` |
+| `unit-integration` | `npm ci`, `npm run test:unit`, `npm run test:integration`, `npm run test:regression`, `npm run test:ui` |
 | `security` | `npm ci`, `npm run test:security`, `npm run test:e2e`, `npm audit --audit-level=high` |
 | `build` | `npm ci`, `npm run build` |
-| `verification-gate` | Abschlussprüfung („Alle Verifikationsstufen bestanden. Promotion bleibt manuell und Creator-gebunden") |
+| `verification-gate` | `node scripts/acceptance.mjs` (maschineller Abnahmeprüfer: Nachweisregel, §44-Bindung, 18 Kettenstufen) und Abschlussprüfung („Alle Verifikationsstufen bestanden. Promotion bleibt manuell und Creator-gebunden") |
 
 `main` wird nie direkt geändert: Feature-Branch → Commit → CI → Pull Request → Review → Merge.
+
+Der Prüfer im `verification-gate` liest `docs/acceptance/requirements.json` und schlägt fehl, sobald
+eine Anforderung ohne Implementierung, Test oder Nachweis auf `PASS` steht, eine genannte Datei
+fehlt, eine Testdatei weniger Fälle enthält als zugesagt oder eine Stufe der Zielkette
+unbelegt ist (`docs/ABNAHMEPLAN.md`).
 
 ## 2. Regressionsblockade
 

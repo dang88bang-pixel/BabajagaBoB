@@ -14,6 +14,7 @@
     "test:security": "vitest run tests/security",
     "test:regression": "vitest run tests/regression",
     "test:e2e": "vitest run tests/e2e",
+    "test:ui": "vitest run tests/ui",
     "verify": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {

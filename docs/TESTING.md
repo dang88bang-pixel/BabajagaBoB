@@ -236,8 +236,12 @@ p95 2,22 s) **`MEETS_BUDGET`**.
 ## 5. CI-Abbildung
 
 `.github/workflows/ci.yml` führt die Suiten in getrennten Jobs aus (Lint/Typecheck, Unit + Integration +
-Regression, Security + E2E, Produktionsbuild) und blockiert die Promotion, wenn eine Stufe fehlschlägt.
-Details: `docs/CI_CD.md`.
+Regression + UI, Security + E2E, Produktionsbuild, Verification Gate) und blockiert die Promotion,
+wenn eine Stufe fehlschlägt. Der Job **Verification Gate** führt den Abnahmeprüfer
+`node scripts/acceptance.mjs` aus: er prüft maschinell, dass jede `PASS`-Anforderung in
+`docs/acceptance/requirements.json` Implementierung, Test und Nachweis besitzt und dass alle 18
+Stufen der Zielkette abgedeckt sind. Eine Statushebung ohne Nachweis ist damit nicht möglich.
+Details: `docs/CI_CD.md`, `docs/ABNAHMEPLAN.md`.
 
 ## 6. Bekannte Lücken (nicht als bestanden gewertet)
 
