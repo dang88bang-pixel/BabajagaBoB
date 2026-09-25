@@ -91,3 +91,8 @@ Eigenschaften:
 - `scripts/verify-live.sh`, `scripts/audit-actions.mjs` (Kette 7) — Geräte- und
   Computer-Status über HTTP, Autorisierungspflicht, Enrollment-Negativfall.
 - `scripts/audit-ui.mjs` (Stufe B3) — kein Gerät ist ohne Creator-Freigabe autorisiert.
+
+
+## Scheduling
+
+Autorisierte, verfügbare Geräte können anhand von CPU, RAM, GPU, Betriebssystem, Architektur, Netzwerk und benötigten Capabilities ausgewählt werden. Die Auswahl ist deterministisch; nicht passende oder nicht autorisierte Geräte werden nie allokiert. Der API-Aktionsweg ist `allocate-best`.
