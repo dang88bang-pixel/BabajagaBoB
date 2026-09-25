@@ -40,6 +40,8 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 | Aktionsprüfung pro Route | **jede** Route außer `/api/auth` prüft ihre konkrete Aktion (Creator-Pflicht für Kern-/Schreibpfade, `sandbox:run`, `task:execute`, `run:manage`; Provenance-/Knowledge-Schreiben nur Creator); strukturell im Test erzwungen | `lib/api/guard.ts`, `app/api/*/route.ts`, `tests/security/route-guards.test.ts`, `tests/security/api-route-contract.test.ts` |
 | Betriebsmetriken | Prometheus-Text unter `GET /api/metrics` (Session-pflichtig), aus Stores/Integritätsprüfungen, nur Zahlen | `lib/metrics.ts`, `tests/integration/metrics-backup.test.ts` |
 | Datenintegrität (aus Live-Prüfung) | **gefundener Fehler behoben:** der Backup-Pfad legte für noch nie beschriebene Stores einen Envelope mit `payload: null` und gültigem Digest an; `/api/inbox` lieferte dadurch 500. Jetzt: Schreiben von `null` wird verweigert, Lesen erkennt und repariert den Zustand (journalliert), `POST /api/persistence {action:"repair"}` saniert alle Stores (auditiert) | `lib/persistence/store.ts`, `app/api/persistence/route.ts`, `tests/unit/store-migration.test.ts` |
+| Control Center an echte Daten | Alle 20 Abschnitte gebunden (Queue, Approvals, Tests, Deployments, Artefakte, Geräte, Computer Use, Wissen, Simulation, Fabric, Audit, Bereitschaft); leer = „keine Daten“, fehlend = „nicht verfügbar“ | `components/control-center.tsx`, `tests/ui/control-center.test.tsx` |
+| Supply Chain | GitHub-Actions auf Commit-SHAs gepinnt (checkout v4.3.0, setup-node v4.4.0) | `.github/workflows/ci.yml` |
 | Creator Inbox | `POST {action:"resolve"}` war unerreichbar (stand hinter einem `return`): jede Anfrage legte einen neuen Eintrag an. Jetzt eigener Zweig, Creator-Pflicht, Validierung, Ablehnung doppelter Beantwortung | `app/api/inbox/route.ts`, `tests/security/inbox-route.test.ts` |
 | Ausführungs-Evidenz | jede autorisierte Ausführung erzeugt einen **digestgebundenen, persistenten** Evidenzdatensatz (`ART-…`, SHA-256 über den gespeicherten Inhalt), verknüpft in Provenance (Knoten `EVIDENCE` + Kante) und Audit (`evidence.record` mit Digest); `GET /api/artifacts?verify=…` prüft erneut; Inhalte > 8 KiB werden sichtbar gekürzt (`truncated`) | `lib/artifacts.ts`, `lib/execution-broker.ts`, `tests/integration/execution-evidence.test.ts` |
 | Schema-Migration | registrierte Migration je Store: Digest-Prüfung → Sicherungskopie `*.pre-v{N}.bak` (0600) → Migration → Journal `migrations.jsonl`; fehlende Kette oder neuere Datei → fail closed; ältere Sicherungen werden als migrierbar erkannt und migrierend wiederhergestellt | `lib/persistence/store.ts`, `lib/creator-auth.ts`, `tests/unit/store-migration.test.ts` |
@@ -107,7 +109,7 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 - OCI-Sandbox-Laufzeit (kein Container-Daemon in der Umgebung verfügbar).
 - Nebenläufigkeitsgrenzen sind getestet (12 parallele autorisierte Ausführungen, 6 verweigerte Fremdbindungen: `tests/integration/load-broker.test.ts`), ein Durchsatz-/SLO- oder Langzeitnachweis ist es **nicht**.
 - Verhalten über lange Betriebszeit (kein Langzeit-/Soak-Test).
-- Browserdarstellung im Control Center (keine automatisierten UI-Tests).
+- Echte Browser-Darstellung des Control Centers (Playwright/Browser-E2E). Das Rendering ist unter jsdom getestet (`tests/ui/control-center.test.tsx`: 20 Abschnitte, echte Daten, „nicht verfügbar“-Meldung, Anmeldemaske).
 
 ## G. Sicherheitsgrenzen
 
@@ -150,10 +152,10 @@ Details und Befehle: `docs/TESTING.md`.
 
 - `.github/workflows/ci.yml`, fünf Jobs: Lint/Typecheck → Unit/Integration/Regression,
   Security/E2E, Produktionsbuild → Verification Gate.
-- Letzte grüne Läufe: `36090732676`, `36090186817`, `36086611264`, `36091730579`.
+- Letzte grüne Läufe (Branch `arena/01a0d635-babajagabob`): `36097024859`, `36097027228`, `36097375658`, `36097378964`.
 - Arbeitsweise: Feature-Branch → Commit → CI → PR → Review → Merge; `main` bleibt unberührt.
 - Keine Secrets, keine `.bob-data`-Laufzeitdaten im Repository (`.gitignore`).
-- Hinweis: GitHub führt `checkout@v4`/`setup-node@v4` wegen Node-20-Deprecation auf Node 24 aus – informativ.
+- Supply Chain: Die Actions sind auf Commit-SHAs gepinnt (`actions/checkout@11d5960a…` v4.3.0, `actions/setup-node@49933ea5…` v4.4.0) statt auf bewegliche Tags.
 
 ## K. Persistenz, Recovery, Provider, Device Fabric
 
