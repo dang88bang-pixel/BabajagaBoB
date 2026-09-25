@@ -2,7 +2,7 @@ import {NextResponse} from "next/server";
 import {activeRuntimeMode, reconcileActiveRuntime} from "../../../lib/runtime-factory";
 import {executeAuthorized} from "../../../lib/execution-broker";
 import {listSandboxes} from "../../../lib/sandbox/fabric";
-import {guardRequest} from "../../../lib/api/guard";
+import {guardRequest, toDeniedResponse} from "../../../lib/api/guard";
 import {actionField, readJson, stringArray, stringField} from "../../../lib/request-validation";
 
 /**
@@ -20,8 +20,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  guardRequest(req, {action: "runtime:read"});
   try {
+    guardRequest(req, {action: "runtime:read"});
     if (activeRuntimeMode !== "oci") {
       return NextResponse.json({mode: activeRuntimeMode, health: "READY", network: "DENY", observations: [], summary: {total: 0, running: 0, ready: 0, paused: 0, failed: 0, orphaned: 0}});
     }
@@ -43,6 +43,10 @@ export async function GET(req: Request) {
       adapter: "docker/oci"
     });
   } catch (error) {
+    // Verweigerungen bleiben Verweigerungen (401/403), nur echte
+    // Runtime-Probleme werden zu 503.
+    const denied = toDeniedResponse(error);
+    if (denied) return denied;
     return NextResponse.json({mode: activeRuntimeMode, health: "ERROR", error: error instanceof Error ? error.message : "runtime status failed"}, {status: 503});
   }
 }

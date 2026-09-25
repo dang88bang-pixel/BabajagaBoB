@@ -3,10 +3,10 @@ import {createErrorIncident,errorSummary,escalateError,establishRootCause,invest
 import {actionField,readJson,stringArray,stringField} from "@/lib/request-validation";
 import type {ErrorLifecycle} from "@/lib/error-intelligence";
 export const runtime="nodejs"; export const dynamic="force-dynamic";
-import {guardRequest} from "@/lib/api/guard";
+import {guardRequest, toDeniedResponse} from "@/lib/api/guard";
 const LIFECYCLE:ErrorLifecycle[]=["DETECTED","TRIAGING","CONTAINED","REPRODUCING","DIAGNOSING","HYPOTHESIS","EXPERIMENTING","ROOT_CAUSE_FOUND","FIXING","VERIFYING","LEARNED","REGRESSION_LOCKED","ESCALATED"];
 function lifecycleField(body:Record<string,unknown>):ErrorLifecycle{const value=stringField(body,"status",64);if(!LIFECYCLE.includes(value as ErrorLifecycle))throw new Error("invalid status");return value as ErrorLifecycle}
-export async function GET(req:Request){guardRequest(req,{action:"error:read"});return NextResponse.json({incidents:listErrorIncidents(),summary:errorSummary()},{headers:{"Cache-Control":"no-store"}})}
+export async function GET(req:Request){try{guardRequest(req,{action:"error:read"});return NextResponse.json({incidents:listErrorIncidents(),summary:errorSummary()},{headers:{"Cache-Control":"no-store"}})}catch(error){const denied=toDeniedResponse(error);if(denied)return denied;throw error}}
 export async function POST(req:Request){
  try{
   guardRequest(req,{action:"error:manage"});

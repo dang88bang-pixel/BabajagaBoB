@@ -28,14 +28,15 @@ Produktionsreife:
 | Store-Migration und Reparatur | TESTED | `tests/unit/store-migration.test.ts` (22 Tests): v1→v2 migriert und schreibt v2, Sicherungskopie, Journaleintrag, fehlende Kette oder neuere Datei → fail closed, leerer Envelope (`payload: null`) wird erkannt, als `<datei>.null-payload` gesichert und neu initialisiert, Store-Name im Digest, Backup-Zuordnung ohne Präfixverwechslung (`workshop` vs. `workshop-executions`) |
 | Creator Inbox | TESTED | `tests/security/inbox-route.test.ts`: Anlegen (201), Beantworten ausschließlich durch Creator, doppelte Beantwortung abgelehnt, unbekannte Aktion 400, Sessionpflicht; live `GET /api/inbox` 200 (zuvor 500) |
 | Routen-Guards je Methode | TESTED | `tests/security/api-route-contract.test.ts` prüft jede exportierte Methode einzeln; sechs GET-Routen (`authority`, `cicd`, `devices`, `governance`, `providers`, `worker`) hatten keinen Guard und sind jetzt `*:read`-geschützt |
-| Live-Nachweis über HTTP | VERIFIED | `scripts/verify-live.sh`: **120 Prüfungen / 0 Fehler** gegen `npx next start` (Storage `/tmp/bob-live9`, 2026-09-25); alle drei §49-Abnahmen plus Agentenweg über Capability-Token ohne Browser-Session |
+| Live-Nachweis über HTTP | VERIFIED | `scripts/verify-live.sh`: **130 Prüfungen / 0 Fehler** gegen `npx next start` (Storage `/tmp/bob-live11`, frisch initialisiert, 2026-09-25; **128** bei bereits initialisierter Instanz); alle drei §49-Abnahmen, Agentenweg über Capability-Token ohne Browser-Session und die **Evidenz einer blockierten Autorisierung** (`kind=DENIAL`, Digest erneut geprüft, keine Klartext-Argumente) |
 | Backup mit Digest-Prüfung | TESTED | `tests/integration/metrics-backup.test.ts`: Kopien unter `<BOB_STORAGE_DIR>/backups` (0600), manipuliertes Backup → 409, Restore nur nach Version-/Digest-Prüfung |
 | Betriebsmetriken (Prometheus-Text) | TESTED | `GET /api/metrics` (Session-pflichtig): Store-Integrität, Audit-Kette, Runs, Queue, Token, Incidents, Recovery, Wissen, Fabric, Kill Switches – nur Zahlen |
+| Control Center (38 Abschnitte) | TESTED | `tests/ui/control-center.test.tsx` (vollständige Navigation, echte Daten, Anmeldemaske) und `tests/ui/control-center-api.test.tsx` (35 echte Routen-Handler, Metriken als Prometheus-Text, Secrets ohne Lesezugriff); jede Seite ist an eine reale Serverroute gebunden, leer = „keine Einträge“, fehlend = „nicht verfügbar“; live alle Routen mit 200 geprüft |
 | Routenvertrag (strukturell) | TESTED | `tests/security/api-route-contract.test.ts`: jede Route außer `/api/auth` prüft eine konkrete Aktion, kein `publicAction` |
 | API-Grenze (Middleware + Auth-Route) | TESTED | `middleware.ts`, `lib/api/api-gate.ts`, `app/api/auth/route.ts`; Creator-Login mit Sperre; live verifiziert (428/201/200/403) |
-| Governance / Kill Switches | IMPLEMENTED | Code + Persistenz vorhanden, kein eigener Test |
+| Governance / Kill Switches | TESTED | `tests/security/route-guards.test.ts`, `tests/security/direct-route-denial.test.ts` und Live-Nachweis (Kill Switch blockiert Ausführung 409, Freigabe hebt Block auf) |
 | Agent Fabric (11 Rollen, Autonomie-Vertrag) | TESTED | `tests/unit/agent-fabric.test.ts`: 11 Rollen aus der Control Plane, keine Selbstvergabe/Produktion/Infrastruktur, Heartbeat und Handoffs |
-| Execution Gate + Broker | TESTED | `tests/e2e/*`, `tests/security/argv-policy.test.ts` |
+| Execution Gate + Broker | TESTED | `tests/e2e/*`, `tests/security/argv-policy.test.ts`, `tests/integration/load-broker.test.ts` (12 parallele Ausführungen, 6 verweigerte Fremdbindungen) |
 | Sandbox Fabric (Task-/Agent-Bindung) | TESTED | `tests/integration/sandbox-runtime.test.ts` |
 | Lokale Runtime (`REAL_LOCAL`) | TESTED | echte Prozesse, `argv[]`, `shell:false`, Timeout-Kill |
 | Apps / App-Module | TESTED | Modul-Sandbox über die Fabric gebunden (Task+Agent), `tests/integration/app-module-sandbox.test.ts` |
@@ -67,14 +68,14 @@ Produktionsreife:
 
 | Komponente | Reifegrad | Nachweis / Hinweis |
 |---|---|---|
-| Audit Store (HMAC-Kette) | TESTED | `verifyAuditChain()` in mehreren Suiten |
+| Audit Store (Kette + Aufbewahrung) | TESTED | `verifyAuditChain()` in mehreren Suiten; `tests/unit/audit-retention.test.ts`: append-only ohne Kürzung, Kürzung nur mit Checkpoint, Rekonstruktion des Kopfes bei Altbeständen, Datei- und Ketten-Manipulation erkannt |
 | Event Store (append-only, kausal) | TESTED | `tests/e2e/failure-recovery.test.ts` prüft Eventtypen |
 | Provenance | TESTED | Kanten im E2E-Erfolgspfad und im Live-Lauf (§4a in `docs/TESTING.md`); Schreibzugriff ist Creator-Aktion |
-| Privacy / Data Boundary | IMPLEMENTED | default `DENY`, kein eigener Test |
+| Privacy / Data Boundary | TESTED | default `DENY`, live geprüft (`GET /api/privacy`: Policy, Regeln, Grenze, kein Silent-Telemetry/Tracking/Advertising) |
 | Provider Fabric | TESTED | Katalog/Bindungen/Telemetrie persistent, Approval-gebundene Verbindung (`tests/integration/provider-fabric.test.ts`) |
-| Device Fabric / Simulation / Computer Use | PARTIAL | persistent; Simulation und Computer Use ohne eigene Tests |
+| Device Fabric / Simulation / Computer Use | PARTIAL | persistent; Computer Use in `tests/integration/computer-use.test.ts` (Registrieren ≠ Autorisieren), Simulation ohne eigenen Test |
 | CI/CD (`ci.yml`) | TESTED | 5 Jobs (Lint/Typecheck, Unit/Integration/Regression, Security/E2E, Build, Promotion-Gate); grüne Läufe dokumentiert in `docs/CI_CD.md` |
-| Automatisierte Testsuiten | TESTED | **27 Dateien / 155 Tests grün**, siehe `docs/TESTING.md` |
+| Automatisierte Testsuiten | TESTED | **30 Dateien / 166 Tests grün**, siehe `docs/TESTING.md` |
 
 ## Aktuelle Sicherheitsgrenzen
 

@@ -122,6 +122,29 @@ function verifyLegacyToken(request: Request): boolean {
 
 export type GuardedRequest = {actor: ActorContext};
 
+/**
+ * Bildet eine abgelehnte Anfrage auf eine HTTP-Antwort ab.
+ *
+ * Route-Handler, die `guardRequest` direkt aufrufen, würden ohne diese Abbildung
+ * eine Ausnahme auslösen. Das Gate in `middleware.ts` fängt den Regelfall ab,
+ * aber wenn es durchlässt und erst der Routen-Guard verweigert (z. B. abgelaufene
+ * Session zwischen Gate und Handler), darf daraus niemals ein 500 werden:
+ * Verweigerungen sind 401/403/409 und fail closed.
+ */
+export function toDeniedResponse(error: unknown): Response | null {
+  const shape =
+    error instanceof ApiDenied
+      ? {status: error.status, code: error.code, message: error.message}
+      : error instanceof Error && "status" in error
+        ? (error as {status: number; code?: string; message: string})
+        : null;
+  if (!shape) return null;
+  return new Response(JSON.stringify({error: shape.code ?? "DENIED", message: shape.message}), {
+    status: shape.status,
+    headers: {"content-type": "application/json", "Cache-Control": "no-store"}
+  });
+}
+
 export function guardRequest(request: Request, spec: GuardSpec): GuardedRequest {
   const method = request.method.toUpperCase();
   const status = bootstrapStatus();

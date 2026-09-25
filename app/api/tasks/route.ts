@@ -1,6 +1,6 @@
 import {NextResponse} from "next/server";
 import {assignTask, createTask, getTask, snapshot, updateTaskStatus} from "../../../lib/control-plane";
-import {guardRequest} from "../../../lib/api/guard";
+import {guardRequest, toDeniedResponse} from "../../../lib/api/guard";
 import type {Risk, Status} from "../../../lib/types";
 
 /**
@@ -16,8 +16,14 @@ export const dynamic = "force-dynamic";
 const RISKS: Risk[] = ["SAFE", "LOW", "MODERATE", "HIGH", "CRITICAL"];
 
 export async function GET(req: Request) {
-  guardRequest(req, {action: "task:read"});
-  return NextResponse.json(snapshot().tasks, {headers: {"Cache-Control": "no-store"}});
+  try {
+    guardRequest(req, {action: "task:read"});
+    return NextResponse.json(snapshot().tasks, {headers: {"Cache-Control": "no-store"}});
+  } catch (error) {
+    const denied = toDeniedResponse(error);
+    if (denied) return denied;
+    throw error;
+  }
 }
 
 export async function POST(req: Request) {

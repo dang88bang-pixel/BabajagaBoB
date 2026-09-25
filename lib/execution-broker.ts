@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import {getControlState} from "./control-plane";
 import {executionGate} from "./execution-gate";
 import {capabilityTokens, validateCapabilityToken} from "./authority";
@@ -49,6 +50,22 @@ export class ExecutionDeniedError extends Error {
   }
 }
 
+/**
+ * Argumente werden in Verweigerungsnachweisen **nicht im Klartext** abgelegt:
+ * argv kann Zugangsdaten oder Nutzdaten enthalten, und Evidenz ist persistent.
+ * Festgehalten werden Programm, Anzahl und ein SHA-256 über das vollständige
+ * argv — damit bleibt der Nachweis prüfbar und vergleichbar, ohne Geheimnisse
+ * in die Evidenz zu kopieren (Datenschutz: default DENY).
+ */
+function argvFingerprint(argv?: string[]) {
+  if (!Array.isArray(argv)) return {program: null, argvLength: 0, argvDigest: null};
+  return {
+    program: argv[0] ?? null,
+    argvLength: argv.length,
+    argvDigest: crypto.createHash("sha256").update(JSON.stringify(argv)).digest("hex")
+  };
+}
+
 const riskRank: Record<Risk, number> = {SAFE: 0, LOW: 1, MODERATE: 2, HIGH: 3, CRITICAL: 4};
 const MAX_RESOURCE_LIMITS = {cpuMillicores: 8000, memoryMb: 16384, storageMb: 32768, timeoutMs: 3_600_000, processes: 512};
 
@@ -68,9 +85,55 @@ function deny(request: Partial<ExecutionRequest>, check: string, reason: string)
     resource: resource.includes(":") ? undefined : resource,
     decision: "DENY",
     authorizationRef: request.capabilityTokenId,
-    argumentsValue: {check, reason, argv: request.argv}
+    argumentsValue: {check, reason, ...argvFingerprint(request.argv)}
   });
   recordAudit({actor, action: "sandbox.execute", resource, decision: "DENY"}, {check, reason});
+
+  // Evidenz der Verweigerung (Abschnitt 49): Eine blockierte Autorisierung ist
+  // nachweisbar, nicht nur protokolliert. Die Evidenz ist an Task/Agent/Sandbox
+  // gebunden, soweit sie bekannt sind, digest-geprüft und über Provenance
+  // verknüpft. Ein Fehler beim Schreiben darf die Verweigerung nicht in einen
+  // Erfolg verwandeln — deshalb fail closed mit Ausnahme, aber ohne Evidenz.
+  try {
+    const artifact = recordArtifact(
+      {
+        name: `Verweigerung ${check}`,
+        kind: "DENIAL",
+        taskId: request.taskId ?? "",
+        runId: request.runId ?? "",
+        sandboxId: request.sandboxId ?? "",
+        agentId: request.agentId ?? "UNKNOWN",
+        knowledgeState: "OBSERVED",
+        contentType: "application/json"
+      },
+      JSON.stringify({
+        check,
+        reason,
+        taskId: request.taskId ?? null,
+        agentId: request.agentId ?? null,
+        sandboxId: request.sandboxId ?? null,
+        capabilityTokenId: request.capabilityTokenId ?? null,
+        environment: request.environment ?? null,
+        ...argvFingerprint(request.argv),
+        decidedAt: new Date().toISOString()
+      })
+    );
+    addProvenanceNode({id: artifact.id, kind: "EVIDENCE", label: `Verweigerung ${check}`, runId: request.runId});
+    addProvenanceEdge({from: request.runId ?? request.sandboxId ?? artifact.id, to: artifact.id, relation: "DERIVED_FROM"});
+    recordAudit({actor, action: "evidence.record", resource: artifact.id, decision: "ALLOW"}, {kind: artifact.kind, digest: artifact.digest});
+  } catch (evidenceError) {
+    observe({
+      type: "evidence.error",
+      message: `Verweigerungsevidenz konnte nicht geschrieben werden: ${evidenceError instanceof Error ? evidenceError.message : "unbekannt"}`,
+      status: "ERROR",
+      actor,
+      taskId: request.taskId,
+      sandboxId: request.sandboxId,
+      action: "evidence.record",
+      decision: "ERROR"
+    });
+  }
+
   throw new ExecutionDeniedError(check, reason);
 }
 

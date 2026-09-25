@@ -1,7 +1,7 @@
 import {NextResponse} from "next/server";
 import {resolveApproval, runGuardian, setLockdown, snapshot} from "@/lib/control-plane";
 import {actionField, readJson, stringField} from "@/lib/request-validation";
-import {guardRequest} from "@/lib/api/guard";
+import {guardRequest, toDeniedResponse} from "@/lib/api/guard";
 
 /**
  * Control-Plane-Kommandos (Abschnitt 5).
@@ -13,8 +13,14 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  guardRequest(req, {action: "control:read"});
-  return NextResponse.json(snapshot(), {headers: {"Cache-Control": "no-store"}});
+  try {
+    guardRequest(req, {action: "control:read"});
+    return NextResponse.json(snapshot(), {headers: {"Cache-Control": "no-store"}});
+  } catch (error) {
+    const denied = toDeniedResponse(error);
+    if (denied) return denied;
+    throw error;
+  }
 }
 
 export async function POST(req: Request) {

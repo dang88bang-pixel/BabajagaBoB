@@ -217,6 +217,15 @@ assert_status "Shell-Programm im Agentenweg verweigert" 409 "$(agent_call /api/r
 assert_status "Subjekt-Spoofing verweigert" 409 "$(agent_call /api/runtime "{\"action\":\"execute\",\"taskId\":\"$ATID\",\"agentId\":\"AG-QA\",\"sandboxId\":\"$ASB\",\"capabilityTokenId\":\"$ATOK\",\"argv\":[\"node\",\"-e\",\"1\"]}")"
 assert_status "Widerrufenes Token verweigert" 200 "$(api -X POST -d "{\"action\":\"revoke\",\"id\":\"$ATOK\"}" "$BASE/api/authority")"
 assert_status "Ausfuehrung nach Widerruf verweigert" 403 "$(agent_call /api/runtime "{\"action\":\"execute\",\"taskId\":\"$ATID\",\"agentId\":\"AG-BUILD\",\"sandboxId\":\"$ASB\",\"capabilityTokenId\":\"$ATOK\",\"argv\":[\"node\",\"-e\",\"1\"]}")"
+# Abschnitt 49: Verweigerung -> Audit -> Evidenz. Eine blockierte Autorisierung
+# muss als digest-gebundene Evidenz nachweisbar sein, nicht nur im Log stehen.
+assert_status "Verweigerungsevidenz ueber Route lesbar" 200 "$(api "$BASE/api/artifacts?kind=DENIAL&taskId=$ATID")"
+assert_json "Blockierte Autorisierung ist als Evidenz festgehalten" '(.artifacts | length) >= 1'
+ADENY=$(jqv '.artifacts[0].id')
+assert_status "Digest der Verweigerungsevidenz pruefbar" 200 "$(api "$BASE/api/artifacts?verify=$ADENY")"
+assert_json "Verweigerungsevidenz ist unversehrt" '.verification.ok == true'
+assert_json "Verweigerungsevidenz enthaelt keine Klartext-Argumente" '[.artifact.content | tostring | test("process.stdout")] | any | not'
+
 # Zweites, gueltiges Token: der Lockdown muss unabhaengig vom Widerruf greifen.
 LTOK=$(api -X POST -d "{\"action\":\"issue\",\"input\":{\"subject\":\"AG-BUILD\",\"taskId\":\"$ATID\",\"sandboxId\":\"$ASB\",\"environment\":\"test\",\"capabilities\":[\"task:execute\",\"sandbox:run\"],\"risk\":\"LOW\",\"issuedBy\":\"CREATOR\",\"issuedByKind\":\"CREATOR\",\"expiresAt\":\"$EXPIRES\"}}" "$BASE/api/authority" >/dev/null; jqv '.token.id')
 LSECRET=$(jqv '.secret')
@@ -226,6 +235,9 @@ assert_status "Agentenausfuehrung im Lockdown verweigert" 409 "$(lockdown_call)"
 assert_status "Lockdown aufheben" 200 "$(api -X POST -d '{"action":"lockdown","locked":false}' "$BASE/api/control")"
 assert_status "Audit-Verifikation nach Agentenweg" 200 "$(api -X POST -d '{"action":"verify"}' "$BASE/api/audit")"
 assert_json "Audit-Kette bleibt integer" '.chain.valid == true'
+assert_status "Audit-Aufzeichnungen lesbar" 200 "$(api "$BASE/api/audit")"
+assert_json "Verweigerungen sind auditiert (DENY)" '[.records[] | select(.decision == "DENY" and .action == "sandbox.execute")] | length >= 1'
+assert_json "Audit weist den Aufbewahrungszustand aus" '(.integrity.valid == true) and ((.integrity.retentionIntegrity // "") | length > 0)'
 
 printf "\n\033[1mErgebnis:\033[0m \033[32m%d bestanden\033[0m, \033[31m%d fehlgeschlagen\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -121,6 +121,14 @@ Risiko, Sandbox-Bindung, Token-Existenz/-Validität/-Bindung/-Risiko/-Umgebung, 
 Approval, Netzwerkpolicy, Ressourcenlimits. Jede Verweigerung erzeugt `observe(...)` + `recordAudit(DENY)` und
 ist damit nachweisbar.
 
+**Verweigerungsevidenz ohne Klartext-Argumente.** Zusätzlich legt jede Verweigerung einen
+digest-gebundenen Evidenzdatensatz (`kind: "DENIAL"`) an, der über den Broker, das Audit und die
+Provenance verkettet ist – damit ist eine blockierte Autorisierung nachweisbar, nicht nur protokolliert
+(Abschnitt 49). In Evidenz und Event stehen dabei **nicht** die Argumente im Klartext, sondern
+`program`, `argvLength` und `argvDigest` (SHA-256 über `argv`). Grund: `argv` kann Zugangsdaten oder
+personenbezogene Nutzdaten enthalten und Evidenz ist persistent – der Nachweis bleibt prüfbar und
+vergleichbar, ohne Geheimnisse zu kopieren. Getestet in `tests/integration/execution-evidence.test.ts`.
+
 ## 7. Datenschutz und Grenzen
 
 - Privacy ist default `DENY`; Datenübertragung nach außen erfordert explizite Entscheidung
@@ -130,7 +138,16 @@ ist damit nachweisbar.
 
 ## 8. Audit, Provenance, Evidence
 
-- Audit-Einträge sind HMAC-verkettet (`verifyAuditChain()`), Events sind append-only und kausal verknüpft.
+- Audit-Einträge sind verkettet (`verifyAuditChain()`, HMAC-SHA256 wenn `BOB_AUDIT_HMAC_KEY` gesetzt ist),
+  Events sind append-only und kausal verknüpft.
+- **Aufbewahrung ohne falschen Alarm:** Der Audit wird standardmäßig **nicht** gekürzt (append-only,
+  unbegrenzt). Nur wenn `BOB_AUDIT_MAX_RECORDS` ausdrücklich gesetzt ist, wird abgeschnitten – und dann
+  hält der Store einen **Checkpoint** (Sequenz + Hash des letzten entfernten Datensatzes) fest, an dem die
+  Verifikation beginnt. Eine gekürzte Kette meldet `TRIMMED_WITH_CHECKPOINT`, eine Reparatur von
+  Altbeständen `HEAD_RECONSTRUCTED_FROM_FIRST_RETAINED_RECORD`, eine ungekürzte `FULL_CHAIN`; ein fehlender
+  Datensatz **innerhalb** des erhaltenen Fensters bleibt ein Befund. Ohne diese Regel meldete eine reguläre
+  Kürzung „sequence gap"/„chain break" und verdeckte echte Manipulation im Rauschen
+  (`tests/unit/audit-retention.test.ts`).
 - Provenance-Kanten (`AUTHORIZED_BY`, `EXECUTED_IN`, `CAUSED_BY`, `TESTED_BY`, `REPRODUCED_BY`) verbinden Run,
   Token, Sandbox und Task. Es gibt keine „versteckte" Entscheidung: Begründungen liegen als strukturierter
   `Why?`-Record vor, nicht als interner Gedankenfluss.
@@ -142,7 +159,10 @@ ist damit nachweisbar.
 Nachweisende Tests: `tests/security/authority.test.ts`, `tests/security/api-guard.test.ts`,
 `tests/security/api-gate.test.ts`, `tests/security/route-guards.test.ts`, `tests/security/argv-policy.test.ts`,
 `tests/security/creator-login.test.ts`, `tests/security/creator-login-lockout.test.ts`,
-`tests/e2e/creator-flow.test.ts`, `tests/e2e/failure-recovery.test.ts` (81 Tests / 15 Dateien) und der
-Live-Nachweis `scripts/verify-live.sh`.
+`tests/security/creator-totp.test.ts`, `tests/security/inbox-route.test.ts`,
+`tests/security/api-route-contract.test.ts`, `tests/security/direct-route-denial.test.ts`,
+`tests/e2e/creator-flow.test.ts`, `tests/e2e/failure-recovery.test.ts`
+(**11 Dateien / 64 Tests** in der Security-Suite, 30 Dateien / 166 Tests gesamt) und der Live-Nachweis
+`scripts/verify-live.sh` (**130 Prüfungen / 0 Fehler**).
 Zusammenfassung: `docs/TESTING.md`. Offene, als `PARTIAL`/`UNVERIFIED` gekennzeichnete Punkte sind dort und in
 `docs/TODO.md` gelistet.

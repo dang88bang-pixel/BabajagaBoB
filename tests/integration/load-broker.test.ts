@@ -1,143 +1,144 @@
 import {beforeAll, describe, expect, it, vi} from "vitest";
 import {isolatedStorageRoot, TEST_BOOTSTRAP_SECRET} from "../helpers/runtime";
 
-isolatedStorageRoot("int-load-broker");
+/**
+ * Belastungs- und Grenzprüfung (bounded load test).
+ *
+ * Geprüft wird: Die Autorisierung bleibt auch unter Nebenläufigkeit intakt —
+ * jede Ausführung geht durch Gate und Broker, jede erhält ihre eigene Evidenz,
+ * keine Bindung greift auf einen fremden Task/eine fremde Sandbox über, und die
+ * Audit-Kette bleibt trotz paralleler Schreibvorgänge integer.
+ *
+ * Bewusst **kein** Durchsatz-/SLO-Nachweis (keine Zeitreihe, keine
+ * Lastkurve): der Test dokumentiert Belastbarkeit, nicht Performance-Ziele.
+ */
+
+const root = isolatedStorageRoot("load-broker");
+
+const PARALLEL = 12;
+const DENIED = 6;
 
 let bootstrap: typeof import("../../lib/bootstrap");
 let cp: typeof import("../../lib/control-plane");
 let fabric: typeof import("../../lib/sandbox/fabric");
 let authority: typeof import("../../lib/authority");
 let broker: typeof import("../../lib/execution-broker");
+let artifacts: typeof import("../../lib/artifacts");
 let audit: typeof import("../../lib/audit");
-let runs: typeof import("../../lib/runs");
 
-const AGENT = "AG-BUILD";
-const PARALLEL = 12;
+beforeAll(async () => {
+  vi.resetModules();
+  bootstrap = await import("../../lib/bootstrap");
+  cp = await import("../../lib/control-plane");
+  fabric = await import("../../lib/sandbox/fabric");
+  authority = await import("../../lib/authority");
+  broker = await import("../../lib/execution-broker");
+  artifacts = await import("../../lib/artifacts");
+  audit = await import("../../lib/audit");
+  bootstrap.completeBootstrap({secret: TEST_BOOTSTRAP_SECRET, creatorName: "Lasttester"});
+  expect(root).toContain("load-broker");
+});
 
-/**
- * Belastungsprüfung (begrenzt, kein SLO-Nachweis): unter Nebenläufigkeit darf die
- * Autorisierungsgrenze nicht weicher werden. Geprüft wird, dass
- *  - jede parallele Ausführung durch den Broker geht (kein Bypass),
- *  - Bindung pro Sandbox/Token erhalten bleibt (keine Vermischung),
- *  - die Audit-Kette integer bleibt,
- *  - eine nicht autorisierte Ausführung auch unter Last verweigert wird.
- *
- * Die Aussage ist bewusst begrenzt: 12 parallele Läufe in einer Sandbox-Umgebung
- * ersetzen keinen Lasttest mit definierten SLOs.
- */
-describe("Belastung: parallele autorisierte Ausführungen", () => {
-  beforeAll(async () => {
-    vi.resetModules();
-    bootstrap = await import("../../lib/bootstrap");
-    cp = await import("../../lib/control-plane");
-    fabric = await import("../../lib/sandbox/fabric");
-    authority = await import("../../lib/authority");
-    broker = await import("../../lib/execution-broker");
-    audit = await import("../../lib/audit");
-    runs = await import("../../lib/runs");
-    bootstrap.completeBootstrap({secret: TEST_BOOTSTRAP_SECRET, creatorName: "Test Creator"});
+type Prepared = {taskId: string; sandboxId: string; tokenId: string};
+
+async function prepare(label: string): Promise<Prepared> {
+  const mission = cp.createMission({title: `Last ${label}`, objective: "Nebenläufigkeit", createdBy: "CREATOR"});
+  const objective = cp.createObjective({missionId: mission.missionId, title: `OBJ-${label}`, description: "Last"});
+  const task = cp.createTask({
+    missionId: mission.missionId,
+    objectiveId: objective.objectiveId,
+    title: `Last-Task ${label}`,
+    risk: "LOW",
+    assignedAgent: "AG-BUILD",
+    createdBy: "CREATOR"
   });
+  const sandbox = await fabric.createSandbox({type: "test", taskId: task.taskId, agentId: "AG-BUILD", risk: "LOW"});
+  await fabric.startSandbox(sandbox.sandboxId);
+  const token = authority.issueCapabilityToken({
+    subject: "AG-BUILD",
+    taskId: task.taskId,
+    sandboxId: sandbox.sandboxId,
+    environment: "test",
+    capabilities: ["task:execute", "sandbox:run"],
+    risk: "LOW",
+    issuedBy: "CREATOR",
+    issuedByKind: "CREATOR",
+    expiresAt: new Date(Date.now() + 600_000).toISOString()
+  });
+  return {taskId: task.taskId, sandboxId: sandbox.sandboxId, tokenId: token.token.id};
+}
 
-  it("führt 12 Läufe parallel aus, ohne die Autorisierung zu lockern", async () => {
-    const mission = cp.createMission({title: "Last-Mission", objective: "Nebenläufigkeit prüfen", createdBy: "CREATOR"});
-    expect(mission.missionId).toMatch(/^MIS-/);
-
-    const contexts = [];
-    for (let index = 0; index < PARALLEL; index += 1) {
-      const task = cp.createTask({
-        missionId: mission.missionId,
-        title: `Last-Task ${index}`,
-        risk: "LOW",
-        assignedAgent: AGENT,
-        createdBy: "CREATOR"
-      });
-      const sandbox = await fabric.createSandbox({type: "test", taskId: task.taskId, agentId: AGENT, risk: "LOW"});
-      await fabric.startSandbox(sandbox.sandboxId);
-      const run = runs.createRun({taskId: task.taskId, agentId: AGENT, risk: "LOW", sandboxId: sandbox.sandboxId});
-      const issued = authority.issueCapabilityToken({
-        subject: AGENT,
-        taskId: task.taskId,
-        sandboxId: sandbox.sandboxId,
-        environment: "test",
-        capabilities: ["task:execute", "sandbox:run"],
-        risk: "LOW",
-        issuedBy: "CREATOR",
-        issuedByKind: "CREATOR",
-        expiresAt: new Date(Date.now() + 5 * 60_000).toISOString()
-      });
-      contexts.push({taskId: task.taskId, sandboxId: sandbox.sandboxId, runId: run.runId, tokenId: issued.token.id});
-    }
+describe("Nebenläufige autorisierte Ausführung", () => {
+  it(`führt ${PARALLEL} Ausführungen parallel aus und bindet jede Evidenz korrekt`, async () => {
+    const prepared = await Promise.all(Array.from({length: PARALLEL}, (_, index) => prepare(String(index + 1))));
 
     const results = await Promise.all(
-      contexts.map((context, index) =>
+      prepared.map((entry, index) =>
         broker.executeAuthorized({
-          taskId: context.taskId,
-          agentId: AGENT,
-          sandboxId: context.sandboxId,
-          runId: context.runId,
-          capabilityTokenId: context.tokenId,
+          taskId: entry.taskId,
+          agentId: "AG-BUILD",
+          sandboxId: entry.sandboxId,
+          capabilityTokenId: entry.tokenId,
           environment: "test",
           argv: ["node", "-e", `process.stdout.write('parallel-${index}')`]
         })
       )
     );
 
-    expect(results.length).toBe(PARALLEL);
+    expect(results).toHaveLength(PARALLEL);
     for (const [index, result] of results.entries()) {
-      expect(result.accepted).toBe(true);
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain(`parallel-${index}`);
+      expect(result.accepted, `Ausführung ${index} wurde akzeptiert`).toBe(true);
+      expect(result.stdout).toBe(`parallel-${index}`);
+      expect(result.evidence?.artifactId, `Ausführung ${index} hat Evidenz`).toBeTruthy();
+      expect(result.evidence?.verified).toBe(true);
     }
 
-    // Keine Vermischung der Bindungen: jede Sandbox kennt genau ihren Lauf.
-    for (const context of contexts) {
-      const sandbox = cp.getControlState().sandboxes.find(entry => entry.sandboxId === context.sandboxId);
-      expect(sandbox?.taskId).toBe(context.taskId);
+    // Evidenz bleibt dem jeweiligen Task zugeordnet (keine Vermischung).
+    const artifactIds = new Set(results.map(result => result.evidence!.artifactId));
+    expect(artifactIds.size).toBe(PARALLEL);
+    for (const [index, entry] of prepared.entries()) {
+      const own = artifacts.artifactSnapshot({taskId: entry.taskId});
+      expect(own).toHaveLength(1);
+      expect(own[0].id).toBe(results[index].evidence!.artifactId);
+      expect(own[0].sandboxId).toBe(entry.sandboxId);
+      expect(artifacts.verifyArtifact(own[0].id).ok).toBe(true);
     }
-    expect(audit.verifyAuditChain().valid).toBe(true);
+
+    // Die Audit-Kette bleibt unter Nebenläufigkeit integer.
+    const chain = audit.verifyAuditChain();
+    expect(chain.valid).toBe(true);
+    expect(chain.length).toBeGreaterThanOrEqual(PARALLEL);
   }, 120_000);
 
-  it("verweigert einen fremden Sandbox-Bezug auch unter Nebenläufigkeit", async () => {
-    const mission = cp.createMission({title: "Last-Mission 2", objective: "Fremdbindung prüfen", createdBy: "CREATOR"});
-    const first = cp.createTask({missionId: mission.missionId, title: "Task A", risk: "LOW", assignedAgent: AGENT, createdBy: "CREATOR"});
-    const second = cp.createTask({missionId: mission.missionId, title: "Task B", risk: "LOW", assignedAgent: AGENT, createdBy: "CREATOR"});
-    const sandboxA = await fabric.createSandbox({type: "test", taskId: first.taskId, agentId: AGENT, risk: "LOW"});
-    const sandboxB = await fabric.createSandbox({type: "test", taskId: second.taskId, agentId: AGENT, risk: "LOW"});
-    await fabric.startSandbox(sandboxA.sandboxId);
-    await fabric.startSandbox(sandboxB.sandboxId);
+  it(`verweigert ${DENIED} Fremdbindungen auch unter Last`, async () => {
+    const [first, second] = await Promise.all([prepare("fremd-a"), prepare("fremd-b")]);
 
-    const issued = authority.issueCapabilityToken({
-      subject: AGENT,
-      taskId: first.taskId,
-      sandboxId: sandboxA.sandboxId,
-      environment: "test",
-      capabilities: ["task:execute", "sandbox:run"],
-      risk: "LOW",
-      issuedBy: "CREATOR",
-      issuedByKind: "CREATOR",
-      expiresAt: new Date(Date.now() + 5 * 60_000).toISOString()
-    });
+    const denials = await Promise.all(
+      Array.from({length: DENIED}, (_, index) =>
+        broker
+          .executeAuthorized({
+            taskId: index % 2 === 0 ? second.taskId : first.taskId,
+            agentId: "AG-BUILD",
+            sandboxId: index % 2 === 0 ? first.sandboxId : second.sandboxId,
+            capabilityTokenId: index % 2 === 0 ? first.tokenId : second.tokenId,
+            environment: "test",
+            argv: ["node", "-e", "process.stdout.write('darf-nicht')"]
+          })
+          .then(() => "AKZEPTIERT")
+          .catch(error => (error instanceof Error ? error.message : "VERWEIGERT"))
+      )
+    );
 
-    const attempts = Array.from({length: 6}, async (_, index) => {
-      try {
-        const result = await broker.executeAuthorized({
-          taskId: index % 2 === 0 ? first.taskId : second.taskId,
-          agentId: AGENT,
-          // Absichtlich fremde Bindung: Token A darf nicht in Sandbox B ausführen.
-          sandboxId: sandboxB.sandboxId,
-          capabilityTokenId: issued.token.id,
-          environment: "test",
-          argv: ["node", "-e", "process.stdout.write('nope')"]
-        });
-        return {denied: !result.accepted, check: "accepted-false"};
-      } catch (error) {
-        // Der Broker verweigert hart (ExecutionDeniedError) – genau das ist das Ziel.
-        return {denied: true, check: error instanceof Error ? error.name : "unknown"};
-      }
-    });
-    const results = await Promise.all(attempts);
-    expect(results.every(result => result.denied)).toBe(true);
-    expect(results.every(result => ["ExecutionDeniedError", "accepted-false"].includes(result.check))).toBe(true);
+    // Kein einziger Lauf darf mit fremder Bindung durchgehen.
+    for (const outcome of denials) expect(outcome).not.toBe("AKZEPTIERT");
+
+    // Keine Ausgabe der verweigerten Läufe darf in der Evidenz auftauchen.
+    const contents = artifacts.artifactSnapshot({taskId: first.taskId}).concat(artifacts.artifactSnapshot({taskId: second.taskId}));
+    for (const artifact of contents) expect(artifact.content).not.toContain("darf-nicht");
+
+    // Verweigerungen sind auditiert und die Kette bleibt integer.
     expect(audit.verifyAuditChain().valid).toBe(true);
+    const records = audit.auditSnapshot(200);
+    expect(records.some(record => record.decision === "DENY")).toBe(true);
   }, 120_000);
 });

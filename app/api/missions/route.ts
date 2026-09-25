@@ -1,6 +1,6 @@
 import {NextResponse} from "next/server";
 import {createMission, createObjective, snapshot} from "../../../lib/control-plane";
-import {guardRequest} from "../../../lib/api/guard";
+import {guardRequest, toDeniedResponse} from "../../../lib/api/guard";
 
 /**
  * Missionen und Objectives.
@@ -12,8 +12,14 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  guardRequest(req, {action: "mission:read"});
-  return NextResponse.json(snapshot().missions, {headers: {"Cache-Control": "no-store"}});
+  try {
+    guardRequest(req, {action: "mission:read"});
+    return NextResponse.json(snapshot().missions, {headers: {"Cache-Control": "no-store"}});
+  } catch (error) {
+    const denied = toDeniedResponse(error);
+    if (denied) return denied;
+    throw error;
+  }
 }
 
 export async function POST(req: Request) {

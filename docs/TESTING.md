@@ -2,17 +2,17 @@
 
 **Stand:** 2026-09-25
 **Testrunner:** Vitest 3 (`vitest.config.ts`, Node ≥ 22)
-**Letzter verifizierter Lauf:** `npx vitest run` → **27 Dateien, 155 Tests, alle grün**; `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler / 10 Warnungen; `npm run build` erfolgreich. Zusätzlich live gegen den Produktionsserver geprüft: `scripts/verify-live.sh` → **120 Prüfungen, 0 Fehler** (siehe §4a).
+**Letzter verifizierter Lauf:** `npx vitest run` → **30 Dateien, 166 Tests, alle grün**; `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler / 10 Warnungen; `npm run build` erfolgreich. Zusätzlich live gegen den Produktionsserver geprüft: `scripts/verify-live.sh` → **130 Prüfungen, 0 Fehler** bei Erstinitialisierung (**128**, wenn die Instanz bereits initialisiert war – der Bootstrap-Zweig enthält zwei Prüfungen mehr); siehe §4a.
 
 ## 1. Suiten und Abdeckung
 
 | Suite | Dateien | Tests | Inhalt |
 |---|---|---|---|
-| `tests/unit` | 6 | 47 |    Persistenz-Envelope (Digest, Manipulationserkennung, Versionsprüfung, Registry), Control Plane (Mission/Objective/Task, Risiko-/Approval-Regeln, Persistenz), Agent Fabric (11 Rollen, Autonomie-Grenzen, Heartbeat, persistente Handoffs), **Recovery-Tier-Klassifikation** (Stufen 1–5 mit Begründung und Creator-Freigabepflicht), **Store-Migration** (v1 → v2, Sicherungskopie, Journal, fehlende Kette/neuere Datei → fail closed, migrierende Backup-Wiederherstellung, Schutz und Reparatur inhaltsloser Envelopes), **Persistenz von Betriebszustand** (Pipelines, Skills, Werkstatt, Handoffs über Neuladen der Laufzeit) |
-| `tests/security` | 10 | 60 | Authority-Invarianten (Selbstvergabe, Wildcards, TTL, Risk-Eskalation, Audit-DENY), API-Guard (428/401/403, CSRF-Origin, Session, Legacy-Token fail-closed), argv-Policy (Broker-DENY + Runtime-Defense-in-Depth), API-Gate (Bootstrap, Session, CSRF, Renew/Logout, keine Agent-/Legacy-Token an der Grenze), Creator-Login (Secret-Datei 0600, Konstantzeit, Audit, Sperre), **TOTP als zweiter Faktor** (Fenster ±1, Replay-Schutz, Pflicht bei gesetztem Secret, Replay/Sperre), **Creator Inbox** (Anlegen, Beantworten nur durch Creator, doppelte Beantwortung abgelehnt, unbekannte Aktion 400, Sessionpflicht), Routen-Guards (Provenance/Knowledge/Runs: 428 vor Bootstrap, 401 ohne Authentifizierung, `CREATOR_ONLY` für Agenten-Schreibzugriff, `CAPABILITY_DENIED` ohne `run:manage`, CSRF-Origin, Audit-Integrität) |
-| `tests/integration` | 7 | 35 | Sandbox-Fabric mit `REAL_LOCAL` (Bindung, Prozessausführung, Snapshot + Digest, Verifikation, ALLOWLIST fail-closed), Provider-Fabric (Approval-Pflicht, Bindungen, Health, Datenvertrag), App-Module (Fabric-gebundene Sandboxes, Lifecycle), Computer Use (Registrieren ≠ Autorisieren, Allocation nur mit Freigabe), **Ausführungs-Evidenz** (Digest über stdout/Exit-Code, Provenance-Knoten, Persistenz, Kürzung, Manipulationserkennung), **Nebenläufigkeit** (12 parallele autorisierte Ausführungen, 6 verweigerte Fremdbindungen), Backup mit Digest-Prüfung (manipuliertes Backup → 409) und Betriebsmetriken (Prometheus-Text, nur Zahlen, keine Geheimnisse) |
+| `tests/unit` | 7 | 51 |    Persistenz-Envelope (Digest, Manipulationserkennung, Versionsprüfung, Registry), Control Plane (Mission/Objective/Task, Risiko-/Approval-Regeln, Persistenz), Agent Fabric (11 Rollen, Autonomie-Grenzen, Heartbeat, persistente Handoffs), **Recovery-Tier-Klassifikation** (Stufen 1–5 mit Begründung und Creator-Freigabepflicht), **Store-Migration** (v1 → v2, Sicherungskopie, Journal, fehlende Kette/neuere Datei → fail closed, migrierende Backup-Wiederherstellung, Schutz und Reparatur inhaltsloser Envelopes), **Persistenz von Betriebszustand** (Pipelines, Skills, Werkstatt, Handoffs über Neuladen der Laufzeit), **Audit-Aufbewahrung** (append-only ohne Kürzung, Kürzung nur mit Checkpoint, Rekonstruktion des Kopfes bei Altbeständen, Datei- **und** Ketten-Manipulation erkannt) |
+| `tests/security` | 11 | 64 | Authority-Invarianten (Selbstvergabe, Wildcards, TTL, Risk-Eskalation, Audit-DENY), API-Guard (428/401/403, CSRF-Origin, Session, Legacy-Token fail-closed), argv-Policy (Broker-DENY + Runtime-Defense-in-Depth), API-Gate (Bootstrap, Session, CSRF, Renew/Logout, keine Agent-/Legacy-Token an der Grenze), Creator-Login (Secret-Datei 0600, Konstantzeit, Audit, Sperre), **TOTP als zweiter Faktor** (Fenster ±1, Replay-Schutz, Pflicht bei gesetztem Secret, Replay/Sperre), **Creator Inbox** (Anlegen, Beantworten nur durch Creator, doppelte Beantwortung abgelehnt, unbekannte Aktion 400, Sessionpflicht), Routen-Guards (Provenance/Knowledge/Runs: 428 vor Bootstrap, 401 ohne Authentifizierung, `CREATOR_ONLY` für Agenten-Schreibzugriff, `CAPABILITY_DENIED` ohne `run:manage`, CSRF-Origin, Audit-Integrität), **Direkter Routenaufruf ohne Gate** (428 vor Bootstrap, 401 `UNAUTHENTICATED` nach Bootstrap statt 500/503, 200 mit Session, kein Agenten-/Legacy-Token) |
+| `tests/integration` | 7 | 36 | Sandbox-Fabric mit `REAL_LOCAL` (Bindung, Prozessausführung, Snapshot + Digest, Verifikation, ALLOWLIST fail-closed), Provider-Fabric (Approval-Pflicht, Bindungen, Health, Datenvertrag), App-Module (Fabric-gebundene Sandboxes, Lifecycle), Computer Use (Registrieren ≠ Autorisieren, Allocation nur mit Freigabe), **Ausführungs-Evidenz** (Digest über stdout/Exit-Code, Provenance-Knoten, Persistenz, Kürzung, Manipulationserkennung, **Verweigerungs-Evidenz**: blockierte Autorisierung wird digest-gebunden und ohne Klartext-Argumente festgehalten), **Nebenläufigkeit** (12 parallele autorisierte Ausführungen, 6 verweigerte Fremdbindungen), Backup mit Digest-Prüfung (manipuliertes Backup → 409) und Betriebsmetriken (Prometheus-Text, nur Zahlen, keine Geheimnisse) |
 | `tests/regression` | 1 | 5 | Regression Engine: argv-Policy, Registrierung, PASS/FAIL, Suite fail-closed bei Fehlschlag, Persistenz |
-| `tests/ui` | 1 | 4 | Control-Center-Oberfläche unter jsdom: alle 20 Navigationsabschnitte vorhanden, echte Serverdaten werden als Zeilen gerendert (kein Platzhalter „READY“), fehlende Daten werden ausdrücklich als „nicht verfügbar“ gemeldet, ohne Session erscheint die Anmeldemaske und keine Rohdaten |
+| `tests/ui` | 2 | 6 | Control-Center-Oberfläche unter jsdom: **vollständige Navigationsliste (38 Abschnitte)** vorhanden, echte Serverdaten werden als Zeilen gerendert (kein Platzhalter „READY“), fehlende Daten werden ausdrücklich als „nicht verfügbar“ gemeldet, ohne Session erscheint die Anmeldemaske und keine Rohdaten; zweite Datei ruft die **echten Routen-Handler** auf (35 Routen) und prüft, dass gerenderte Datensätze tatsächlich aus der API stammen |
 | `tests/e2e` | 2 | 4 | Kette Creator → Aufgabe → Autorisierung → Sandbox → Ausführung → Evidence → Knowledge sowie Fehlerkette DETECTED → DIAGNOSING → EXPERIMENTING → ROOT_CAUSE_FOUND → FIXING → VERIFYING → LEARNED → REGRESSION_LOCKED |
 
 Ausführen:
@@ -76,7 +76,7 @@ BOB_CREATOR_LOGIN_SECRET=<creator-secret> BASE=http://localhost:3000 \
 ```
 
 Das Skript bricht nie ab, sondern zählt PASS/FAIL und gibt die echte Serverantwort aus. Ergebnis des
-letzten Laufs (2026-09-25, Storage `/tmp/bob-live9`): **120 PASS / 0 FAIL**.
+letzten Laufs (2026-09-25, Storage `/tmp/bob-live11`, frisch initialisiert): **130 PASS / 0 FAIL**.
 
 Neu darin: **Schritt 10 – Agentenweg ohne Browser-Session**. Geprüft wird der Pfad, den
 Agenten tatsächlich nutzen: `Authorization: Bobcap <id>.<secret>` → `POST /api/runtime`
@@ -85,6 +85,12 @@ mit `argv[]`, echte Ausführung (`stdout`), digestgebundene Evidenz (`ART-…`, 
 des Tokenzugriffs auf Verwaltungsrouten (401), Shell-Programm (409),
 Subjekt-Spoofing (409) und Ausführung nach Widerruf (403) sowie Sperre durch den
 System-Lockdown (409).
+
+Zusätzlich geprüft: Der **Nachweis einer blockierten Autorisierung** (Abschnitt 49) –
+`GET /api/artifacts?kind=DENIAL&taskId=…` liefert die Evidenz, ihr Digest ist über
+`GET /api/artifacts?verify=…` erneut prüfbar, und die Evidenz enthält **keine
+Klartext-Argumente** (nur Programm, Anzahl und SHA-256 über `argv`). Die Audit-Sicht
+weist DENY-Datensätze und den Aufbewahrungszustand der Kette aus.
 
 | Schritt | Geprüft | Ergebnis |
 |---|---|---|

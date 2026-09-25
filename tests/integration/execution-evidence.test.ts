@@ -67,7 +67,7 @@ async function authorizedExecution(stdout: string) {
     environment: "test",
     argv: ["node", "-e", `process.stdout.write('${stdout}')`]
   });
-  return {task, sandbox, result};
+  return {task, sandbox, token, result};
 }
 
 describe("Ausführungs-Evidenz", () => {
@@ -138,6 +138,48 @@ describe("Ausführungs-Evidenz", () => {
     expect(artifact.bytes).toBe(9000);
     expect(artifact.content.length).toBe(artifacts.MAX_CONTENT_BYTES);
     expect(artifacts.verifyArtifact(artifact.id).ok).toBe(true);
+  });
+
+  it("hält eine blockierte Autorisierung als Evidenz fest (Abschnitt 49)", async () => {
+    const at = await authorizedExecution("verweigerungs-probe");
+    const before = artifacts.artifactSnapshot({kind: "DENIAL", taskId: at.task.taskId}).length;
+
+    // Eine Verweigerung, die erst im Broker greift (Gate lässt durch, Broker
+    // prüft die Bindung): falscher Agent für diese Task.
+    await expect(
+      broker.executeAuthorized({
+        taskId: at.task.taskId,
+        agentId: "AG-QA",
+        sandboxId: at.sandbox.sandboxId,
+        capabilityTokenId: at.token.token.id,
+        environment: "test",
+        argv: ["node", "-e", "process.stdout.write('darf-nicht')"]
+      })
+    ).rejects.toThrow(/execution denied/);
+
+    const denials = artifacts.artifactSnapshot({kind: "DENIAL", taskId: at.task.taskId});
+    expect(denials.length).toBe(before + 1);
+    const denial = denials[0];
+    expect(denial.agentId).toBe("AG-QA");
+    const payload = JSON.parse(denial.content) as {check: string; program: string; argvLength: number; argvDigest: string};
+    expect(payload.check).toBe("AGENT_TASK_BINDING");
+    expect(payload.program).toBe("node");
+    expect(payload.argvLength).toBe(3);
+    // Der Nachweis ist prüfbar, ohne die Argumente im Klartext zu speichern:
+    // argv kann Geheimnisse enthalten, Evidenz ist persistent.
+    expect(payload.argvDigest).toBe(createHash("sha256").update(JSON.stringify(["node", "-e", "process.stdout.write('darf-nicht')"])).digest("hex"));
+    expect(denial.content).not.toContain("darf-nicht");
+    expect(denial.digest).toHaveLength(64);
+    expect(artifacts.verifyArtifact(denial.id).ok).toBe(true);
+
+    // Der Verweigerungsnachweis ist selbst Evidenz im Provenance-Graph.
+    const graph = provenance.listProvenance();
+    expect(graph.nodes.some(node => node.id === denial.id && node.kind === "EVIDENCE")).toBe(true);
+
+    // Und die Verweigerung ist auditiert (DENY) — Kette bleibt integer.
+    const denyRecords = audit.auditSnapshot(500).filter(record => record.action === "sandbox.execute" && record.decision === "DENY");
+    expect(denyRecords.length).toBeGreaterThan(0);
+    expect(audit.verifyAuditChain().valid).toBe(true);
   });
 
   it("erkennt manipulierte Evidenz (Digest-Prüfung schlägt an)", () => {

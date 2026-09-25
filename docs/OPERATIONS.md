@@ -9,9 +9,12 @@ Routen `app/api/persistence/route.ts`, `app/api/metrics/route.ts`,
 
 - Storage-Root: `BOB_STORAGE_DIR` (Standard `.bob-data`, im Repository **nicht** versioniert).
 - Root-Verzeichnis `0700`, jede Store-Datei `0600`, geschrieben atomar (tmp + rename).
-- Jeder Store ist ein Umschlag `{version, writtenAt, payload, digest}`; `digest` ist
-  SHA-256 über `{version, payload}`. Passt der Digest nicht, wirft der Store
-  `StoreIntegrityError` — fail closed, nichts wird „repariert".
+- Jeder Store ist ein Umschlag `{store, version, writtenAt, payload, digest}`; `digest` ist
+  SHA-256 über `{store, version, payload}` und damit **an den Store-Namen gebunden**. Eine unter
+  fremdem Namen abgelegte Datei wird abgewiesen (`belongs to "…"`), ältere Envelopes ohne
+  `store`-Feld werden weiter gelesen und beim nächsten Schreiben ergänzt. Passt der Digest nicht,
+  wirft der Store `StoreIntegrityError` — fail closed, nichts wird „repariert".
+  Beleg: `tests/unit/store-migration.test.ts`.
 - Schemawechsel laufen über **registrierte Migrationen** (`StoreOptions.migrations`):
   Digest-Prüfung zuerst, Sicherungskopie `<store>.json.pre-v{N}.bak` (0600), dann
   Migration und Journal (`migrations.jsonl`). Fehlt die Kette oder ist die Datei
@@ -44,6 +47,25 @@ bricht aber ab. Deshalb gilt:
 `GET /api/persistence` liefert den Integritätsbericht (je Store Version, Digest-Status,
 Größe, Existenz) und die Liste der Backups. `POST {action:"backup"}` (Creator) erzeugt
 digest-geprüfte Sicherungen unter `<BOB_STORAGE_DIR>/backups`.
+
+### Aufbewahrung des Audit
+
+Der Audit-Store ist append-only. Standardmäßig wird **nichts** gekürzt. Nur wenn
+`BOB_AUDIT_MAX_RECORDS` auf eine positive Zahl gesetzt ist, wird beim Überschreiten
+abgeschnitten — und dann hält der Store einen **Checkpoint** (Sequenz + Hash des letzten
+entfernten Datensatzes) fest, an dem `verifyAuditChain()` die Prüfung beginnt.
+`GET /api/audit` bzw. `POST {action:"verify"}` weisen den Zustand aus:
+
+| `retentionIntegrity` | Bedeutung |
+|---|---|
+| `FULL_CHAIN` | nichts gekürzt; Kette vollständig ab Genesis geprüft |
+| `TRIMMED_WITH_CHECKPOINT` | regulär gekürzt; ab Checkpoint geprüft |
+| `HEAD_RECONSTRUCTED_FROM_FIRST_RETAINED_RECORD` | Altbestand ohne Checkpoint: Kopf aus dem ersten erhaltenen Datensatz rekonstruiert und dauerhaft vermerkt |
+
+Ein **fehlender Datensatz innerhalb** des erhaltenen Fensters bleibt unabhängig davon ein
+Befund (`sequence gap`, `chain break`, `hash mismatch`). Ohne diese Regel hätte eine reguläre
+Kürzung dauerhaft falschen Alarm ausgelöst und echte Manipulation verdeckt. Beleg:
+`tests/unit/audit-retention.test.ts`.
 
 ## 3. Metriken und Beobachtbarkeit
 
@@ -80,11 +102,17 @@ Ausführung mit Capability-Token, Verweigerungen (fremde Bindung, Shell-Programm
 widerrufenes Token, Lockdown), Evidence/Provenance/Audit-Kette, Metriken, Persistenz,
 Backups, Readiness und Queue. Ergebnis wird als Anzahl `PASS`/`FAIL` ausgegeben.
 
-Prüfumfang des Skripts (120 Prüfungen): Authentifizierung, Mission → Objective → Task →
-Sandbox → Capability, autorisierte Ausführung mit Evidenzprüfung, Angriffsblockaden,
-Fehlerkette bis `REGRESSION_LOCKED`, Governance/Privacy/Provider/Geräte/Computer Use,
-Restore, Persistenz inkl. Backup und **Store-Reparatur**, Metriken, Readiness sowie der
-Agentenweg ohne Browser-Session.
+Prüfumfang des Skripts (**130 Prüfungen** bei Erstinitialisierung, **128** wenn die Instanz
+bereits initialisiert ist — der Bootstrap-Zweig enthält zwei Prüfungen mehr):
+Authentifizierung, Mission → Objective → Task → Sandbox → Capability, autorisierte Ausführung
+mit Evidenzprüfung, Angriffsblockaden, **Evidenz einer blockierten Autorisierung
+(`kind=DENIAL`, Digest erneut geprüft, keine Klartext-Argumente)**, Fehlerkette bis
+`REGRESSION_LOCKED`, Governance/Privacy/Provider/Geräte/Computer Use, Restore, Persistenz
+inkl. Backup und **Store-Reparatur**, Metriken, Readiness, Audit-DENY-Nachweis und
+Aufbewahrungszustand sowie der Agentenweg ohne Browser-Session.
+
+Der Live-Lauf ist der Nachweis gegen die **echte HTTP-Oberfläche**; er ist ausdrücklich keine
+Aussage über Produktionslast (keine Lastkurve, keine SLO-Messung).
 
 Beispiel:
 
@@ -99,6 +127,10 @@ BASE=http://localhost:3000 SECRET=<creator-login> STORAGE=/tmp/bob-live \
 - Der Browser erhält **nie** Root-Token, Provider-/Device-Credentials oder Runtime-Secrets.
 - `.bob-data` (bzw. `BOB_STORAGE_DIR`) wird nicht versioniert; Sicherungen bleiben local.
 - Nach jedem Neustart: `verifyStoreBackup`-Bericht prüfen (`GET /api/persistence`).
+- `BOB_AUDIT_MAX_RECORDS` nur bewusst setzen; jede Kürzung ist im Bericht sichtbar. Für
+  Nachweis-/Auditzwecke (kein Kürzen) die Variable leer lassen.
+- `BOB_AUDIT_HMAC_KEY` erhöht die Manipulationssicherheit von „erkennbar" auf „ohne Schlüssel
+  nicht unbemerkt neu berechenbar"; ohne Schlüssel bleibt die Kette manipulations*erkennbar*.
 
 ## 7. Grenzen
 

@@ -10,7 +10,7 @@ import {
   snapshotSandbox,
   startSandbox
 } from "../../../lib/sandbox/fabric";
-import {guardRequest} from "../../../lib/api/guard";
+import {guardRequest, toDeniedResponse} from "../../../lib/api/guard";
 import type {Risk, SandboxType} from "../../../lib/types";
 
 /**
@@ -28,8 +28,14 @@ const TYPES: SandboxType[] = ["development", "experiment", "test", "browser", "s
 const RISKS: Risk[] = ["SAFE", "LOW", "MODERATE", "HIGH", "CRITICAL"];
 
 export async function GET(req: Request) {
-  guardRequest(req, {action: "sandbox:read"});
-  return NextResponse.json({sandboxes: listSandboxes()}, {headers: {"Cache-Control": "no-store"}});
+  try {
+    guardRequest(req, {action: "sandbox:read"});
+    return NextResponse.json({sandboxes: listSandboxes()}, {headers: {"Cache-Control": "no-store"}});
+  } catch (error) {
+    const denied = toDeniedResponse(error);
+    if (denied) return denied;
+    throw error;
+  }
 }
 
 export async function POST(req: Request) {

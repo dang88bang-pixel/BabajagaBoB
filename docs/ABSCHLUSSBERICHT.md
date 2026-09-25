@@ -40,7 +40,7 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 | Aktionsprüfung pro Route | **jede** Route außer `/api/auth` prüft ihre konkrete Aktion (Creator-Pflicht für Kern-/Schreibpfade, `sandbox:run`, `task:execute`, `run:manage`; Provenance-/Knowledge-Schreiben nur Creator); strukturell im Test erzwungen | `lib/api/guard.ts`, `app/api/*/route.ts`, `tests/security/route-guards.test.ts`, `tests/security/api-route-contract.test.ts` |
 | Betriebsmetriken | Prometheus-Text unter `GET /api/metrics` (Session-pflichtig), aus Stores/Integritätsprüfungen, nur Zahlen | `lib/metrics.ts`, `tests/integration/metrics-backup.test.ts` |
 | Datenintegrität (aus Live-Prüfung) | **gefundener Fehler behoben:** der Backup-Pfad legte für noch nie beschriebene Stores einen Envelope mit `payload: null` und gültigem Digest an; `/api/inbox` lieferte dadurch 500. Jetzt: Schreiben von `null` wird verweigert, Lesen erkennt und repariert den Zustand (journalliert), `POST /api/persistence {action:"repair"}` saniert alle Stores (auditiert) | `lib/persistence/store.ts`, `app/api/persistence/route.ts`, `tests/unit/store-migration.test.ts` |
-| Control Center an echte Daten | Alle 20 Abschnitte gebunden (Queue, Approvals, Tests, Deployments, Artefakte, Geräte, Computer Use, Wissen, Simulation, Fabric, Audit, Bereitschaft); leer = „keine Daten“, fehlend = „nicht verfügbar“ | `components/control-center.tsx`, `tests/ui/control-center.test.tsx` |
+| Control Center an echte Daten | Alle **38 Abschnitte** gebunden; die Bereiche aus §26 der Spezifikation sind vollständig enthalten (Dashboard→Übersicht, Artifacts→Evidenz, Activity/Timeline/Replay→Timeline / Replay, Deployments→CI/CD-Pipeline, Settings→Betrieb/Persistenz); leer = „keine Einträge“, fehlend = „nicht verfügbar“; live alle 35 Routen mit 200 geprüft | `components/control-center.tsx`, `tests/ui/control-center.test.tsx`, `tests/ui/control-center-api.test.tsx` |
 | Supply Chain | GitHub-Actions auf Commit-SHAs gepinnt (checkout v4.3.0, setup-node v4.4.0) | `.github/workflows/ci.yml` |
 | Creator Inbox | `POST {action:"resolve"}` war unerreichbar (stand hinter einem `return`): jede Anfrage legte einen neuen Eintrag an. Jetzt eigener Zweig, Creator-Pflicht, Validierung, Ablehnung doppelter Beantwortung | `app/api/inbox/route.ts`, `tests/security/inbox-route.test.ts` |
 | Ausführungs-Evidenz | jede autorisierte Ausführung erzeugt einen **digestgebundenen, persistenten** Evidenzdatensatz (`ART-…`, SHA-256 über den gespeicherten Inhalt), verknüpft in Provenance (Knoten `EVIDENCE` + Kante) und Audit (`evidence.record` mit Digest); `GET /api/artifacts?verify=…` prüft erneut; Inhalte > 8 KiB werden sichtbar gekürzt (`truncated`) | `lib/artifacts.ts`, `lib/execution-broker.ts`, `tests/integration/execution-evidence.test.ts` |
@@ -63,7 +63,7 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 | Privacy/Data Boundary | default `DENY`, `METADATA_ONLY` verweigert geschützte Datenklassen an Dritte; Secret-Leases mit TTL und `redact()` | `lib/privacy.ts`, `lib/data-boundary.ts`, `lib/secrets.ts` |
 | Device Fabric | Discovery ≠ Autorisierung, Zustandsmaschine, Allocation nur für autorisierte Geräte | `lib/devices.ts` |
 | Computer Use | Registrieren ≠ Autorisieren, Allocation nur nach Creator-Freigabe, Netzwerk `DENY` | `lib/computer-use.ts`, `tests/integration/computer-use.test.ts` |
-| Audit/Provenance/Timeline | HMAC-verkettetes Audit (`verifyAuditChain`), append-only Events, kausale Provenance-Kanten | `lib/audit.ts`, `lib/events/log.ts`, `lib/provenance.ts` |
+| Audit/Provenance/Timeline | verkettetes Audit (`verifyAuditChain`, HMAC mit Schlüssel), append-only Events, kausale Provenance-Kanten, **Aufbewahrung ohne falschen Alarm** (keine Kürzung ohne `BOB_AUDIT_MAX_RECORDS`; Kürzung nur mit Checkpoint, Rekonstruktion ausgewiesen) | `lib/audit.ts`, `lib/events/log.ts`, `lib/provenance.ts` |
 | CI/CD | 5 Jobs mit Gate; Promotion nur mit bestandenen Checks, Smoke-Stufe und Creator-Approval | `.github/workflows/ci.yml`, `lib/cicd.ts`, `lib/promotion.ts` |
 | Dokumentation | 14 §44-Dokumente auf Deutsch, code- und nachweiskonform | `docs/*.md` |
 
@@ -71,13 +71,13 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 
 | Nachweis | Ergebnis |
 |---|---|
-| Automatisierte Tests | **27 Dateien / 155 Tests grün** (`npx vitest run`) |
+| Automatisierte Tests | **30 Dateien / 166 Tests grün** (`npx vitest run`) |
 | Statische Gates | `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler (10 Warnungen); `npm run build` erfolgreich (Exit-Code geprüft, nicht nur Ausgabe) |
-| Live über HTTP | `scripts/verify-live.sh` gegen `npx next start`: **120 PASS / 0 FAIL** – Auth fail closed (428/401/403/201/200), Kette bis Knowledge, Sandbox + Snapshot + Capability, autorisierte Ausführung (`argv`, stdout `live-ok`), vier Angriffsblockaden mit Audit, Fehlerkette bis `REGRESSION_LOCKED`, Lockdown/Privacy/Provider/Geräte, Restore/Persistenz/Readiness sowie **Schritt 10: Agentenweg über Capability-Token ohne Browser-Session** (evidenzgebundene Ausführung; Verweigerungen bei Shell-Programm, Subjekt-Spoofing, Widerruf und Lockdown) |
+| Live über HTTP | `scripts/verify-live.sh` gegen `npx next start`: **130 PASS / 0 FAIL** (frisch initialisiert, Storage `/tmp/bob-live11`; 128 bei bereits initialisierter Instanz) – Auth fail closed (428/401/403/201/200), Kette bis Knowledge, Sandbox + Snapshot + Capability, autorisierte Ausführung (`argv`, stdout `live-ok`), Angriffsblockaden mit Audit, Fehlerkette bis `REGRESSION_LOCKED`, Lockdown/Privacy/Provider/Geräte, Restore/Persistenz/Readiness, **Schritt 10: Agentenweg über Capability-Token ohne Browser-Session** und **Evidenz der blockierten Autorisierung** (`kind=DENIAL`, Digest erneut geprüft, ohne Klartext-Argumente) |
 | §49-Abnahme 1 (Erfolgspfad) | `tests/e2e/creator-flow.test.ts` + Live-Schritte 2–4 |
 | §49-Abnahme 2 (bewusster Fehler) | `tests/e2e/failure-recovery.test.ts` (Exit-Code 7) + Live-Schritt 6 |
 | §49-Abnahme 3 (blockierter Angriff) | fremder Sandbox-Bindungsversuch 409, unbekanntes Token 409, Shell-Programm/-Metazeichen 409, Audit-DENY + Evidenz; `tests/e2e/creator-flow.test.ts` Test 2, Live-Schritt 5 |
-| Gefundene und behobene Fehler | Upgrade-Blocker (Schemaerhöhung sperrte die Anmeldung aus, 500 → 201 nach Migration), Store-Vergiftung (`payload: null`), unerreichbarer Inbox-`resolve`-Zweig, fehlende Umgebungsbindung des Agentenwegs (`/api/runtime` erzwang `development`), ungeschützte GET-Methoden in sechs Routen — jeder Fix mit Regressionstest |
+| Gefundene und behobene Fehler | Upgrade-Blocker (Schemaerhöhung sperrte die Anmeldung aus, 500 → 201 nach Migration), Store-Vergiftung (`payload: null`), unerreichbarer Inbox-`resolve`-Zweig, fehlende Umgebungsbindung des Agentenwegs (`/api/runtime` erzwang `development`), ungeschützte GET-Methoden in sechs Routen, **Audit-Kürzung ohne Checkpoint** (falscher Alarm `sequence gap`/`chain break`, live gefunden → Checkpoint + Rekonstruktion), **Verweigerungsevidenz fehlte** (§49 verlangt Nachweis, nicht nur Log) — jeder Fix mit Regressionstest |
 | CI | Läufe `36090732676`, `36090186817`, `36086611264`, `36091730579` – alle grün |
 
 ## D. Teilimplementiert (PARTIAL)
@@ -91,7 +91,7 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 | Computer Use | Vertrag + Zustandsmaschine + Autorisierung; kein Browser-/Desktop-Treiber angebunden |
 | Simulation/Visualisierung | Szenarien und Visualisierungsarten persistent, aber keine Renderer/Ausführung |
 | Runtime-Registry | 3 Definitionen (Node 22, Python 3.13, Custom OCI), erweiterbar; kein automatisches Provisionieren |
-| Control Center UI | 20 Abschnitte, jeder an echte Serverdaten gebunden (kein Platzhalterzustand), jsdom-Renderingtest; Browser-E2E offen |
+| Control Center UI | 38 Abschnitte, jeder an echte Serverdaten gebunden (kein Platzhalterzustand), jsdom-Renderingtests gegen echte Routen-Handler; Browser-E2E offen |
 | Metrik-Alarmierung | Export und Empfehlungen vorhanden; kein Scraper/Alertmanager im Repository |
 | Backup-Automation | Backup/Restore implementiert und geprüft; kein geplanter Job und keine Rotation |
 | Legacy-Token | Standardmäßig deaktiviert; Aktivierung nur mit ausdrücklicher Freigabe (dokumentiert, nicht empfohlen) |
@@ -109,7 +109,7 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 - OCI-Sandbox-Laufzeit (kein Container-Daemon in der Umgebung verfügbar).
 - Nebenläufigkeitsgrenzen sind getestet (12 parallele autorisierte Ausführungen, 6 verweigerte Fremdbindungen: `tests/integration/load-broker.test.ts`), ein Durchsatz-/SLO- oder Langzeitnachweis ist es **nicht**.
 - Verhalten über lange Betriebszeit (kein Langzeit-/Soak-Test).
-- Echte Browser-Darstellung des Control Centers (Playwright/Browser-E2E). Das Rendering ist unter jsdom getestet (`tests/ui/control-center.test.tsx`: 20 Abschnitte, echte Daten, „nicht verfügbar“-Meldung, Anmeldemaske).
+- Echte Browser-Darstellung des Control Centers (Playwright/Browser-E2E). Das Rendering ist unter jsdom getestet (`tests/ui/control-center.test.tsx`: 38 Abschnitte, echte Daten, „nicht verfügbar“-Meldung, Anmeldemaske; `tests/ui/control-center-api.test.tsx`: echte Routen-Handler, Metriken und Secret-Grenze).
 
 ## G. Sicherheitsgrenzen
 
@@ -139,12 +139,17 @@ Keine Erfolgsaussage stützt sich auf Mock-Verhalten; Simulationen
 
 ## I. Tests und Ergebnisse
 
-- Unit: Persistenz, Control Plane, Agent Fabric (11 Rollen, harte Grenzen).
-- Integration: Sandbox-Runtime, Provider-Fabric, App-Modul-Sandbox, Computer Use.
-- Security: Authority-Invarianten, API-Guard, API-Gate, Routen-Guards, argv-Policy, Creator-Login und Lockout.
-- Regression: Regression Engine (argv-Policy, leere Suite = Fehlschlag).
-- E2E: Erfolgskette Creator → Knowledge; Fehlerkette bis `REGRESSION_LOCKED`.
-- Live: `scripts/verify-live.sh` (120 Prüfungen, 0 Fehler).
+- Unit (**7 Dateien / 51 Tests**): Persistenz, Store-Migration, Control Plane, Agent Fabric (11 Rollen,
+  harte Grenzen), Recovery-Tier, Betriebszustand, Audit-Aufbewahrung.
+- Integration (**7 / 36**): Sandbox-Runtime, Provider-Fabric, App-Modul-Sandbox, Computer Use,
+  Ausführungs- und Verweigerungs-Evidenz, Backup/Metriken, Nebenläufigkeit.
+- Security (**11 / 64**): Authority-Invarianten, API-Guard, API-Gate, Routen-Guards, direkt aufgerufene
+  Routen ohne Gate, argv-Policy, Creator-Login, Lockout, TOTP, Inbox, Routenvertrag.
+- Regression (1 / 5): Regression Engine (argv-Policy, leere Suite = Fehlschlag).
+- E2E (2 / 4): Erfolgskette Creator → Knowledge; Fehlerkette bis `REGRESSION_LOCKED`.
+- UI (2 / 6): Control Center unter jsdom mit vollständiger Navigation und echten Routen-Handlern.
+- Live: `scripts/verify-live.sh` (**130 Prüfungen, 0 Fehler** bei Erstinitialisierung).
+- Gesamt: **30 Dateien / 166 Tests grün**.
 
 Details und Befehle: `docs/TESTING.md`.
 
