@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import {observe} from "./observability";
+import {approvalGranted} from "./approvals";
 import {loadFabric,saveFabric} from "./fabric-store";
 export type CheckKind="LINT"|"TYPECHECK"|"UNIT"|"INTEGRATION"|"SECURITY"|"BUILD"|"BROWSER"|"EVALUATION"|"SMOKE";
 export type CheckResult={id:string;kind:CheckKind;status:"PENDING"|"RUNNING"|"PASSED"|"FAILED"|"SKIPPED";summary:string;startedAt?:string;finishedAt?:string};
@@ -23,7 +24,8 @@ export function promote(pipelineId:string,next:PromotionStage){
  const p=pipelines.find(x=>x.id===pipelineId);if(!p)throw new Error("pipeline not found");
  if(next==="PRODUCTION"&&p.checks.some(x=>x.status!=="PASSED"))throw new Error("production promotion blocked: verification incomplete");
  if(next==="PRODUCTION"&&p.stage!=="SMOKE")throw new Error("production requires smoke stage");
- if(next==="PRODUCTION"&&p.approvalId===undefined)throw new Error("production promotion requires approvalId");
+ if(next==="PRODUCTION"&&(!p.approvalId||!approvalGranted(p.approvalId)))throw new Error("production promotion requires granted approval");
+ if(next==="SMOKE"&&p.checks.some(x=>["LINT","TYPECHECK","UNIT","INTEGRATION","SECURITY","BUILD","BROWSER","EVALUATION"].includes(x.kind)&&x.status!=="PASSED"))throw new Error("smoke stage requires all verification checks to pass");
  p.stage=next;p.updatedAt=new Date().toISOString();persist();
  observe({type:"deployment.stage.changed",message:`Pipeline ${pipelineId} → ${next}`,status:next==="PRODUCTION"?"COMPLETED":"RUNNING",actor:"operator",resource:p.id,taskId:p.taskId,action:"cicd.promote",argumentsValue:{next}});return clone(p);
 }
