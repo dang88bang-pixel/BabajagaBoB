@@ -22,6 +22,8 @@ export type AuditRecord = {
   actor: string;
   action: string;
   resource?: string;
+  /** Kanonische Domänen-Event-ID, die diesen Audit-Eintrag ausgelöst hat. */
+  eventId?: string;
   decision: string;
   argumentHash: string;
   causalParentId?: string;
@@ -59,6 +61,7 @@ export function canonicalRecord(record: Omit<AuditRecord, "hash">): string {
     record.actor,
     record.action,
     record.resource ?? null,
+    record.eventId ?? null,
     record.decision,
     record.argumentHash,
     record.causalParentId ?? null,
