@@ -298,6 +298,13 @@ export function heartbeatAgent(agentId: string): Agent {
 /* ---------------------------------------------------------------- Missions */
 
 export function createMission(input: {title: string; objective: string; owner?: string; createdBy: string}): Mission {
+  // Eine Mission ohne Titel oder Ziel ist kein Plan, sondern ein leerer
+  // Datensatz: die Kette Mission → Objective → Task hinge an einem
+  // inhaltslosen Objekt. Deshalb Pflichtfelder und fail closed.
+  if (!input || typeof input !== "object") throw new Error("mission input required");
+  if (typeof input.title !== "string" || input.title.trim().length === 0) throw new Error("mission title required");
+  if (typeof input.objective !== "string" || input.objective.trim().length === 0) throw new Error("mission objective required");
+  if (typeof input.createdBy !== "string" || input.createdBy.trim().length === 0) throw new Error("mission createdBy required");
   const now = new Date().toISOString();
   const mission: Mission = {
     missionId: nextId("mission", "MIS"),

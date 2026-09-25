@@ -1,5 +1,5 @@
 import {NextResponse} from "next/server";
-import {listRuns, createRun, startRun, completeRun, failRun, cancelRun, beginRecovery, rollbackRun, attachExecution} from "@/lib/runs";
+import {listRuns, createRun, startRun, completeRun, failRun, cancelRun, beginRecovery, rollbackRun, attachExecution, getRun, queueRun, leaseRun} from "@/lib/runs";
 import {guardOrDeny} from "@/lib/api/api-gate";
 import type {Risk} from "@/lib/types";
 
@@ -20,7 +20,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json();
+  // Tolerant parsen, damit ein unlesbarer Body nicht als 500 endet.
+  const body = (await request.clone().json().catch(() => ({}))) as Record<string, unknown>;
   const denied = guardOrDeny(request, {
     action: "run:manage",
     taskId: typeof body.taskId === "string" ? body.taskId : undefined,
@@ -28,20 +29,53 @@ export async function POST(request: Request) {
   });
   if (denied) return denied;
 
-  let result = null;
-  if (body.action === "create") {
-    const run = createRun({taskId: body.taskId, agentId: body.agentId, risk: body.risk as Risk, sandboxId: body.sandboxId});
-    if (run && typeof body.jobId === "string" && typeof body.sandboxId === "string") attachExecution(run.runId, body.jobId, body.sandboxId);
-    result = run;
+  // Feldprüfung vor der Zustandsänderung: `undefined` als Lauf-Kennung war
+  // früher eine stille 409/200-Antwort (kein Lauf gefunden), jetzt eine 400.
+  const action = typeof body.action === "string" ? body.action : undefined;
+  if (!action) return NextResponse.json({error: "action is required"}, {status: 400});
+  const runId = typeof body.runId === "string" && body.runId.length > 0 ? body.runId : undefined;
+
+  try {
+    let result = null;
+    if (action === "create") {
+      if (typeof body.taskId !== "string" || typeof body.agentId !== "string") {
+        return NextResponse.json({error: "taskId and agentId are required"}, {status: 400});
+      }
+      const run = createRun({taskId: body.taskId, agentId: body.agentId, risk: body.risk as Risk, sandboxId: body.sandboxId as string | undefined});
+      if (run && typeof body.jobId === "string" && typeof body.sandboxId === "string") attachExecution(run.runId, body.jobId, body.sandboxId);
+      result = run;
+    } else {
+      if (!runId) return NextResponse.json({error: "runId is required"}, {status: 400});
+      if (action === "start") {
+        // Ein über die API angelegter Lauf ist CREATED; `startRun` verlangt
+        // LEASED. Die Route führte deshalb zu "invalid run transition
+        // CREATED -> RUNNING" und war ohne Dispatcher nicht benutzbar. Sie
+        // führt jetzt dieselben Schritte wie ein Worker aus — Queue und Lease
+        // bleiben dabei explizite, auditierte Übergänge.
+        const current = getRun(runId);
+        if (!current) return NextResponse.json({error: "run not found", runId}, {status: 404});
+        if (current.state === "CREATED") queueRun(runId, "CREATOR");
+        if (getRun(runId)?.state === "QUEUED") leaseRun(runId, "CREATOR");
+        result = startRun(runId);
+      }
+      if (action === "complete") result = completeRun(runId);
+      if (action === "fail") {
+        if (typeof body.error !== "string" || body.error.length === 0) {
+          return NextResponse.json({error: "error message is required"}, {status: 400});
+        }
+        result = failRun(runId, body.error);
+      }
+      if (action === "cancel") result = cancelRun(runId);
+      // `beginRecovery` ist async (führt die Recovery-Stufe aus) — ohne await wären
+      // Rückgabe und Fehler nur ein Promise.
+      if (action === "recover") result = await beginRecovery(runId);
+      if (action === "rollback") result = typeof body.artifactId === "string" ? rollbackRun(runId, body.artifactId) : null;
+    }
+    if (!result) {
+      return NextResponse.json({error: "invalid transition", action}, {status: 409, headers: {"Cache-Control": "no-store"}});
+    }
+    return NextResponse.json({run: result}, {status: action === "create" ? 201 : 200, headers: {"Cache-Control": "no-store"}});
+  } catch (error) {
+    return NextResponse.json({error: error instanceof Error ? error.message : "invalid run transition", action}, {status: 400, headers: {"Cache-Control": "no-store"}});
   }
-  if (body.action === "start") result = startRun(body.runId);
-  if (body.action === "complete") result = completeRun(body.runId);
-  if (body.action === "fail") result = failRun(body.runId, body.error);
-  if (body.action === "cancel") result = cancelRun(body.runId);
-  if (body.action === "recover") result = beginRecovery(body.runId);
-  if (body.action === "rollback") result = rollbackRun(body.runId, body.artifactId);
-  if (!result) {
-    return NextResponse.json({error: "invalid transition", action: body.action ?? null}, {status: 409, headers: {"Cache-Control": "no-store"}});
-  }
-  return NextResponse.json({run: result}, {status: body.action === "create" ? 201 : 200, headers: {"Cache-Control": "no-store"}});
 }

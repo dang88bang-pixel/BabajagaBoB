@@ -27,9 +27,17 @@ export async function POST(req: Request) {
     const body = (await req.json()) as Record<string, unknown>;
     if (body.action === "create-mission") {
       const guard = guardRequest(req, {action: "mission:create", creatorOnly: true});
+      // Pflichtfelder explizit prüfen: ein leerer Titel/die leere Zielsetzung
+      // erzeugte früher eine inhaltslose Mission mit Status PLANNING (201).
+      if (typeof body.title !== "string" || body.title.trim().length === 0) {
+        return NextResponse.json({error: "title is required"}, {status: 400});
+      }
+      if (typeof body.objective !== "string" || body.objective.trim().length === 0) {
+        return NextResponse.json({error: "objective is required"}, {status: 400});
+      }
       const mission = createMission({
-        title: String(body.title ?? ""),
-        objective: String(body.objective ?? ""),
+        title: body.title,
+        objective: body.objective,
         createdBy: guard.actor.actorId
       });
       return NextResponse.json({mission}, {status: 201});

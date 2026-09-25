@@ -203,7 +203,7 @@ Pflicht, Ablehnung ohne/mit falschem Code, Akzeptanz und Replay-Ablehnung des zw
 echtes HTTP), `tests/security/inbox-route.test.ts`,
 `tests/security/api-route-contract.test.ts`, `tests/security/direct-route-denial.test.ts`,
 `tests/security/gate-bypass.test.ts`, `tests/e2e/creator-flow.test.ts`, `tests/e2e/failure-recovery.test.ts`
-(**13 Dateien / 73 Tests** in der Security-Suite, 33 Dateien / 186 Tests gesamt) und der Live-Nachweis
+(**14 Dateien / 89 Tests** in der Security-Suite, 35 Dateien / 212 Tests gesamt) und der Live-Nachweis
 `scripts/verify-live.sh` (**171 Prüfungen / 0 Fehler** auf frischem Zustand, 169 / 0 auf initialisiertem
 Zustand, jeweils mit aktiver Kernel-Isolation).
 Zusammenfassung: `docs/TESTING.md`. Offene, als `PARTIAL`/`UNVERIFIED` gekennzeichnete Punkte sind dort und in

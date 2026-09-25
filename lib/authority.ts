@@ -459,9 +459,17 @@ const roleCapabilities: Record<Role, string[]> = {
   VIEWER: ["control-plane:access", "mission:read", "task:read", "agent:read", "audit:read"]
 };
 
-export function roleAllows(role: Role, capability: string): boolean {
-  return roleCapabilities[role].some(x => matches(x, capability));
+export function roleAllows(role: Role | string, capability: string): boolean {
+  // Unbekannte Rolle = keine Rechte. Früher warf der Zugriff auf die fehlende
+  // Rollenmatrix einen TypeError ("Cannot read properties of undefined"),
+  // der als 400 durchgereicht wurde — fail closed ist hier richtig.
+  const granted = roleCapabilities[role as Role];
+  if (!Array.isArray(granted)) return false;
+  if (typeof capability !== "string" || capability.length === 0) return false;
+  return granted.some(x => matches(x, capability));
 }
+
+export const KNOWN_ROLES = Object.keys(roleCapabilities) as Role[];
 
 export function abacAllows(subject: SubjectContext, policy: PolicyContext) {
   if (!roleAllows(subject.role, policy.action)) return {allowed: false, reason: "RBAC capability denied"};

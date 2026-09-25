@@ -10,6 +10,25 @@ beforeAll(async () => {
   cp = await import("../../lib/control-plane");
 });
 
+describe("Control Plane: Pflichtfelder der Kette", () => {
+  // Gefunden im vollständigen Aktionsdurchlauf: `createMission` akzeptierte
+  // leere Attribute und erzeugte eine inhaltslose Mission (Status PLANNING) —
+  // die Kette Mission → Objective → Task hing danach an einem leeren Objekt.
+  it("verweigert eine Mission ohne Titel, Ziel oder Urheber", () => {
+    expect(() => cp.createMission({title: "", objective: "Ziel", createdBy: "CREATOR"})).toThrow(/title/i);
+    expect(() => cp.createMission({title: "   ", objective: "Ziel", createdBy: "CREATOR"})).toThrow(/title/i);
+    expect(() => cp.createMission({title: "Titel", objective: "", createdBy: "CREATOR"})).toThrow(/objective/i);
+    expect(() => cp.createMission({title: "Titel", objective: "Ziel", createdBy: ""})).toThrow(/createdBy/i);
+    expect(() => cp.createMission(undefined as never)).toThrow(/required/i);
+  });
+
+  it("legt keine Mission an, wenn die Eingabe verweigert wird", () => {
+    const before = cp.snapshot().missions.length;
+    expect(() => cp.createMission({title: "", objective: "", createdBy: "CREATOR"})).toThrow();
+    expect(cp.snapshot().missions).toHaveLength(before);
+  });
+});
+
 describe("Control Plane (kanonische Entitäten)", () => {
   it("legt Mission, Objective und Task mit eigenen IDs an", () => {
     const mission = cp.createMission({title: "Unit-Mission", objective: "Ziel prüfen", createdBy: "CREATOR"});

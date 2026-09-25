@@ -21,6 +21,38 @@ export function optionalString(body:Record<string,unknown>,key:string,max=4096){
   if(typeof value!=="string"||value.length>max) throw new Error(`invalid ${key}`);
   return value;
 }
+/**
+ * Pflicht-Objekt (z. B. der Nutzdatensatz einer create-Aktion). Fehlt es oder ist
+ * es kein einfaches Objekt, wird die Anfrage **abgelehnt** — statt einen
+ * inhaltslosen Datensatz zu persistieren (identitätslose Einträge blockieren
+ * sonst spätere Registrierungen und täuschen einen Zustand vor).
+ */
+export function objectField(body:Record<string,unknown>,key:string):Record<string,unknown>{
+  const value=body[key];
+  if(!value||typeof value!=="object"||Array.isArray(value)) throw new Error(`${key} object required`);
+  return value as Record<string,unknown>;
+}
+/**
+ * Prüft Pflicht-Zeichenketten eines Nutzdatensatzes (`keys`) und liefert sie
+ * typisiert zurück. Leere/fehlende Werte oder reine Leerzeichen werden
+ * abgelehnt; optionale Schlüssel bleiben unberührt.
+ */
+export function requiredStrings<K extends string>(value:Record<string,unknown>,keys:readonly K[],max=4096):Record<K,string>{
+  const out=[] as unknown as Record<K,string>;
+  for(const key of keys){
+    const item=value[key];
+    if(typeof item!=="string"||item.trim().length===0||item.length>max) throw new Error(`invalid ${key}`);
+    out[key]=item;
+  }
+  return out;
+}
+/** Optionales Feld, das — falls vorhanden — eine Zeichenkette sein muss. */
+export function optionalStringField(value:Record<string,unknown>,key:string,max=4096):string|undefined{
+  const item=value[key];
+  if(item===undefined||item===null)return undefined;
+  if(typeof item!=="string"||item.length>max) throw new Error(`invalid ${key}`);
+  return item;
+}
 export function actionField(body:Record<string,unknown>,allowed:string[]){
   const action=stringField(body,"action",80);
   if(!allowed.includes(action)) throw new Error("unsupported action");

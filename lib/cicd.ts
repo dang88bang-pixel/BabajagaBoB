@@ -59,6 +59,9 @@ function update(pipeline: Pipeline) {
 }
 
 export function createPipeline(input: {taskId: string; branch: string; runId?: string; approvalId?: string}) {
+  if(!input||typeof input!=="object")throw new Error("pipeline required");
+  if(typeof input.taskId!=="string"||input.taskId.trim().length===0)throw new Error("pipeline taskId required");
+  if(typeof input.branch!=="string"||input.branch.trim().length===0)throw new Error("pipeline branch required");
   const now = new Date().toISOString();
   const pipeline: Pipeline = {
     id: `PIPE-${Date.now()}`,

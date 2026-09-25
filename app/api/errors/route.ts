@@ -1,6 +1,6 @@
 import {NextResponse} from "next/server";
 import {createErrorIncident,errorSummary,escalateError,establishRootCause,investigateError,learnFromError,listErrorIncidents,transitionError} from "@/lib/error-intelligence";
-import {actionField,readJson,stringArray,stringField} from "@/lib/request-validation";
+import {actionField,objectField,readJson,stringArray,stringField} from "@/lib/request-validation";
 import type {ErrorLifecycle} from "@/lib/error-intelligence";
 export const runtime="nodejs"; export const dynamic="force-dynamic";
 import {guardRequest, toDeniedResponse} from "@/lib/api/guard";
@@ -12,7 +12,7 @@ export async function POST(req:Request){
   guardRequest(req,{action:"error:manage"});
   const b=await readJson(req);
   const action=actionField(b,["create","transition","investigate","hypothesis","experiment","fix.verify","recovery","recovery.execute","recovery.verify","regression","evidence","root_cause","learn","escalate"]);
-  if(action==="create"){if(!b.input||typeof b.input!=="object"||Array.isArray(b.input))throw new Error("input required");return NextResponse.json(createErrorIncident(b.input as never),{status:201});}
+  if(action==="create"){if(!b.input||typeof b.input!=="object"||Array.isArray(b.input))throw new Error("input required");return NextResponse.json(createErrorIncident(objectField(b,"input") as never),{status:201});}
   if(action==="transition")return NextResponse.json(transitionError(stringField(b,"id",128),lifecycleField(b),b.patch as never));
   if(action==="investigate")return NextResponse.json(await investigateError(stringField(b,"id",128)));
   if(action==="hypothesis"){const {formHypothesis}=await import("@/lib/error-intelligence");return NextResponse.json(formHypothesis(stringField(b,"id",128),stringField(b,"hypothesis",4096)));}
@@ -23,7 +23,7 @@ export async function POST(req:Request){
   if(action==="fix.verify"){const {verifyFix}=await import("@/lib/error-intelligence");return NextResponse.json(await verifyFix(stringField(b,"id",128)));}
   if(action==="regression"){const {createRegressionTest}=await import("@/lib/error-intelligence");return NextResponse.json(createRegressionTest(stringField(b,"id",128),stringArray(b.argv,"argv",64,4096),typeof b.createdBy==="string"?b.createdBy:"AG-QA"),{status:201});}
   if(action==="evidence"){const {recordExperimentEvidence}=await import("@/lib/error-intelligence");return NextResponse.json(recordExperimentEvidence(stringField(b,"id",128),stringField(b,"claim",4096),stringField(b,"value",4096)));}
-  if(action==="root_cause")return NextResponse.json(establishRootCause(stringField(b,"id",128),stringField(b,"rootCause",4096),stringArray(b.evidenceIds,"evidenceIds")));
+  if(action==="root_cause")return NextResponse.json(establishRootCause(stringField(b,"id",128),stringField(b,"rootCause",4096),b.evidenceIds===undefined?[]:stringArray(b.evidenceIds,"evidenceIds")));
   if(action==="learn")return NextResponse.json(learnFromError(stringField(b,"id",128),stringField(b,"summary",4096),typeof b.regressionTestId==="string"?b.regressionTestId:undefined));
   return NextResponse.json(escalateError(stringField(b,"id",128),stringField(b,"reason",4096)));
  }catch(e){

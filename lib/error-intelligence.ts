@@ -95,6 +95,14 @@ const store = createStore<Payload>("errors", 2, () => ({incidents: []}));
 const rank: Record<ErrorSeverity, number> = {LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4};
 
 export function createErrorIncident(input: Omit<ErrorIncident, "incidentId" | "timestamp" | "status" | "updatedAt">): ErrorIncident {
+  // Ein Incident ohne Symptom/Schwere/Fehlerbild ist nicht untersuchbar; er würde
+  // die Fehlerkette mit einem leeren Datensatz belasten.
+  if(!input||typeof input!=="object")throw new Error("error incident required");
+  for(const key of ["symptom","incident","failureMode","severity"] as const){
+    const value=(input as Record<string,unknown>)[key];
+    if(typeof value!=="string"||value.trim().length===0)throw new Error(`error ${key} required`);
+  }
+  if(!["LOW","MEDIUM","HIGH","CRITICAL"].includes((input as {severity:string}).severity))throw new Error("invalid severity");
   const incident: ErrorIncident = {
     ...input,
     incidentId: `ERR-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
@@ -209,17 +217,24 @@ export function formHypothesis(incidentId: string, hypothesis: string): ErrorInc
   return transitionError(incidentId, "HYPOTHESIS", {hypothesis});
 }
 
-export function startExperiment(incidentId: string, objectiveId = "OBJ-003"): ErrorIncident {
+export function startExperiment(incidentId: string, objectiveId?: string): ErrorIncident {
   const incident = getErrorIncident(incidentId);
   if (!incident) throw new Error("error incident not found");
   if (!incident.hypothesis) throw new Error("hypothesis required before experimentation");
   const sandboxId = incident.diagnosticSandboxId ?? incident.sandboxId;
   if (!sandboxId) throw new Error("diagnostic sandbox required for reproduction");
+  // Verknüpfung aus dem echten Task ableiten statt auf Seed-IDs zu zeigen:
+  // eine harte "MIS-002"/"OBJ-003"-Referenz verweist bei anderen Datenbeständen
+  // auf nicht existierende Objekte (Phantom-Verknüpfung).
+  const controlState = getControlState();
+  const incidentTask = incident.taskId ? controlState.tasks.find(entry => entry.taskId === incident.taskId) : undefined;
+  const missionId = incidentTask?.missionId ?? "UNASSIGNED";
+  const resolvedObjectiveId = objectiveId ?? incidentTask?.objectiveId ?? "UNASSIGNED";
   const experimentId = `EXP-${incident.incidentId.slice(4, 12)}`;
   createExperiment({
     experimentId,
-    missionId: "MIS-002",
-    objectiveId,
+    missionId,
+    objectiveId: resolvedObjectiveId,
     title: `Reproduktion ${incident.incidentId}`,
     sandboxId,
     hypothesis: incident.hypothesis,
@@ -272,6 +287,48 @@ export function establishRootCause(incidentId: string, rootCause: string, eviden
   const updated = transitionError(incidentId, "ROOT_CAUSE_FOUND", {rootCause, evidenceIds: merged});
   if (incident.failureId) resolveFailure(incident.failureId, rootCause, undefined);
   return updated;
+}
+
+/**
+ * Autonome, **evidenzbasierte** Diagnose bis `ROOT_CAUSE_FOUND`.
+ *
+ * Der Fehlerpfad darf nicht abkürzen: `prepareErrorRecovery` verlangt einen
+ * abgeschlossenen Nachweis (DIAGNOSING → HYPOTHESIS → EXPERIMENTING →
+ * ROOT_CAUSE_FOUND), sonst ist der Übergang ungültig — genau daran scheiterte
+ * der Worker-Zyklus zuvor. Diese Funktion geht den vollständigen Pfad mit
+ * echter Evidenz aus dem beobachteten Ausfall:
+ *   1. Hypothese aus Fehlerbild und Ausfallmeldung,
+ *   2. Reproduktions-Experiment in der Diagnose-Sandbox,
+ *   3. Evidenz (Claim = Meldung) wird festgehalten,
+ *   4. Root Cause wird erst danach gesetzt.
+ *
+ * Ohne Evidenz bricht sie ab — es wird nichts angenommen, was nicht belegt ist.
+ */
+export function establishRootCauseFromFailure(
+  incidentId: string,
+  failureDetail: string,
+  options: {hypothesis?: string; rootCause?: string} = {}
+): ErrorIncident {
+  const incident = getErrorIncident(incidentId);
+  if (!incident) throw new Error("error incident not found");
+  const detail = (failureDetail || incident.incident || incident.symptom || "").trim();
+  if (detail.length < 5) throw new Error("failure detail must be substantive");
+
+  let current = incident;
+  if (current.status === "DIAGNOSING") {
+    const hypothesis = options.hypothesis
+      ?? `Der Ausfall ${incident.incidentId} entsteht durch ${detail.slice(0, 200)}`;
+    current = formHypothesis(incidentId, hypothesis);
+  }
+  if (current.status === "HYPOTHESIS") {
+    current = startExperiment(incidentId);
+  }
+  if (current.status === "EXPERIMENTING") {
+    current = recordExperimentEvidence(incidentId, "Reproduktion der Ausfallmeldung", detail.slice(0, 1000));
+  }
+  if (current.status === "ROOT_CAUSE_FOUND") return current;
+  const rootCause = options.rootCause ?? `Ausfallmeldung: ${detail.slice(0, 300)}`;
+  return establishRootCause(incidentId, rootCause.length >= 5 ? rootCause : `Fehlerfall ${incidentId}`, current.evidenceIds);
 }
 
 export function markFixing(incidentId: string): ErrorIncident {

@@ -116,6 +116,16 @@ Ausführung mit Capability-Token, Verweigerungen (fremde Bindung, Shell-Programm
 widerrufenes Token, Lockdown), Evidence/Provenance/Audit-Kette, Metriken, Persistenz,
 Backups, Readiness und Queue. Ergebnis wird als Anzahl `PASS`/`FAIL` ausgegeben.
 
+Ergänzend prüft `scripts/audit-api.sh` **alle Routen** über HTTP (GET-Bestand,
+POST mit unlesbarem/leerem Body, Zugriff ohne Session, unvollständige Nutzdaten,
+frühere Fehlerbilder und die autonome Fehlerkette) — letzter Lauf
+**184 Prüfungen / 0 Fehler**, Exit 0; Details in `docs/TESTING.md` §4b.
+
+`scripts/audit-actions.mjs` prüft zusätzlich **jede Aktion und jedes Attribut**
+der Matrix, die direkt aus dem Quellcode gelesen wird, und fährt 14
+Interaktionsketten mit echten Kennungen durch — letzter Lauf
+**433 Prüfungen / 0 Fehler**, Exit 0; Details in `docs/TESTING.md` §4c.
+
 Prüfumfang des Skripts (**171 Prüfungen** bei Erstinitialisierung, **169** wenn die Instanz
 bereits initialisiert ist — der Bootstrap-Zweig enthält zwei Prüfungen mehr; mit verpflichtendem
 zweitem Faktor **177 / 175**; ohne delegierten cgroup-Unterbaum **168 / 166**):

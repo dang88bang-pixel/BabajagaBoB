@@ -65,6 +65,11 @@ const store = createStore<Payload>("reliability", 2, () => ({failures: [], plans
 const persist = (payload: Payload) => store.write(payload);
 
 export function recordFailure(input: Omit<FailureRecord, "failureId" | "createdAt" | "updatedAt" | "status">): FailureRecord {
+  if(!input||typeof input!=="object")throw new Error("failure required");
+  for(const key of ["symptom","incident","failureMode"] as const){
+    const value=(input as Record<string,unknown>)[key];
+    if(typeof value!=="string"||value.trim().length===0)throw new Error(`failure ${key} required`);
+  }
   const timestamp = new Date().toISOString();
   const failure: FailureRecord = {
     ...input,

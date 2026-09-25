@@ -25,6 +25,11 @@ const moduleStore=new Map<string,ExecutableModule>(persisted.modules.map(x=>[x.i
 const persist=()=>saveAppPersistence([...appStore.values()],[...moduleStore.values()]);
 
 export function createApp(input:{name:string;version:string;description:string;taskId?:string}){
+ if(!input||typeof input!=="object")throw new Error("app required");
+ for(const key of ["name","version","description"] as const){
+  const value=(input as Record<string,unknown>)[key];
+  if(typeof value!=="string"||value.trim().length===0)throw new Error(`app ${key} required`);
+ }
  const now=new Date().toISOString();
  const app:ManagedApp={id:"APP-"+crypto.randomUUID(),name:input.name,version:input.version,description:input.description,state:"PLANNING",progress:0,createdAt:now,updatedAt:now,modules:[]};
  appStore.set(app.id,app);persist();

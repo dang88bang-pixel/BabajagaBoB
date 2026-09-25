@@ -79,14 +79,17 @@ describe("Persistenz von Betriebszustand", () => {
 
   it("behält registrierte Skills", async () => {
     const first = await import("../../lib/skills");
+    // Vollständige Skill-Definition: die Registrierung verlangt Identität,
+    // Version und Werkzeugliste (unvollständige Einträge werden abgelehnt).
     first.registerSkill({
       id: "skill.example",
       name: "Beispiel",
-      description: "Test",
-      lifecycle: "VALIDATED",
-      capabilities: ["sandbox.snapshot"],
-      risk: "LOW"
-    } as never);
+      version: "1.0.0",
+      tools: ["sandbox.snapshot"],
+      lifecycle: "REGISTERED",
+      provenance: "tests/unit/runtime-persistence",
+      validation: ["argv-policy"]
+    });
 
     vi.resetModules();
     const second = await import("../../lib/skills");

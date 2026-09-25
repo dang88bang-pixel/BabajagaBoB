@@ -13,7 +13,9 @@ import {guardOrDeny} from "@/lib/api/api-gate";
  * governed Worker-Zyklus (`worker.cycle`) oder den Dispatcher (`dispatch`).
  */
 export async function POST(req: Request) {
-  const body = await req.json();
+  // Tolerant parsen: ein unlesbarer Body darf keinen 500er erzeugen (und erst
+  // recht nicht, bevor der Guard geprüft hat).
+  const body = (await req.clone().json().catch(() => ({}))) as Record<string, unknown>;
   const denied = guardOrDeny(req, {
     action: body.action === "dispatch" ? "task:dispatch" : "worker:cycle",
     taskId: typeof body.taskId === "string" ? body.taskId : undefined,
@@ -21,19 +23,32 @@ export async function POST(req: Request) {
   });
   if (denied) return denied;
   if (body.action === "dispatch") {
-    const result = await dispatchTask({
-      taskId: body.taskId,
-      agentId: body.agentId,
-      risk: body.risk as Risk,
-      sandboxType: body.sandboxType
-    });
-    return NextResponse.json(result, {status: 201});
+    // Pflichtfelder explizit prüfen: `undefined` in der Dispatch-Anfrage wäre
+    // ein Lauf gegen eine nicht existierende Aufgabe.
+    if (typeof body.taskId !== "string" || typeof body.agentId !== "string") {
+      return NextResponse.json({error: "taskId and agentId are required"}, {status: 400});
+    }
+    try {
+      const result = await dispatchTask({
+        taskId: body.taskId,
+        agentId: body.agentId,
+        risk: body.risk as Risk,
+        sandboxType: body.sandboxType as Parameters<typeof dispatchTask>[0]["sandboxType"]
+      });
+      return NextResponse.json(result, {status: 201});
+    } catch (error) {
+      return NextResponse.json({error: error instanceof Error ? error.message : "dispatch failed"}, {status: 400});
+    }
   }
   if (body.action === "worker.cycle") {
-    const result = await runWorkerCycle(typeof body.workerId === "string" ? body.workerId : undefined);
-    return NextResponse.json(result);
+    try {
+      const result = await runWorkerCycle(typeof body.workerId === "string" ? body.workerId : undefined);
+      return NextResponse.json(result);
+    } catch (error) {
+      return NextResponse.json({error: error instanceof Error ? error.message : "worker cycle failed"}, {status: 400});
+    }
   }
-  if (["worker.start", "worker.complete", "worker.fail"].includes(body.action)) {
+  if (["worker.start", "worker.complete", "worker.fail"].includes(String(body.action))) {
     return NextResponse.json(
       {error: "worker.start/complete/fail sind stillgelegt; Ausführung nur über den governed Zyklus (action=worker.cycle)"},
       {status: 409}

@@ -97,6 +97,36 @@ describe("Authority (Sicherheitsinvarianten)", () => {
     expect(authority.precheckCapabilityToken(second.id, ["task:execute", "sandbox:run"], {subject: AGENT_ID, taskId, sandboxId}).valid).toBe(true);
   });
 
+  it("verweigert unbekannte Rollen fail closed (keine Ausnahme, kein Zugriff)", () => {
+    // Gefunden im Aktionsdurchlauf: `roleAllows("GIBTSNICHT", …)` warf einen
+    // TypeError aus dem Rechte-Modul, der als 400 durchgereicht wurde. Ein
+    // unbekannter Rollenname darf niemals Rechte ergeben — und auch nicht als
+    // Ausnahme die Entscheidungskette verlassen.
+    expect(authority.roleAllows("GIBTSNICHT" as never, "sandbox:run")).toBe(false);
+    expect(authority.roleAllows("DEVELOPER", "sandbox:run")).toBe(true);
+    expect(authority.roleAllows("VIEWER", "sandbox:run")).toBe(false);
+    expect(authority.roleAllows("OWNER", "")).toBe(false);
+
+    const denied = authority.abacAllows(
+      {actorId: "AG-X", role: "GIBTSNICHT" as never, capabilities: ["sandbox:run"], environment: "development"},
+      {action: "sandbox:run", resource: "SB-X", risk: "LOW", requiresApproval: false, environment: "development"}
+    );
+    expect(denied.allowed).toBe(false);
+  });
+
+  it("führt einen über die API angelegten Lauf durch Queue und Lease in den Lauf", async () => {
+    // `runs.start` verlangte einen geleasten Lauf; ein per API angelegter Lauf
+    // ist CREATED. Ohne Dispatcher war die Aktion dadurch nicht benutzbar
+    // ("invalid run transition CREATED -> RUNNING").
+    const runs = await import("../../lib/runs");
+    const created = runs.createRun({taskId: "TASK-0001", agentId: AGENT_ID, risk: "LOW", sandboxId: "SB-0001"});
+    expect(created.state).toBe("CREATED");
+    runs.queueRun(created.runId, "CREATOR");
+    const leased = runs.leaseRun(created.runId, "CREATOR");
+    expect(leased?.state).toBe("LEASED");
+    expect(runs.startRun(created.runId)?.state).toBe("RUNNING");
+  });
+
   it("auditiert jede Verweigerung (DENY) nachvollziehbar", () => {
     const denials = audit.auditSnapshot(200).filter(record => record.decision === "DENY");
     expect(denials.length).toBeGreaterThan(0);

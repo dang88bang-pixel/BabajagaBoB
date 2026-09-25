@@ -94,6 +94,11 @@ type Payload = {
 const store = createStore<Payload>("science", 2, () => ({objectives: [], experiments: [], evidence: [], runs: [], decisions: []}));
 
 export function createObjective(x: {objectiveId?: string; missionId: string; title: string; description: string}): Objective {
+  if(!x||typeof x!=="object")throw new Error("objective required");
+  for(const key of ["missionId","title","description"] as const){
+    const value=(x as Record<string,unknown>)[key];
+    if(typeof value!=="string"||value.trim().length===0)throw new Error(`objective ${key} required`);
+  }
   const payload = store.read();
   const objective: Objective = {
     objectiveId: x.objectiveId ?? `OBJ-${(payload.objectives.length + 1).toString().padStart(3, "0")}`,
@@ -119,6 +124,16 @@ export function createObjective(x: {objectiveId?: string; missionId: string; tit
 }
 
 export function createExperiment(x: Omit<ExperimentRecord, "evidenceIds" | "status" | "progress" | "knowledgeState" | "replicationCount">): ExperimentRecord {
+  // Ein Experiment ohne Frage/Hypothese/Baseline/Kontrolle/Erwartung ist nicht
+  // kausal auswertbar — es würde als leerer Datensatz in der Kette landen.
+  if(!x||typeof x!=="object")throw new Error("experiment required");
+  for(const key of ["taskId","agentId","baseline","control","expectedResult"] as const){
+    const value=(x as Record<string,unknown>)[key];
+    if(typeof value!=="string"||value.trim().length===0)throw new Error(`experiment ${key} required`);
+  }
+  for(const key of ["variables","confounders","alternativeExplanations"] as const){
+    if(!Array.isArray((x as Record<string,unknown>)[key]))throw new Error(`experiment ${key} required`);
+  }
   const payload = store.read();
   const experimentId = x.experimentId || `EXP-${(payload.experiments.length + 1).toString().padStart(3, "0")}`;
   if (payload.experiments.some(e => e.experimentId === experimentId)) throw new Error(`experiment already exists: ${experimentId}`);

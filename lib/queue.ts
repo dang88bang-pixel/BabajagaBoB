@@ -38,6 +38,10 @@ export type Job = {
   timeoutMs: number;
   error?: string;
   deadLetterReason?: string;
+  /** Grund einer Zurückstellung (Run in Behandlung, Versuch nicht verbraucht). */
+  deferredReason?: string;
+  /** Anzahl der Zurückstellungen — steuert den Warte-Backoff. */
+  deferrals?: number;
 };
 
 type Payload = {jobs: Job[]};
@@ -247,6 +251,60 @@ export function expireLeases(at = Date.now()): number {
       });
   }
   return expired.length;
+}
+
+/**
+ * Job zurückstellen, **ohne** einen Versuch zu verbrauchen: `LEASED → QUEUED`
+ * bzw. eine erneute Frist auf einen bereits wartenden Job. Nötig, wenn der
+ * zugehörige Run gerade in Behandlung ist (Diagnose, Recovery, Verifikation)
+ * und deshalb nicht gestartet werden darf. Ein `failJob` wäre hier falsch: es
+ * würde echte Fehlversuche auf einen Lauf zählen, der planmäßig behandelt wird.
+ */
+export function deferJob(jobId: string, reason: string, delayMs = 30_000): Job | null {
+  const job = store.read().jobs.find(j => j.jobId === jobId);
+  if (!job) return null;
+  if (!["QUEUED", "LEASED"].includes(job.state)) return null;
+  // Wartezeit wächst mit jeder Zurückstellung (30 s, 60 s, … höchstens 15 min),
+  // damit ein Run in Behandlung nicht im Minutentakt erneut angefragt wird.
+  const deferrals = (job.deferrals ?? 0) + 1;
+  const wait = Math.min(delayMs * deferrals, 15 * 60_000);
+  const nextAttemptAt = new Date(Date.now() + wait).toISOString();
+  if (job.state === "LEASED") {
+    return transition(job, "QUEUED", reason, j => {
+      j.nextAttemptAt = nextAttemptAt;
+      j.leasedUntil = undefined;
+      j.leaseOwner = undefined;
+      j.deferredReason = reason;
+      j.deferrals = deferrals;
+    });
+  }
+  let updated: Job | null = null;
+  store.update(payload => {
+    const stored = payload.jobs.find(j => j.jobId === jobId);
+    if (!stored) return;
+    stored.nextAttemptAt = nextAttemptAt;
+    stored.leasedUntil = undefined;
+    stored.leaseOwner = undefined;
+    stored.deferredReason = reason;
+    stored.deferrals = deferrals;
+    updated = clone(stored);
+  });
+  if (updated) {
+    observe({
+      type: "job.deferred",
+      message: `Job ${jobId}: zurückgestellt (${reason})`,
+      status: "RUNNING",
+      actor: "worker",
+      agentId: job.agentId,
+      taskId: job.taskId,
+      runId: job.runId,
+      jobId,
+      action: "job.defer",
+      resource: jobId,
+      argumentsValue: {reason, nextAttemptAt}
+    });
+  }
+  return updated;
 }
 
 export function cancelJob(jobId: string, actor = "system"): Job | null {
