@@ -253,8 +253,8 @@ Details in `docs/TESTING.md` §4c.
 Datenvertrag jedes Abschnitts gegen die echte Route — letzter Lauf
 **88 Prüfungen / 0 Fehler**, Exit 0; Details in `docs/TESTING.md` §4d.
 
-Prüfumfang des Skripts (**176 Prüfungen** auf einer initialisierten Instanz, wiederholbar; der
-Bootstrap-Zweig enthält zwei Prüfungen mehr, mit verpflichtendem zweitem Faktor zwei weitere, ohne
+Prüfumfang des Skripts (**174 Prüfungen** auf einer bereits initialisierten Instanz, wiederholbar;
+der Bootstrap-Zweig enthält zwei Prüfungen mehr — dann 176, mit verpflichtendem zweitem Faktor zwei weitere, ohne
 delegierten cgroup-Unterbaum zwei weniger):
 Authentifizierung, Mission → Objective → Task → Sandbox → Capability, autorisierte Ausführung
 mit Evidenzprüfung, Angriffsblockaden, **Evidenz einer blockierten Autorisierung
@@ -341,6 +341,18 @@ Beispiel:
 BASE=http://localhost:3000 SECRET=<creator-login> STORAGE=/tmp/bob-live \
   bash scripts/verify-live.sh
 ```
+
+**Runbook „Geräte-Enrollment nicht konfiguriert" (fail closed, gemessen am 2026-09-25):** Ohne
+`BOB_DEVICE_ENROLLMENT_SECRET` (mindestens 16 Zeichen) antworten `POST /api/devices
+{action:"enroll"}` und `{action:"heartbeat"}` mit **503 `ENROLLMENT_DISABLED`** — Discovery bleibt
+absichtlich fail closed, und die Prüfskripte werten jeden 5xx als Fehler. Auf einer Instanz ohne
+dieses Secret meldet `scripts/audit-actions.mjs` deshalb **494 / 2** (die beiden
+Enrollment-Aufrufe „ohne Attribute") und `scripts/audit-ui.mjs` **87 / 1** („Geräte-Autorisierung:
+kein Gerät gemeldet"), obwohl der Code korrekt ist. Reparatur ist **Konfiguration, nicht Code**:
+Secret in der Serverumgebung setzen (z. B. `openssl rand -hex 24`), Server neu starten; danach
+werden der vollständige Enrollment-Pfad und die „autorisiert erst nach Creator-Akt"-Regel geprüft
+(502 / 88 Prüfungen). Das Enrollment-Geheimnis autorisiert **nie** ein Gerät, es erlaubt nur
+Discovery und Lebenszeichen.
 
 ## 6. Betriebsregeln
 

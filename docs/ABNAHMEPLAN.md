@@ -7,6 +7,12 @@
 **Letzter Prüferlauf:** 2026-09-25 → **15 Prüfungen bestanden, 0 fehlgeschlagen**; die
 Abnahme-Selbsttests `tests/unit/acceptance-matrix.test.ts` (4/4) und
 `tests/e2e/acceptance-chain.test.ts` (4/4, 18 Stufen) laufen mit.
+**Live-Prüferlauf** gegen die neu aufgebaute Instanz `:3100` (cgroup-delegiert,
+`BOB_NS_ISOLATION=on`, `BOB_DEVICE_ENROLLMENT_SECRET` gesetzt):
+`node scripts/acceptance.mjs --live` → **80 bestanden / 0 fehlgeschlagen**, davon
+**64/64 Routen-Nachweise** mit Creator-Session. Zwei Nachweise waren zuerst falsch
+modelliert (GET auf `POST`-Routen → 405) und wurden in der Matrix korrigiert — der
+Prüfer wurde nicht abgeschwächt.
 
 ---
 

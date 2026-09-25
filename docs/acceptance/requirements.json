@@ -506,13 +506,12 @@
    "evidence": [
     {
      "kind": "route",
-     "method": "GET",
+     "method": "POST",
      "path": "/api/execution-gate",
      "expect": [
-      200,
       400,
-      404,
-      405
+      401,
+      403
      ]
     }
    ],
@@ -2422,12 +2421,12 @@
    "evidence": [
     {
      "kind": "route",
-     "method": "GET",
+     "method": "POST",
      "path": "/api/execution-gate",
      "expect": [
-      200,
       400,
-      428
+      401,
+      403
      ]
     }
    ],
@@ -2707,11 +2706,12 @@
    "evidence": [
     {
      "kind": "route",
-     "method": "GET",
+     "method": "POST",
      "path": "/api/promotion-gate",
      "expect": [
-      200,
       400,
+      401,
+      403,
       404
      ]
     }

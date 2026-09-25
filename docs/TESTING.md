@@ -3,7 +3,9 @@
 **Stand:** 2026-09-25
 **Testrunner:** Vitest 3 (`vitest.config.ts`, Node ≥ 22)
 **Letzter verifizierter Lauf:** `npx vitest run` → **48 Dateien, 294 Tests, alle grün**
-(Unit 66, Security 106, Integration 88, Regression 14, UI 12, E2E 8); `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler / 10 Warnungen; `npm run build` erfolgreich. Zusätzlich live gegen den Produktionsserver geprüft (`BOB_NS_ISOLATION=on` mit gebautem Rootfs): `scripts/verify-live.sh` → **176 Prüfungen, 0 Fehler** bei Erstinitialisierung (**174**, wenn die Instanz bereits initialisiert war – der Bootstrap-Zweig enthält zwei Prüfungen mehr); ohne delegierten cgroup-Unterbaum **168 / 166** (drei Prüfungen entfallen dann). Mit verpflichtendem zweitem Faktor (TOTP) sind es **177 / 175**; siehe §4a. Negativnachweis derselben Instanz ohne Rootfs: Isolation wird als `FILESYSTEM_ONLY` ausgewiesen und **jede** Ausführung mit 409 verweigert (`kernel isolation is enforced … but unavailable`); das Skript meldet dann erwartungsgemäß 125 PASS / 22 FAIL, weil alle ausführungsabhängigen Schritte bewusst scheitern.
+(Unit 66, Security 106, Integration 88, Regression 14, UI 12, E2E 8); `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler / 10 Warnungen; `npm run build` erfolgreich.
+Der Abnahmeprüfer `node scripts/acceptance.mjs` läuft mit **15 bestanden / 0 fehlgeschlagen**, der
+Selbsttest der Matrix mit 4/4 und der Kettentest mit 4/4. Zusätzlich live gegen den Produktionsserver geprüft (`BOB_NS_ISOLATION=on` mit gebautem Rootfs): `scripts/verify-live.sh` → **176 Prüfungen, 0 Fehler** bei Erstinitialisierung (**174**, wenn die Instanz bereits initialisiert war – der Bootstrap-Zweig enthält zwei Prüfungen mehr); ohne delegierten cgroup-Unterbaum **168 / 166** (drei Prüfungen entfallen dann). Mit verpflichtendem zweitem Faktor (TOTP) sind es **177 / 175**; siehe §4a. Negativnachweis derselben Instanz ohne Rootfs: Isolation wird als `FILESYSTEM_ONLY` ausgewiesen und **jede** Ausführung mit 409 verweigert (`kernel isolation is enforced … but unavailable`); das Skript meldet dann erwartungsgemäß 125 PASS / 22 FAIL, weil alle ausführungsabhängigen Schritte bewusst scheitern.
 
 ## 1. Suiten und Abdeckung
 
@@ -224,7 +226,10 @@ BASE=http://127.0.0.1:3100 BOB_BOOTSTRAP_SECRET=… BOB_CREATOR_LOGIN_SECRET=…
 
 **Letzter Lauf (2026-09-25):** `88 bestanden, 0 fehlgeschlagen`, Exit 0 — auf der
 Frischinstanz (`:3100`, cgroup-delegiert, `BOB_NS_ISOLATION=on`). Weitere Live-Läufe
-derselben Instanz: `scripts/verify-live.sh` **176 / 0**, `scripts/audit-actions.mjs`
+derselben Instanz (bzw. nach dem Neuaufbau am 2026-09-25 wiederholt):
+`scripts/verify-live.sh` **174 / 0** (bereits initialisierte Instanz; 176 beim allerersten Lauf
+inklusive Bootstrap-Zweig), `scripts/acceptance.mjs --live` **80 / 0** (64/64 Routennachweise),
+`scripts/audit-actions.mjs`
 **502 / 0**, `scripts/audit-api.sh` **204 / 0**, `scripts/soak.mjs` (40 Ausführungen,
 p95 2,22 s) **`MEETS_BUDGET`**.
 
