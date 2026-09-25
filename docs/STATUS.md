@@ -23,7 +23,8 @@ Produktionsreife:
 | Persistenz (Envelope, Digest, atomar) | TESTED | `tests/unit/persistence.test.ts` (Manipulation → fail closed) |
 | Authority (Token, TTL, Bindung) | TESTED | `tests/security/authority.test.ts` |
 | Bootstrap / Creator-Initialisierung | TESTED | einmaliger Bootstrap, Doppelaufruf verweigert |
-| Server-Session + API-Guard | TESTED (Routen: PARTIAL) | `tests/security/api-guard.test.ts`; `guardRequest` in `app/api/*` noch nicht verdrahtet |
+| Server-Session + API-Guard | TESTED | `tests/security/api-guard.test.ts`, `tests/security/api-gate.test.ts` |
+| API-Grenze (Middleware + Auth-Route) | TESTED | `middleware.ts`, `lib/api/api-gate.ts`, `app/api/auth/route.ts`; live verifiziert (428/201/200/403) |
 | Governance / Kill Switches | IMPLEMENTED | Code + Persistenz vorhanden, kein eigener Test |
 | Execution Gate + Broker | TESTED | `tests/e2e/*`, `tests/security/argv-policy.test.ts` |
 | Sandbox Fabric (Task-/Agent-Bindung) | TESTED | `tests/integration/sandbox-runtime.test.ts` |
@@ -80,14 +81,17 @@ Produktionsreife:
 
 ## Offene Restarbeiten (faktisch, ohne Wertung)
 
-- `guardRequest` in die API-Routen verdrahten (Authentifizierung greift derzeit nur, wenn Routen ihn aufrufen).
+- Aktionsspezifische `guardRequest`-Prüfungen pro Route ergänzen (die Authentifizierungsgrenze ist über die
+  Middleware bereits geschlossen).
+- Re-Authentifizierung des Creators nach Verlust des Session-Cookies klären (derzeit fail closed blockiert,
+  siehe `docs/BOOTSTRAP.md` §5).
 - Provider-Fabric persistent machen.
 - Legacy-Stores entfernen (`execution-store.ts`, `durable-store.ts`, `reliability-store.ts`, `error-store.ts`,
   `science-store.ts`), sobald keine Aufrufer mehr existieren.
 - OCI-Runtime gegen einen echten Daemon verifizieren (`REAL_OCI`).
 - Browser-/UI-E2E für das Control Center.
 - Fehlende §44-Dokumente ergänzen (u. a. `AUTHORIZATION.md`, `SANDBOX.md`, `RUNTIME.md`, `RECOVERY.md`,
-  `KNOWLEDGE.md`, `CI_CD.md`, `OPERATIONS.md`, `BOOTSTRAP.md`, `PROVIDERS.md`, `DEVICES.md`,
-  `COMPUTER_USE.md`, `EXPERIMENTS.md`); fertig: `TESTING.md`, `SECURITY.md`.
+  `KNOWLEDGE.md`, `CI_CD.md`, `OPERATIONS.md`, `PROVIDERS.md`, `DEVICES.md`, `COMPUTER_USE.md`,
+  `EXPERIMENTS.md`); fertig: `TESTING.md`, `SECURITY.md`, `BOOTSTRAP.md`.
 
 Eine Produktionsreife-Aussage wird bewusst nicht getroffen; maßgeblich sind die oben belegten Reifegrade.

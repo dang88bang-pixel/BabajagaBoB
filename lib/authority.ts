@@ -364,11 +364,11 @@ export type PolicyContext = {action: string; resource: string; risk: Risk; requi
 
 const roleCapabilities: Record<Role, string[]> = {
   OWNER: ["*"],
-  ADMIN: ["mission:*", "task:*", "agent:*", "approval:*", "deployment:*", "security:*", "authority:*"],
-  DEVELOPER: ["mission:read", "task:read", "task:execute", "repo:branch", "sandbox:run", "artifact:write", "experiment:run"],
-  REVIEWER: ["mission:read", "task:read", "approval:read", "approval:resolve", "audit:read"],
-  OPERATOR: ["task:read", "task:execute", "sandbox:run", "deployment:execute"],
-  VIEWER: ["mission:read", "task:read", "agent:read", "audit:read"]
+  ADMIN: ["control-plane:access", "mission:*", "task:*", "agent:*", "approval:*", "deployment:*", "security:*", "authority:*"],
+  DEVELOPER: ["control-plane:access", "mission:read", "task:read", "task:execute", "repo:branch", "sandbox:run", "artifact:write", "experiment:run"],
+  REVIEWER: ["control-plane:access", "mission:read", "task:read", "approval:read", "approval:resolve", "audit:read"],
+  OPERATOR: ["control-plane:access", "task:read", "task:execute", "sandbox:run", "deployment:execute"],
+  VIEWER: ["control-plane:access", "mission:read", "task:read", "agent:read", "audit:read"]
 };
 
 export function roleAllows(role: Role, capability: string): boolean {

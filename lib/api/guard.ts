@@ -51,6 +51,11 @@ export type GuardSpec = {
   environment?: string;
   /** Öffentliche Aktionen (z. B. Bootstrap-Status) sind ohne Session erlaubt. */
   publicAction?: boolean;
+  /**
+   * Nur Browser-Sessions (HttpOnly-Cookie) sind zulässig. Agent-Token und
+   * Legacy-Token werden nicht akzeptiert – verwendet für die API-Oberfläche.
+   */
+  requireSession?: boolean;
   /** Nur Creator/Admin-Token dürfen diese Aktion ausführen. */
   creatorOnly?: boolean;
   /** Zusätzlich erforderliche Agent-Capability (Bindung an Task/Sandbox). */
@@ -155,6 +160,11 @@ export function guardRequest(request: Request, spec: GuardSpec): GuardedRequest 
     };
     authorize(actor, spec);
     return {actor};
+  }
+
+  if (spec.requireSession) {
+    recordAudit({actor: "ANONYMOUS", action: spec.action, decision: "DENY"}, {code: "SESSION_REQUIRED"});
+    throw new ApiDenied(401, "SESSION_REQUIRED", "a valid browser session is required for this API");
   }
 
   // 2. Agent-Capability-Token

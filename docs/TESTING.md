@@ -2,14 +2,14 @@
 
 **Stand:** 2026-09-25
 **Testrunner:** Vitest 3 (`vitest.config.ts`, Node ≥ 22)
-**Letzter verifizierter Lauf:** `npx vitest run` → **9 Dateien, 47 Tests, alle grün**; `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler / 8 Warnungen; `npm run build` erfolgreich.
+**Letzter verifizierter Lauf:** `npx vitest run` → **10 Dateien, 55 Tests, alle grün**; `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler / 8 Warnungen; `npm run build` erfolgreich. Zusätzlich live gegen den Produktionsserver geprüft (428 ohne Session, 201 Bootstrap, 200 mit Session, 403 bei Cross-Origin).
 
 ## 1. Suiten und Abdeckung
 
 | Suite | Dateien | Tests | Inhalt |
 |---|---|---|---|
 | `tests/unit` | 2 | 10 | Persistenz-Envelope (Digest, Manipulationserkennung, Versionsprüfung, Registry), Control Plane (Mission/Objective/Task, Risiko-/Approval-Regeln, Persistenz) |
-| `tests/security` | 3 | 22 | Authority-Invarianten (Selbstvergabe, Wildcards, TTL, Risk-Eskalation, Audit-DENY), API-Guard (428/401/403, CSRF-Origin, Session, Legacy-Token fail-closed), argv-Policy (Broker-DENY + Runtime-Defense-in-Depth) |
+| `tests/security` | 4 | 30 | Authority-Invarianten (Selbstvergabe, Wildcards, TTL, Risk-Eskalation, Audit-DENY), API-Guard (428/401/403, CSRF-Origin, Session, Legacy-Token fail-closed), argv-Policy (Broker-DENY + Runtime-Defense-in-Depth), API-Gate (Bootstrap, Session, CSRF, Renew/Logout, keine Agent-/Legacy-Token an der Grenze) |
 | `tests/integration` | 1 | 6 | Sandbox-Fabric mit `REAL_LOCAL`: Task/Agent-Bindung, Prozessausführung, Snapshot + Digest, Verifikation, ALLOWLIST fail-closed |
 | `tests/regression` | 1 | 5 | Regression Engine: argv-Policy, Registrierung, PASS/FAIL, Suite fail-closed bei Fehlschlag, Persistenz |
 | `tests/e2e` | 2 | 4 | Kette Creator → Aufgabe → Autorisierung → Sandbox → Ausführung → Evidence → Knowledge sowie Fehlerkette DETECTED → DIAGNOSING → EXPERIMENTING → ROOT_CAUSE_FOUND → FIXING → VERIFIED → LEARNED → REGRESSION_LOCKED |
@@ -66,8 +66,10 @@ Details: `docs/CI_CD.md`.
 
 ## 6. Bekannte Lücken (nicht als bestanden gewertet)
 
-- Keine Browser-/UI-E2E-Tests: das Control Center wird nicht automatisiert im Browser geprüft.
-- `app/api/*`-Routen sind noch nicht an `guardRequest` angeschlossen (siehe `docs/SECURITY.md`), deshalb testen
-  die Security-Suiten den Guard direkt und nicht über HTTP-Routen.
+- Keine Browser-/UI-E2E-Tests: das Control Center wird nicht automatisiert im Browser geprüft; die
+  Authentifizierungsgrenze ist über `tests/security/api-gate.test.ts` und einen Live-Lauf gegen den
+  Produktionsserver belegt.
+- Aktionsspezifische `guardRequest`-Prüfungen pro Route (Risiko, Creator-Pflicht, Task-/Sandbox-Bindung) sind
+  noch nicht überall verdrahtet; die Middleware deckt die Authentifizierungsgrenze ab.
 - OCI-Runtime, Provider-Fabric-Persistenz und Geräte-/Computer-Use-Integration sind implementiert, aber
   `UNVERIFIED` bzw. `PARTIAL`.

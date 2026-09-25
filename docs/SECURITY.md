@@ -39,8 +39,16 @@ Rechte erzeugen noch den Broker umgehen.
   Standard ist deaktiviert.
 - **Keine Secrets im Browser:** Creator-/Root-Tokens, Provider-Secrets, Geräte-Credentials und Runtime-Secrets
   werden nie an das Control Center ausgeliefert; Authentifizierung ist serverseitig.
-- **Offen (PARTIAL):** Die API-Routen rufen `guardRequest` noch nicht auf. Der Guard ist implementiert und
-  getestet (`tests/security/api-guard.test.ts`), die Verdrahtung steht aus (`docs/TODO.md`).
+- **API-Grenze geschlossen:** `middleware.ts` (Node-Runtime) prüft jede `/api/*`-Anfrage über
+  `lib/api/api-gate.ts` mit `requireSession`. Ohne Session → **401**, vor dem Bootstrap → **428**,
+  Cross-Origin-Mutation → **403**. Einzige Ausnahme ist `/api/auth` (Bootstrap/Status/Renew/Logout).
+  Agent-Capability-Token und Legacy-Token werden an dieser Grenze bewusst **nicht** akzeptiert.
+- **Live verifiziert (2026-09-25):** `GET /api/control` ohne Session → 428, `POST /api/auth`
+  (Bootstrap) → 201 + HttpOnly-Cookie, danach `GET /api/control` → 200, `POST /api/control` mit
+  fremdem `Origin` → 403.
+- **Offen (PARTIAL):** Aktionsspezifische RBAC-/Risiko-/Bindungsprüfungen pro Route (`guardRequest`
+  mit konkreter Action) sind noch nicht überall verdrahtet; die Middleware deckt bisher die
+  Authentifizierungsgrenze ab. Siehe `docs/BOOTSTRAP.md` §5 und `docs/TODO.md`.
 
 ## 4. Keine Shell-Strings (`lib/argv-policy.ts`)
 
