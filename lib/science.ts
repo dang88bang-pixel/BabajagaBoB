@@ -190,6 +190,7 @@ export function updateExperiment(
   const payload = store.read();
   const experiment = payload.experiments.find(e => e.experimentId === experimentId);
   if (!experiment) throw new Error("experiment not found");
+  if (patch.knowledgeState === "ESTABLISHED") throw new Error("ESTABLISHED requires validateCausalChain; direct promotion is forbidden");
   Object.assign(experiment, patch);
   store.write(payload);
   try {
@@ -199,8 +200,8 @@ export function updateExperiment(
       knowledgeState: experiment.knowledgeState,
       hypothesis: experiment.hypothesis
     });
-  } catch {
-    /* Control-Registry optional */
+  } catch (error) {
+    if (!(error instanceof Error) || !/not found|already exists/i.test(error.message)) throw error;
   }
   observe({
     type: "science.experiment.updated",
