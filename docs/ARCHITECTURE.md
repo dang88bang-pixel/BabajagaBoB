@@ -62,9 +62,11 @@ Der OCI-Adapter nutzt Docker/OCI ohne Shell-Interpolation und mit restriktiven C
 
 ## 5. Persistenz
 
-Der Control Plane State wird über `DurableJsonControlStore` lokal persistiert. Die Datei besitzt Versionsfeld und SHA-256-Digest; Schreiben erfolgt atomar.
+Der Control Plane State wird über den kanonischen `DurableStore` (`lib/persistence/store.ts`) lokal persistiert. Jede Store-Datei besitzt Versionsfeld und SHA-256-Digest; Schreiben erfolgt atomar (temporäre Datei, `rename`, Rechte 0600), und ein Digest- oder Versionsfehler wird fail closed abgewiesen (`StoreIntegrityError`).
 
-Zusätzlich existieren getrennte persistente Stores für u. a. Jobs, Runs, Events, Audit, Authority, Governance, Approvals, Science, Reliability, Errors, Apps und Gallery.
+Zusätzlich existieren getrennte persistente Stores für u. a. Jobs/Queue, Runs, Events, Audit, Provenance, Authority, Governance, Bootstrap, Sessions, Approvals, Sandbox Snapshots, Verifikationen, Regression, Science, Reliability, Errors, Knowledge, Inbox, Devices, Simulation, Computer Use, Apps/Gallery und Provider.
+
+Die früheren Parallel-Stores (`lib/store.ts`, `lib/durable-store.ts`, `lib/execution-store.ts`, `lib/error-store.ts`, `lib/reliability-store.ts`, `lib/science-store.ts`, `lib/approval-store.ts`, `lib/authority-store.ts`) sowie die Legacy-Authentifizierung (`lib/control-auth.ts`) und der Broker-Umgehungspfad `/api/container` (`lib/container-runtime.ts`) sind entfernt; es gibt genau einen Schreibpfad pro Domäne.
 
 Die Architektur bleibt bewusst lokal-first. Für horizontale Mehrprozess-/Produktionslast sind transaktionale DB, Locking und objektbasierte Artifact-Speicherung erforderlich.
 

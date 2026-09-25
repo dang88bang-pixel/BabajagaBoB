@@ -1,12 +1,10 @@
 import {NextResponse} from "next/server";
 import {resolveApproval,runGuardian,setLockdown,snapshot} from "@/lib/control-plane";
 import {actionField,readJson,stringField} from "@/lib/request-validation";
-import {requireControlPlaneAuth} from "@/lib/control-auth";
 export const runtime="nodejs"; export const dynamic="force-dynamic";
 export async function GET(){return NextResponse.json(snapshot(),{headers:{"Cache-Control":"no-store"}})}
 export async function POST(req:Request){
  try{
-  requireControlPlaneAuth(req);
   const body=await readJson(req);
   const action=actionField(body,["guardian","lockdown","approval"]);
   if(action==="guardian")return NextResponse.json(runGuardian());

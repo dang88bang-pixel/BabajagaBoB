@@ -29,6 +29,7 @@ Produktionsreife:
 | Execution Gate + Broker | TESTED | `tests/e2e/*`, `tests/security/argv-policy.test.ts` |
 | Sandbox Fabric (Task-/Agent-Bindung) | TESTED | `tests/integration/sandbox-runtime.test.ts` |
 | Lokale Runtime (`REAL_LOCAL`) | TESTED | echte Prozesse, `argv[]`, `shell:false`, Timeout-Kill |
+| Apps / App-Module | TESTED | Modul-Sandbox über die Fabric gebunden (Task+Agent), `tests/integration/app-module-sandbox.test.ts` |
 | argv-Policy (keine Shell-Strings) | TESTED | `lib/argv-policy.ts`, Broker-DENY + Runtime-Enforcement |
 | OCI Runtime (`REAL_OCI`) | UNVERIFIED | kein Docker/Podman in der Umgebung; Härtungsflags ungeprüft |
 | Task Queue / Runs | IMPLEMENTED | Lease/Retry/Dead-Letter, kein eigener Test |
@@ -61,8 +62,8 @@ Produktionsreife:
 | Event Store (append-only, kausal) | TESTED | `tests/e2e/failure-recovery.test.ts` prüft Eventtypen |
 | Provenance | TESTED | `AUTHORIZED_BY` / `EXECUTED_IN` im E2E-Erfolgspfad |
 | Privacy / Data Boundary | IMPLEMENTED | default `DENY`, kein eigener Test |
-| Provider Fabric | PARTIAL | Lifecycle im Speicher, keine Persistenz |
-| Device Fabric / Simulation / Computer Use | PARTIAL | persistent, keine Autorisierungs-Tests |
+| Provider Fabric | TESTED | Katalog/Bindungen/Telemetrie persistent, Approval-gebundene Verbindung (`tests/integration/provider-fabric.test.ts`) |
+| Device Fabric / Simulation / Computer Use | PARTIAL | persistent; Simulation und Computer Use ohne eigene Tests |
 | CI/CD (`ci.yml`) | PARTIAL | Gates definiert; Ergebnis für den aktuellen Commit in CI noch zu bestätigen |
 | Automatisierte Testsuiten | TESTED | 47 Tests grün, siehe `docs/TESTING.md` |
 
@@ -85,9 +86,6 @@ Produktionsreife:
   Middleware bereits geschlossen).
 - Re-Authentifizierung des Creators nach Verlust des Session-Cookies klären (derzeit fail closed blockiert,
   siehe `docs/BOOTSTRAP.md` §5).
-- Provider-Fabric persistent machen.
-- Legacy-Stores entfernen (`execution-store.ts`, `durable-store.ts`, `reliability-store.ts`, `error-store.ts`,
-  `science-store.ts`), sobald keine Aufrufer mehr existieren.
 - OCI-Runtime gegen einen echten Daemon verifizieren (`REAL_OCI`).
 - Browser-/UI-E2E für das Control Center.
 - Fehlende §44-Dokumente ergänzen (u. a. `AUTHORIZATION.md`, `SANDBOX.md`, `RUNTIME.md`, `RECOVERY.md`,

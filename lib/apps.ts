@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import {approvalGranted} from "./approvals";
 import {documentStep} from "./gallery";
 import {recordAudit} from "./audit";
-import {activeSandboxRuntime as sandboxRuntime} from "./runtime-factory";
+import {createSandbox, pauseSandbox, startSandbox} from "./sandbox/fabric";
 import {executionGate} from "./execution-gate";
 import {getControlState} from "./control-plane";
 import type {Risk} from "./types";
@@ -71,7 +71,12 @@ export async function installExecutableModule(moduleId:string,approvalId:string,
 
  const sandboxId=`SB-APP-${module.id}`;
  try{
-  await sandboxRuntime.create({id:sandboxId,type:"application-module",network:{mode:"DENY",allowlist:[]},limits:{cpuMillicores:500,memoryMb:512,storageMb:2048,timeoutMs:120000,processes:16},risk:module.risk});
+  // Sandbox ausschliesslich ueber die Fabric: Task-/Agent-Bindung, Netzwerk DENY
+  // und Registrierung in der Control Plane sind damit erzwungen.
+  const boundTask=getControlState().tasks.find(t=>t.taskId===taskId);
+  if(!boundTask)throw new Error("module installation requires an existing task (sandbox binding)");
+  if(!boundTask.assignedAgent)throw new Error(`task ${boundTask.taskId} has no assigned agent (sandbox binding)`);
+  await createSandbox({sandboxId,type:"development",taskId:boundTask.taskId,agentId:boundTask.assignedAgent,risk:module.risk,limits:{cpuMillicores:500,memoryMb:512,storageMb:2048,timeoutMs:120000,processes:16}});
   module.sandboxId=sandboxId;
   module.state="INSTALLED";
   module.updatedAt=new Date().toISOString();
@@ -105,14 +110,14 @@ export async function startExecutableModule(moduleId:string,taskId?:string){
  if(module.state!=="INSTALLED"&&module.state!=="PAUSED") throw new Error("module must be installed");
  if(taskId){ const task=getControlState().tasks.find(t=>t.taskId===taskId); if(!task) throw new Error("task not found"); const gate=executionGate(task,module.userConfirmationApprovalId,getControlState().locked,undefined,undefined,module.sandboxId); if(!gate.allowed) throw new Error(`execution blocked: ${gate.reasons.join("; ")}`); }
  if(!module.sandboxId) throw new Error("module has no sandbox");
- await sandboxRuntime.start(module.sandboxId);
+ await startSandbox(module.sandboxId);
  module.state="RUNNING"; app.state="ACTIVE"; app.progress=100; module.updatedAt=new Date().toISOString(); app.updatedAt=module.updatedAt;persist();
  documentStep({kind:"RUN",title:"Ausführbares Modul gestartet",description:`Modul ${module.name} läuft isoliert in Sandbox ${module.sandboxId}`,status:"RUNNING",actor:"agent",appId:app.id,moduleId,taskId});
  return structuredClone({app,module});
 }
 export async function pauseExecutableModule(moduleId:string){
  const module=moduleStore.get(moduleId); if(!module||!module.sandboxId) throw new Error("module sandbox not found");
- await sandboxRuntime.pause(module.sandboxId); module.state="PAUSED"; module.updatedAt=new Date().toISOString();persist();
+ await pauseSandbox(module.sandboxId); module.state="PAUSED"; module.updatedAt=new Date().toISOString();persist();
  documentStep({kind:"RUN",title:"Ausführbares Modul pausiert",description:`Modul ${module.name} wurde pausiert`,status:"WAITING",actor:"agent",appId:module.appId,moduleId});
  return structuredClone(module);
 }

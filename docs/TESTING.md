@@ -2,7 +2,7 @@
 
 **Stand:** 2026-09-25
 **Testrunner:** Vitest 3 (`vitest.config.ts`, Node ≥ 22)
-**Letzter verifizierter Lauf:** `npx vitest run` → **10 Dateien, 55 Tests, alle grün**; `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler / 8 Warnungen; `npm run build` erfolgreich. Zusätzlich live gegen den Produktionsserver geprüft (428 ohne Session, 201 Bootstrap, 200 mit Session, 403 bei Cross-Origin).
+**Letzter verifizierter Lauf:** `npx vitest run` → **12 Dateien, 69 Tests, alle grün**; `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler / 8 Warnungen; `npm run build` erfolgreich. Zusätzlich live gegen den Produktionsserver geprüft (428 ohne Session, 201 Bootstrap, 200 mit Session, 403 bei Cross-Origin).
 
 ## 1. Suiten und Abdeckung
 
@@ -10,7 +10,7 @@
 |---|---|---|---|
 | `tests/unit` | 2 | 10 | Persistenz-Envelope (Digest, Manipulationserkennung, Versionsprüfung, Registry), Control Plane (Mission/Objective/Task, Risiko-/Approval-Regeln, Persistenz) |
 | `tests/security` | 4 | 30 | Authority-Invarianten (Selbstvergabe, Wildcards, TTL, Risk-Eskalation, Audit-DENY), API-Guard (428/401/403, CSRF-Origin, Session, Legacy-Token fail-closed), argv-Policy (Broker-DENY + Runtime-Defense-in-Depth), API-Gate (Bootstrap, Session, CSRF, Renew/Logout, keine Agent-/Legacy-Token an der Grenze) |
-| `tests/integration` | 1 | 6 | Sandbox-Fabric mit `REAL_LOCAL`: Task/Agent-Bindung, Prozessausführung, Snapshot + Digest, Verifikation, ALLOWLIST fail-closed |
+| `tests/integration` | 3 | 20 | Sandbox-Fabric mit `REAL_LOCAL` (Bindung, Prozessausführung, Snapshot + Digest, Verifikation, ALLOWLIST fail-closed), Provider-Fabric (Approval-Pflicht, Bindungen, Health, Datenvertrag), App-Module (Fabric-gebundene Sandboxes, Lifecycle) |
 | `tests/regression` | 1 | 5 | Regression Engine: argv-Policy, Registrierung, PASS/FAIL, Suite fail-closed bei Fehlschlag, Persistenz |
 | `tests/e2e` | 2 | 4 | Kette Creator → Aufgabe → Autorisierung → Sandbox → Ausführung → Evidence → Knowledge sowie Fehlerkette DETECTED → DIAGNOSING → EXPERIMENTING → ROOT_CAUSE_FOUND → FIXING → VERIFIED → LEARNED → REGRESSION_LOCKED |
 

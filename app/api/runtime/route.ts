@@ -1,7 +1,6 @@
 import {activeSandboxRuntime,activeRuntimeMode,reconcileActiveRuntime} from "../../../lib/runtime-factory";
 import {executeAuthorized} from "../../../lib/execution-broker";
 import {actionField,readJson,stringArray,stringField,requireCapability} from "../../../lib/request-validation";
-import {requireControlPlaneAuth} from "../../../lib/control-auth";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 export async function GET(){
@@ -13,7 +12,7 @@ export async function GET(){
  }catch(error){return Response.json({mode:activeRuntimeMode,health:"ERROR",error:error instanceof Error?error.message:"runtime status failed"},{status:503});}
 }
 export async function POST(request:Request){
- try{requireControlPlaneAuth(request);
+ try{
   const body=await readJson(request); const action=actionField(body,["create","clone","reset","snapshot","restore","destroy","execute","reconcile"]);
   const token=typeof body.capabilityTokenId==="string"?body.capabilityTokenId:undefined;
   if(["create","clone","reset","snapshot","restore","destroy"].includes(action))requireCapability(token,"sandbox:admin");
