@@ -140,7 +140,7 @@ describe("E2E: Creator → Mission → Objective → Task → Agent → Authoriz
       subject: "Agent-Selbstautorisierung",
       predicate: "denied_by",
       object: "authority-Selbstvergabe und Broker-Preflight",
-      state: "ESTABLISHED",
+      state: "SUPPORTED",
       sourceIds: [task.taskId]
     });
     expect(note.state).toBe("ESTABLISHED");
