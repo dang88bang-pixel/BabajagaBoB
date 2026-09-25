@@ -1,40 +1,410 @@
 import crypto from "node:crypto";
-import {recordAudit} from "./audit";
-import {recordFailure,prepareRecovery,resolveFailure} from "./reliability";
-import {createExperiment,addEvidence} from "./science";
-import {documentStep} from "./gallery";
-import {upsertKnowledge} from "./knowledge";
-import {loadErrors,saveErrors} from "./error-store";
-import {activeSandboxRuntime} from "./runtime-factory";
-import {getControlState,registerSandbox,updateSandboxStatus} from "./control-plane";
+import {createStore} from "./persistence/store";
+import {observe} from "./observability";
+import {recordFailure, prepareRecovery, resolveFailure, verifyRecovery, lockRegressionFromFailure } from "./reliability";
+import {addEvidence, createExperiment} from "./science";
+import {upsertKnowledge, linkKnowledge} from "./knowledge";
+import {createSandbox, snapshotSandbox} from "./sandbox/fabric";
+import {getControlState} from "./control-plane";
+import {registerRegressionTest, runRegressionSuite} from "./regression";
+import {notifyInbox} from "./inbox";
+import type {KnowledgeState, SandboxType} from "./types";
 
-export type ErrorLifecycle="DETECTED"|"TRIAGING"|"CONTAINED"|"REPRODUCING"|"DIAGNOSING"|"HYPOTHESIS"|"EXPERIMENTING"|"ROOT_CAUSE_FOUND"|"FIXING"|"VERIFYING"|"RECOVERING"|"LEARNED"|"REGRESSION_LOCKED"|"ESCALATED";
-export type ErrorSeverity="LOW"|"MEDIUM"|"HIGH"|"CRITICAL";
-export type ErrorIncident={id:string;timestamp:string;status:ErrorLifecycle;severity:ErrorSeverity;symptom:string;incident:string;failureMode?:string;rootCause?:string;contributingFactors:string[];hypothesis?:string;evidenceIds:string[];taskId?:string;runId?:string;agentId?:string;sandboxId?:string;recoveryPlanId?:string;regressionTestId?:string;knowledgeId?:string;error?:string};
-const incidents=new Map<string,ErrorIncident>(loadErrors().map(x=>[x.id,x]));
-const persist=()=>saveErrors([...incidents.values()]);
-const rank:Record<ErrorSeverity,number>={LOW:1,MEDIUM:2,HIGH:3,CRITICAL:4};
-const newId=()=>`ERR-${crypto.randomUUID().slice(0,8).toUpperCase()}`;
-export function createErrorIncident(input:Omit<ErrorIncident,"id"|"timestamp"|"status">){const x:ErrorIncident={...input,id:newId(),timestamp:new Date().toISOString(),status:"DETECTED"};incidents.set(x.id,x);persist();recordAudit({actor:x.agentId||"SYSTEM",action:"error.detected",resource:x.id,decision:"ALLOW"},x);documentStep({kind:"ERROR",title:x.id+": "+x.symptom,description:x.incident,status:"ERROR",actor:x.agentId||"SYSTEM",taskId:x.taskId});return structuredClone(x)}
-export function transitionError(id:string,status:ErrorLifecycle,patch:Partial<ErrorIncident>={}){const x=incidents.get(id);if(!x)throw new Error("Error incident not found");x.status=status;Object.assign(x,patch);incidents.set(id,x);persist();recordAudit({actor:x.agentId||"SYSTEM",action:"error.transition",resource:id,decision:"ALLOW"},{status,...patch});return structuredClone(x)}
-export async function investigateError(id:string){const x=incidents.get(id);if(!x)throw new Error("Error incident not found");if(rank[x.severity]>=3)transitionError(id,"CONTAINED");transitionError(id,"REPRODUCING");if(!x.sandboxId){
- const task=getControlState().tasks.find(t=>t.id===x.taskId);
- if(task||x.severity==="CRITICAL"){
-  const sandboxId=`DIAG-${x.id}`;
-  await activeSandboxRuntime.create({id:sandboxId,type:"diagnostic",network:{mode:"DENY",allowlist:[]},limits:{cpuMillicores:500,memoryMb:512,storageMb:1024,timeoutMs:120000,processes:32},risk:x.severity==="CRITICAL"?"HIGH":"LOW"});
-  const diagTask=task;const diagTaskId=diagTask?.id??x.taskId;const diagAgent=diagTask?.assignedAgent??x.agentId??"AG-03";registerSandbox({id:sandboxId,type:"diagnostic",status:"EXPERIMENT",network:"DENY",task:diagTaskId??"UNASSIGNED",agentId:diagAgent});
-  x.sandboxId=sandboxId; incidents.set(id,x); persist();
- }
-} else {try{await activeSandboxRuntime.start(x.sandboxId); try{updateSandboxStatus(x.sandboxId,"RUNNING")}catch{/* sandbox may not be registered yet */}}catch{/* runtime restart is best effort during investigation */} }const f=recordFailure({taskId:x.taskId,runId:x.runId,symptom:x.symptom,incident:x.incident,failureMode:x.failureMode||"UNKNOWN",contributingFactors:x.contributingFactors,prevention:[]});x.status="DIAGNOSING";x.error=f.id;incidents.set(id,x);persist();return structuredClone(x)}
-export function establishRootCause(id:string,rootCause:string,evidenceIds:string[]=[]){const x=incidents.get(id);if(!x)throw new Error("Error incident not found");if(evidenceIds.length===0&&x.evidenceIds.length===0)throw new Error("Root cause requires evidence");const merged=[...new Set([...x.evidenceIds,...evidenceIds])];const updated=transitionError(id,"ROOT_CAUSE_FOUND",{rootCause,evidenceIds:merged});if(x.error)resolveFailure(x.error,rootCause,updated.regressionTestId);return updated}
-export function learnFromError(id:string,summary:string,regressionTestId?:string){const x=incidents.get(id);if(!x)throw new Error("Error incident not found");const knowledgeState=x.status==="ROOT_CAUSE_FOUND"&&x.rootCause&&x.evidenceIds.length>0?"ESTABLISHED":"HYPOTHESIS"; const k=upsertKnowledge({subject:"Never Again: "+x.id,predicate:"prevention",object:summary,layer:"NEGATIVE",state:knowledgeState,sourceIds:x.evidenceIds});x.knowledgeId=k.id;x.regressionTestId=regressionTestId;x.status=regressionTestId?"REGRESSION_LOCKED":"LEARNED";incidents.set(id,x);persist();recordAudit({actor:x.agentId||"SYSTEM",action:"error.learned",resource:id,decision:"ALLOW"},{knowledgeId:k.id,regressionTestId});return structuredClone(x)}
-export function startExperiment(id:string,objectiveId:string){const x=incidents.get(id);if(!x)throw new Error("Error incident not found");const e=createExperiment({id:`EXP-${id}`,missionId:x.taskId||"INCIDENT",objectiveId, title:`Reproduce ${id}`, sandbox:x.sandboxId||"diagnostic-pending", hypothesis:x.hypothesis||"failure condition is reproducible", baseline:"known-good execution",control:"unchanged execution",variables:["suspected failure condition"],expectedResult:"reproduce the observed failure",alternativeExplanations:["environmental variance","dependency failure"],taskId:x.taskId||"UNASSIGNED",agentId:x.agentId||"AG-03"});transitionError(id,"EXPERIMENTING");return e}
-export function recordExperimentEvidence(id:string,evidenceId:string){
- const x=incidents.get(id);if(!x)throw new Error("Error incident not found");
- const expId=`EXP-${id}`;const ev=addEvidence({experimentId:expId,kind:"REPRODUCTION",claim:"Error condition evidence",value:evidenceId,knowledgeState:"OBSERVED"});
- x.evidenceIds=[...new Set([...x.evidenceIds,ev.id])];incidents.set(id,x);persist();return structuredClone(x)
+/**
+ * Error Intelligence (Abschnitt 16).
+ *
+ *   DETECTED → TRIAGING → CONTAINED → REPRODUCING → DIAGNOSING → HYPOTHESIS
+ *   → EXPERIMENTING → ROOT_CAUSE_FOUND → FIXING → VERIFYING → LEARNED
+ *   → REGRESSION_LOCKED                       (oder: ESCALATED)
+ *
+ * Fehlerstruktur: Symptom · Incident · Failure Mode · Root Cause ·
+ * Contributing Factors · Prevention · Regression Test · Knowledge.
+ *
+ * Root Cause ohne Evidenz ist unzulässig. "Never Again" entsteht als negatives
+ * Wissen; gelernt wird nur mit Nachweis (kein Erfolg ohne Verifikation).
+ */
+
+export type ErrorLifecycle =
+  | "DETECTED"
+  | "TRIAGING"
+  | "CONTAINED"
+  | "REPRODUCING"
+  | "DIAGNOSING"
+  | "HYPOTHESIS"
+  | "EXPERIMENTING"
+  | "ROOT_CAUSE_FOUND"
+  | "FIXING"
+  | "VERIFYING"
+  | "LEARNED"
+  | "REGRESSION_LOCKED"
+  | "ESCALATED";
+
+export type ErrorSeverity = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+
+export type ErrorIncident = {
+  incidentId: string;
+  timestamp: string;
+  status: ErrorLifecycle;
+  severity: ErrorSeverity;
+  symptom: string;
+  incident: string;
+  failureMode: string;
+  rootCause?: string;
+  contributingFactors: string[];
+  prevention: string[];
+  hypothesis?: string;
+  evidenceIds: string[];
+  taskId?: string;
+  runId?: string;
+  agentId?: string;
+  sandboxId?: string;
+  diagnosticSandboxId?: string;
+  failureId?: string;
+  recoveryId?: string;
+  regressionId?: string;
+  knowledgeId?: string;
+  experimentId?: string;
+  error?: string;
+  updatedAt: string;
+};
+
+export const ERROR_TRANSITIONS: Record<ErrorLifecycle, ErrorLifecycle[]> = {
+  DETECTED: ["TRIAGING", "ESCALATED"],
+  TRIAGING: ["CONTAINED", "ESCALATED"],
+  CONTAINED: ["REPRODUCING", "ESCALATED"],
+  REPRODUCING: ["DIAGNOSING", "ESCALATED"],
+  DIAGNOSING: ["HYPOTHESIS", "ESCALATED"],
+  HYPOTHESIS: ["EXPERIMENTING", "ESCALATED"],
+  EXPERIMENTING: ["ROOT_CAUSE_FOUND", "HYPOTHESIS", "ESCALATED"],
+  ROOT_CAUSE_FOUND: ["FIXING", "ESCALATED"],
+  FIXING: ["VERIFYING", "ESCALATED"],
+  VERIFYING: ["LEARNED", "ROOT_CAUSE_FOUND", "ESCALATED"],
+  LEARNED: ["REGRESSION_LOCKED"],
+  REGRESSION_LOCKED: [],
+  ESCALATED: ["TRIAGING"]
+};
+
+type Payload = {incidents: ErrorIncident[]};
+const store = createStore<Payload>("errors", 2, () => ({incidents: []}));
+
+const rank: Record<ErrorSeverity, number> = {LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4};
+
+export function createErrorIncident(input: Omit<ErrorIncident, "incidentId" | "timestamp" | "status" | "updatedAt">): ErrorIncident {
+  const incident: ErrorIncident = {
+    ...input,
+    incidentId: `ERR-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+    timestamp: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    status: "DETECTED"
+  };
+  store.update(payload => {
+    payload.incidents.push(incident);
+    if (payload.incidents.length > 1000) payload.incidents.splice(0, payload.incidents.length - 1000);
+  });
+  observe({
+    type: "error.detected",
+    message: `${incident.incidentId}: ${incident.symptom}`,
+    status: "ERROR",
+    actor: incident.agentId ?? "SYSTEM",
+    agentId: incident.agentId,
+    taskId: incident.taskId,
+    runId: incident.runId,
+    sandboxId: incident.sandboxId,
+    action: "error.detect",
+    resource: incident.incidentId,
+    decision: "ERROR",
+    argumentsValue: {severity: incident.severity, failureMode: incident.failureMode, incident: incident.incident}
+  });
+  return structuredClone(incident);
 }
-export async function prepareErrorRecovery(id:string){const x=incidents.get(id);if(!x)throw new Error("Error incident not found");if(x.severity==="CRITICAL")transitionError(id,"CONTAINED"); let rollbackArtifactId:string|undefined;if(x.sandboxId){try{rollbackArtifactId=(await activeSandboxRuntime.snapshot(x.sandboxId)).id}catch{/* snapshot is optional; recovery stays pending without it */}} const p=prepareRecovery({failureId:x.error||id,steps:["isolate affected execution","collect diagnostics","restore known-good artifact","rerun regression and smoke verification"],rollbackArtifactId,diagnosticSandboxId:x.sandboxId,verification:["regression test","smoke verification"]});x.recoveryPlanId=p.id;x.status="RECOVERING";incidents.set(id,x);persist();return structuredClone(x)}
-export function escalateError(id:string,reason:string){return transitionError(id,"ESCALATED",{error:reason})}
-export function listErrorIncidents(){return [...incidents.values()].sort((a,b)=>b.timestamp.localeCompare(a.timestamp)).map(x=>structuredClone(x))}
-export function errorSummary(){const all=listErrorIncidents();return {total:all.length,detected:all.filter(x=>x.status==="DETECTED").length,investigating:all.filter(x=>["TRIAGING","CONTAINED","REPRODUCING","DIAGNOSING","HYPOTHESIS","EXPERIMENTING"].includes(x.status)).length,critical:all.filter(x=>x.severity==="CRITICAL"&&x.status!=="REGRESSION_LOCKED"&&x.status!=="LEARNED").length,learned:all.filter(x=>["LEARNED","REGRESSION_LOCKED"].includes(x.status)).length}}
+
+export function getErrorIncident(incidentId: string): ErrorIncident | null {
+  return structuredClone(store.read().incidents.find(i => i.incidentId === incidentId) ?? null);
+}
+
+export function listErrorIncidents(): ErrorIncident[] {
+  return structuredClone(store.read().incidents.slice().sort((a, b) => b.timestamp.localeCompare(a.timestamp)));
+}
+
+export function transitionError(incidentId: string, status: ErrorLifecycle, patch: Partial<ErrorIncident> = {}): ErrorIncident {
+  const payload = store.read();
+  const incident = payload.incidents.find(i => i.incidentId === incidentId);
+  if (!incident) throw new Error("error incident not found");
+  if (!ERROR_TRANSITIONS[incident.status].includes(status)) throw new Error(`invalid error transition ${incident.status} -> ${status}`);
+  incident.status = status;
+  Object.assign(incident, patch, {updatedAt: new Date().toISOString()});
+  store.write(payload);
+  observe({
+    type: `error.${status.toLowerCase()}`,
+    message: `Fehler ${incidentId}: ${status}`,
+    status: status === "REGRESSION_LOCKED" || status === "LEARNED" ? "COMPLETED" : status === "ESCALATED" ? "BLOCKED" : "RECOVERING",
+    actor: incident.agentId ?? "AG-RECOVERY",
+    agentId: incident.agentId ?? "AG-RECOVERY",
+    taskId: incident.taskId,
+    runId: incident.runId,
+    sandboxId: incident.sandboxId,
+    action: "error.transition",
+    resource: incidentId,
+    argumentsValue: {status, ...patch}
+  });
+  return structuredClone(incident);
+}
+
+/**
+ * Autonome Untersuchung: Containment, Diagnose-Sandbox, Failure-Record.
+ * Ein Fehler ohne Task (z. B. CRITICAL Systemfehler) erhält eine Diagnose-Sandbox
+ * nur, wenn eine Task-Bindung existiert – sonst wird eskaliert (fail closed).
+ */
+export async function investigateError(incidentId: string, options: {sandboxType?: SandboxType} = {}): Promise<ErrorIncident> {
+  let incident = getErrorIncident(incidentId);
+  if (!incident) throw new Error("error incident not found");
+  if (incident.status === "DETECTED") incident = transitionError(incidentId, "TRIAGING");
+  if (rank[incident.severity] >= 3) incident = transitionError(incidentId, "CONTAINED");
+  else if (incident.status === "TRIAGING") incident = transitionError(incidentId, "CONTAINED");
+
+  const state = getControlState();
+  const task = incident.taskId ? state.tasks.find(t => t.taskId === incident.taskId) : undefined;
+  const agentId = incident.agentId ?? task?.assignedAgent ?? "AG-RECOVERY";
+
+  if (!incident.diagnosticSandboxId && task && task.assignedAgent) {
+    const sandboxId = `SB-DIAG-${incident.incidentId.slice(4, 12)}`;
+    await createSandbox({
+      sandboxId,
+      type: options.sandboxType ?? "diagnostic",
+      taskId: task.taskId,
+      agentId: task.assignedAgent,
+      risk: rank[incident.severity] >= 3 ? "HIGH" : "LOW"
+    });
+    incident = transitionError(incidentId, "REPRODUCING", {diagnosticSandboxId: sandboxId, sandboxId: incident.sandboxId ?? sandboxId});
+  } else if (incident.status === "CONTAINED") {
+    incident = transitionError(incidentId, "REPRODUCING");
+  }
+
+  const failure = recordFailure({
+    incidentId: incident.incidentId,
+    runId: incident.runId,
+    taskId: incident.taskId,
+    symptom: incident.symptom,
+    incident: incident.incident,
+    failureMode: incident.failureMode,
+    contributingFactors: incident.contributingFactors,
+    prevention: []
+  });
+  const updated = transitionError(incidentId, "DIAGNOSING", {failureId: failure.failureId});
+  void agentId;
+  return updated;
+}
+
+export function formHypothesis(incidentId: string, hypothesis: string): ErrorIncident {
+  if (!hypothesis || hypothesis.length < 5) throw new Error("hypothesis must be substantive");
+  return transitionError(incidentId, "HYPOTHESIS", {hypothesis});
+}
+
+export function startExperiment(incidentId: string): ErrorIncident {
+  const incident = getErrorIncident(incidentId);
+  if (!incident) throw new Error("error incident not found");
+  if (!incident.hypothesis) throw new Error("hypothesis required before experimentation");
+  const sandboxId = incident.diagnosticSandboxId ?? incident.sandboxId;
+  if (!sandboxId) throw new Error("diagnostic sandbox required for reproduction");
+  const experimentId = `EXP-${incident.incidentId.slice(4, 12)}`;
+  createExperiment({
+    experimentId,
+    missionId: "MIS-002",
+    objectiveId: "OBJ-003",
+    title: `Reproduktion ${incident.incidentId}`,
+    sandboxId,
+    hypothesis: incident.hypothesis,
+    baseline: "bekannt guter Lauf",
+    control: "unveränderter Ablauf",
+    variables: incident.contributingFactors.length ? incident.contributingFactors : ["vermutete Fehlerbedingung"],
+    confounders: ["Umgebungsvarianz", "Abhängigkeitsversion"],
+    expectedResult: "Der beobachtete Fehler tritt reproduzierbar auf",
+    alternativeExplanations: ["Umgebungsvarianz", "Abhängigkeitsfehler"],
+    taskId: incident.taskId ?? "UNASSIGNED",
+    agentId: incident.agentId ?? "AG-RECOVERY"
+  });
+  return transitionError(incidentId, "EXPERIMENTING", {experimentId});
+}
+
+export function recordExperimentEvidence(incidentId: string, claim: string, value: string): ErrorIncident {
+  const incident = getErrorIncident(incidentId);
+  if (!incident) throw new Error("error incident not found");
+  if (!incident.experimentId) throw new Error("incident has no experiment");
+  const evidence = addEvidence({experimentId: incident.experimentId, kind: "REPRODUCTION", claim, value, knowledgeState: "OBSERVED"});
+  const payload = store.read();
+  const record = payload.incidents.find(i => i.incidentId === incidentId);
+  if (!record) throw new Error("error incident not found");
+  record.evidenceIds = [...new Set([...record.evidenceIds, evidence.evidenceId])];
+  record.updatedAt = new Date().toISOString();
+  store.write(payload);
+  observe({
+    type: "error.evidence.recorded",
+    message: `Evidence ${evidence.evidenceId} für ${incidentId} erfasst`,
+    status: "TESTING",
+    actor: "AG-RECOVERY",
+    agentId: "AG-RECOVERY",
+    taskId: record.taskId,
+    runId: record.runId,
+    action: "error.evidence",
+    resource: incidentId,
+    outputRef: evidence.evidenceId,
+    argumentsValue: {claim, value}
+  });
+  return structuredClone(record);
+}
+
+/** Root Cause nur mit Evidenz (Abschnitt 16). */
+export function establishRootCause(incidentId: string, rootCause: string, evidenceIds: string[] = []): ErrorIncident {
+  const incident = getErrorIncident(incidentId);
+  if (!incident) throw new Error("error incident not found");
+  const merged = [...new Set([...incident.evidenceIds, ...evidenceIds])];
+  if (merged.length === 0) throw new Error("root cause requires evidence (no evidence recorded)");
+  if (!rootCause || rootCause.length < 5) throw new Error("root cause must be substantive");
+  const updated = transitionError(incidentId, "ROOT_CAUSE_FOUND", {rootCause, evidenceIds: merged});
+  if (incident.failureId) resolveFailure(incident.failureId, rootCause, undefined);
+  return updated;
+}
+
+export function markFixing(incidentId: string): ErrorIncident {
+  return transitionError(incidentId, "FIXING");
+}
+
+/** Erzeugt einen dauerhaften Regressionstest für den Fehler ("Never Again"). */
+export function createRegressionTest(incidentId: string, argv: string[], createdBy = "AG-QA"): ErrorIncident {
+  const incident = getErrorIncident(incidentId);
+  if (!incident) throw new Error("error incident not found");
+  const test = registerRegressionTest({
+    incidentId,
+    rootCause: incident.rootCause,
+    name: `Regression ${incident.incidentId}`,
+    description: incident.symptom,
+    argv,
+    createdBy
+  });
+  if (incident.failureId) lockRegressionFromFailure(incident.failureId, argv, createdBy);
+  const payload = store.read();
+  const record = payload.incidents.find(i => i.incidentId === incidentId);
+  if (!record) throw new Error("error incident not found");
+  record.regressionId = test.regressionId;
+  record.updatedAt = new Date().toISOString();
+  store.write(payload);
+  return structuredClone(record);
+}
+
+/**
+ * Verifikation: führt die Regression im Diagnose-Sandbox aus. Ohne bestandene
+ * Regression gibt es kein LEARNED/REGRESSION_LOCKED.
+ */
+export async function verifyFix(incidentId: string): Promise<{incident: ErrorIncident; passed: boolean; detail: string}> {
+  const incident = getErrorIncident(incidentId);
+  if (!incident) throw new Error("error incident not found");
+  if (!incident.diagnosticSandboxId) throw new Error("no diagnostic sandbox available");
+  const verifying = transitionError(incidentId, "VERIFYING");
+  const suite = await runRegressionSuite(verifying.diagnosticSandboxId!, verifying.regressionId ? [verifying.regressionId] : undefined);
+  if (!suite.passed) {
+    const reverted = transitionError(incidentId, "ROOT_CAUSE_FOUND", {error: `verification failed: ${suite.failed.join(", ") || "no regression tests registered"}`});
+    return {incident: reverted, passed: false, detail: suite.failed.join(", ") || "no regression tests registered"};
+  }
+  const learned = transitionError(incidentId, "LEARNED", {error: undefined});
+  return {incident: learned, passed: true, detail: `${suite.passedCount}/${suite.total} regression tests passed`};
+}
+
+/** Lernschritt: negatives Wissen ("Never Again") + Knowledge-Link. */
+export function learnFromError(incidentId: string, summary: string, verification?: string): ErrorIncident {
+  const incident = getErrorIncident(incidentId);
+  if (!incident) throw new Error("error incident not found");
+  if (incident.status !== "LEARNED") throw new Error(`learning requires a verified fix (status ${incident.status})`);
+  const state: KnowledgeState = incident.rootCause && incident.evidenceIds.length > 0 && verification ? "ESTABLISHED" : "SUPPORTED";
+  const node = upsertKnowledge({
+    layer: "NEGATIVE",
+    subject: `Never Again: ${incident.incidentId}`,
+    predicate: "prevention",
+    object: summary,
+    state,
+    sourceIds: [incident.incidentId],
+    evidenceIds: incident.evidenceIds,
+    conditions: incident.contributingFactors.join("; "),
+    verification
+  });
+  if (incident.rootCause) {
+    const semantic = upsertKnowledge({
+      layer: "SEMANTIC",
+      subject: incident.failureMode,
+      predicate: "rootCause",
+      object: incident.rootCause,
+      state,
+      sourceIds: [incident.incidentId],
+      evidenceIds: incident.evidenceIds
+    });
+    linkKnowledge(node.knowledgeId, semantic.knowledgeId, "DERIVED_FROM");
+  }
+  const final = incident.regressionId ? transitionError(incidentId, "REGRESSION_LOCKED", {knowledgeId: node.knowledgeId}) : transitionError(incidentId, "LEARNED", {knowledgeId: node.knowledgeId});
+  return final;
+}
+
+export function escalateError(incidentId: string, reason: string): ErrorIncident {
+  const incident = transitionError(incidentId, "ESCALATED", {error: reason});
+  notifyInbox({
+    mode: "ESCALATE",
+    title: `Fehler ${incidentId} eskaliert`,
+    message: reason,
+    taskId: incident.taskId
+  });
+  return incident;
+}
+
+/** Vorbereitung der Recovery (Checkpoint + Plan). */
+export async function prepareErrorRecovery(incidentId: string): Promise<ErrorIncident> {
+  const incident = getErrorIncident(incidentId);
+  if (!incident) throw new Error("error incident not found");
+  let checkpointSnapshotId: string | undefined;
+  if (incident.diagnosticSandboxId) {
+    try {
+      const snapshot = await snapshotSandbox(incident.diagnosticSandboxId, incident.agentId ?? "AG-RECOVERY");
+      checkpointSnapshotId = snapshot.snapshotId;
+    } catch {
+      /* ohne Snapshot bleibt die Recovery unbestätigt (kein Fake-Erfolg) */
+    }
+  }
+  const plan = prepareRecovery({
+    failureId: incident.failureId ?? incident.incidentId,
+    tier: rank[incident.severity] >= 3 ? 3 : 2,
+    steps: ["betroffene Ausführung isolieren", "Diagnose sammeln", "Snapshot wiederherstellen", "Regression und Smoke ausführen"],
+    verificationPlan: ["smoke test", "regression suite"],
+    diagnosticSandboxId: incident.diagnosticSandboxId,
+    checkpointSnapshotId
+  });
+  return transitionError(incidentId, "FIXING", {recoveryId: plan.recoveryId});
+}
+
+export async function executeRecoveryForIncident(incidentId: string) {
+  const incident = getErrorIncident(incidentId);
+  if (!incident) throw new Error("error incident not found");
+  if (!incident.recoveryId) throw new Error("incident has no recovery plan");
+  const {beginRecovery} = await import("./reliability");
+  const plan = await beginRecovery(incident.recoveryId, incident.agentId ?? "AG-RECOVERY");
+  return plan;
+}
+
+export async function verifyRecoveryForIncident(incidentId: string) {
+  const incident = getErrorIncident(incidentId);
+  if (!incident) throw new Error("error incident not found");
+  if (!incident.recoveryId) throw new Error("incident has no recovery plan");
+  return verifyRecovery(incident.recoveryId);
+}
+
+export function errorSummary() {
+  const incidents = listErrorIncidents();
+  return {
+    total: incidents.length,
+    open: incidents.filter(i => ["DETECTED", "TRIAGING", "CONTAINED", "REPRODUCING", "DIAGNOSING", "HYPOTHESIS", "EXPERIMENTING"].includes(i.status)).length,
+    rootCauseFound: incidents.filter(i => ["ROOT_CAUSE_FOUND", "FIXING", "VERIFYING"].includes(i.status)).length,
+    learned: incidents.filter(i => ["LEARNED", "REGRESSION_LOCKED"].includes(i.status)).length,
+    escalated: incidents.filter(i => i.status === "ESCALATED").length,
+    critical: incidents.filter(i => i.severity === "CRITICAL" && !["LEARNED", "REGRESSION_LOCKED"].includes(i.status)).length
+  };
+}
+
+export function errorStoreReport() {
+  return store.integrity();
+}

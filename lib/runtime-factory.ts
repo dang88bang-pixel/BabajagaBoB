@@ -1,33 +1,65 @@
-import {sandboxRuntime, type SandboxRuntime, type SandboxSpec, type RuntimeHandle, type RuntimeSnapshot} from "./runtime";
+import {localWorkspaceRuntime} from "./runtime-local";
 import {ociContainerRuntime} from "./oci-runtime";
+import {sandboxRuntime as mockRuntime, type SandboxRuntime} from "./runtime";
 
-class OciSandboxRuntimeAdapter implements SandboxRuntime{
- async create(spec:SandboxSpec):Promise<RuntimeHandle>{
-  return ociContainerRuntime.create({image:process.env.BOB_OCI_IMAGE??"alpine:3.20",command:["sleep","infinity"],limits:spec.limits,network:spec.network.mode,allowlist:spec.network.allowlist,containerName:`bob-${spec.id.toLowerCase().replace(/[^a-z0-9_.-]/g,"-")}`});
- }
- async start(id:string){return ociContainerRuntime.start(id)}
- async pause(id:string){return ociContainerRuntime.pause(id)}
- async execute(id:string,operation:string[]){
-  const result=await ociContainerRuntime.execute(id,operation);
-  if(!result.accepted) throw new Error(result.stderr||result.message);
-  return {accepted:true,message:result.stdout.trim()||result.message};
- }
- async clone(sourceSandboxId:string,target:SandboxSpec):Promise<RuntimeHandle>{void target;throw new Error(`OCI clone is not implemented for ${sourceSandboxId}; create a fresh sandbox instead`)}
- async reset(sandboxId:string):Promise<RuntimeHandle>{throw new Error(`OCI reset is not implemented for ${sandboxId}; destroy and recreate the sandbox`)}
- async snapshot(sandboxId:string):Promise<RuntimeSnapshot>{throw new Error(`OCI snapshot is not implemented for ${sandboxId}; image/volume backend required`)}
- async restore(sandboxId:string,snapshotId:string):Promise<RuntimeHandle>{throw new Error(`OCI restore is not implemented for ${sandboxId} from ${snapshotId}; image/volume backend required`)}
- async destroy(id:string){return ociContainerRuntime.destroy(id)}
+/**
+ * Fail-closed Runtime-Auswahl (Abschnitt 12/47).
+ *
+ *  BOB_SANDBOX_RUNTIME=local  → REAL lokale Workspace-Runtime (Standard)
+ *  BOB_SANDBOX_RUNTIME=oci    → REAL OCI/Docker-Runtime (benötigt Docker-Daemon;
+ *                               fehlt er, schlägt jede Ausführung fehl)
+ *  BOB_SANDBOX_RUNTIME=mock   → MOCK; nur zulässig, wenn BOB_ALLOW_MOCK_RUNTIME=1
+ *                               (Entwicklung/Tests). Mocks werden niemals als
+ *                               reale Isolation dargestellt.
+ */
+
+export type RuntimeMode = "local" | "oci" | "mock";
+
+export function requestedRuntimeMode(): RuntimeMode {
+  const raw = (process.env.BOB_SANDBOX_RUNTIME ?? "local").toLowerCase();
+  if (raw === "local" || raw === "oci" || raw === "mock") return raw;
+  throw new Error(`unsupported BOB_SANDBOX_RUNTIME: ${raw}`);
 }
 
-export const activeSandboxRuntime:SandboxRuntime=process.env.BOB_SANDBOX_RUNTIME==="oci"?new OciSandboxRuntimeAdapter():sandboxRuntime;
-export const activeRuntimeMode=process.env.BOB_SANDBOX_RUNTIME==="oci"?"oci":"mock";
-
-export async function reconcileActiveRuntime(){
- if(activeRuntimeMode==="oci") return ociContainerRuntime.reconcile();
- return [];
+export function runtimeModeLabel(): string {
+  const mode = requestedRuntimeMode();
+  if (mode === "local") return "REAL_LOCAL";
+  if (mode === "oci") return "REAL_OCI";
+  return "MOCK";
 }
 
-export function runtimeHandle(sandboxId:string){
- if(activeRuntimeMode==="oci") return ociContainerRuntime.getHandle(sandboxId);
- return undefined;
+function select(): SandboxRuntime {
+  const mode = requestedRuntimeMode();
+  if (mode === "mock") {
+    if (process.env.BOB_ALLOW_MOCK_RUNTIME !== "1") {
+      throw new Error("MOCK runtime requires BOB_ALLOW_MOCK_RUNTIME=1; refusing to simulate isolation silently");
+    }
+    return mockRuntime;
+  }
+  if (mode === "oci") return ociContainerRuntime;
+  return localWorkspaceRuntime;
+}
+
+export const activeSandboxRuntime: SandboxRuntime = select();
+export const activeRuntimeMode: RuntimeMode = requestedRuntimeMode();
+
+export async function runtimeHealth() {
+  const health = await activeSandboxRuntime.health();
+  return {
+    mode: runtimeModeLabel(),
+    requested: activeRuntimeMode,
+    ok: health.ok,
+    detail: health.detail,
+    networkDefault: "DENY" as const,
+    allowlist: "FAIL_CLOSED" as const,
+    isolation: activeRuntimeMode === "oci" ? "CONTAINER" : activeRuntimeMode === "local" ? "FILESYSTEM_ONLY" : "NONE"
+  };
+}
+
+export async function reconcileActiveRuntime() {
+  return activeSandboxRuntime.reconcile();
+}
+
+export function runtimeHandle(sandboxId: string) {
+  return activeSandboxRuntime.handle(sandboxId);
 }
