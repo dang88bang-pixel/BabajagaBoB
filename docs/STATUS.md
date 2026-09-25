@@ -76,11 +76,12 @@ Produktionsreife:
 | Provenance | TESTED | Kanten im E2E-Erfolgspfad und im Live-Lauf (§4a in `docs/TESTING.md`); Schreibzugriff ist Creator-Aktion |
 | Privacy / Data Boundary | TESTED | default `DENY`, live geprüft (`GET /api/privacy`: Policy, Regeln, Grenze, kein Silent-Telemetry/Tracking/Advertising) |
 | Provider Fabric | TESTED | Katalog/Bindungen/Telemetrie persistent, Approval-gebundene Verbindung (`tests/integration/provider-fabric.test.ts`) |
-| Device Fabric / Simulation / Computer Use | PARTIAL | persistent; Computer Use in `tests/integration/computer-use.test.ts` (Registrieren ≠ Autorisieren), Simulation ohne eigenen Test |
+| Device Fabric / Simulation / Computer Use | PARTIAL | persistent; Computer Use in `tests/integration/computer-use.test.ts` (Registrieren **erzwingt** unauthorisiert, Autorisierung nur durch Creator, danach Allocation), Simulation ohne eigenen Test |
 | CI/CD (`ci.yml`) | TESTED | 5 Jobs (Lint/Typecheck, Unit/Integration/Regression, Security/E2E, Build, Promotion-Gate); grüne Läufe dokumentiert in `docs/CI_CD.md` |
-| Automatisierte Testsuiten | TESTED | **35 Dateien / 212 Tests grün** (Unit 53, Security 89, Integration 55, Regression 5, UI 6, E2E 4), siehe `docs/TESTING.md` |
+| Automatisierte Testsuiten | TESTED | **38 Dateien / 228 Tests grün** (Unit 53, Security 95, Integration 56, Regression 14, UI 6, E2E 4), siehe `docs/TESTING.md` |
 | Betriebsprüfung aller Routen | VERIFIED | `scripts/audit-api.sh`: **184 Prüfungen / 0 Fehler**, Exit 0 (6 Abschnitte, wiederholbar); siehe `docs/TESTING.md` §4b |
-| Vollständige Aktions-/Attributprüfung | VERIFIED | `scripts/audit-actions.mjs`: **433 Prüfungen / 0 Fehler**, Exit 0 — Matrix aus dem Quellcode (38 POST-Routen, 116 Aktionen), Robustheit je Aktion, Attributtypen, 14 Interaktionsketten bis `REGRESSION_LOCKED`; siehe `docs/TESTING.md` §4c |
+| Oberflächenprüfung des Control Centers | VERIFIED | `scripts/audit-ui.mjs`: **65 Prüfungen / 0 Fehler**, Exit 0 — Quellvertrag, Auslieferung und Datenvertrag je Abschnitt, kein Geheimnis im Browser; siehe `docs/TESTING.md` §4d |
+| Vollständige Aktions-/Attributprüfung | VERIFIED | `scripts/audit-actions.mjs`: **440 Prüfungen / 0 Fehler**, Exit 0 — Matrix aus dem Quellcode (38 POST-Routen, 116 Aktionen), Robustheit je Aktion, Attributtypen, 14 Interaktionsketten bis `REGRESSION_LOCKED`; zweimal auf derselben Instanz wiederholt; siehe `docs/TESTING.md` §4c |
 | Kein Ausführungspfad um den Broker | VERIFIED | `lib/system-execution.ts`: Regression und Smoke-Test laufen als SYSTEM-WORKER über Gate, Broker, Replay-Sperre und Evidenz (Capability aus `CREATOR → SYSTEM-WORKER`, Zweck `REGRESSION`/`SMOKE_TEST` im Ereignis); Kill Switch blockiert sie, ohne Delegation wird nichts ausgeführt; `tests/security/gate-bypass.test.ts` + live in `scripts/verify-live.sh` Schritt 7 |
 | Systemausstellung ohne Replay | TESTED | `ensureExecutionCapability` gibt kein erschöpftes Token mehr heraus (`uses < maxUses`), sonst hätte der Broker den Folge lauf als Replay verweigert; Test in `tests/security/authority.test.ts` |
 

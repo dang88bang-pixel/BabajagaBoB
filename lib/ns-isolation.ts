@@ -129,10 +129,16 @@ let cachedReport: IsolationReport | null = null;
 /** Aktueller Isolationszustand — nie eine Behauptung ohne Prüfung. */
 export function isolationReport(refresh = false): IsolationReport {
   if (refresh) cachedUnshare = null;
-  // Voraussetzungen werden immer geprüft; nur der unshare-Testlauf ist gecacht.
-  const missing = requestedIsolation() === "off" ? null : missingPrerequisite();
-  if (cachedReport && !refresh && !missing) return cachedReport;
   const requested = requestedIsolation();
+  // Voraussetzungen werden immer geprüft; nur der unshare-Testlauf ist gecacht.
+  const missing = requested === "off" ? null : missingPrerequisite();
+  // Ein zwischengespeicherter Bericht darf nur gelten, wenn die Voraussetzungen
+  // unverändert erfüllt sind. Sonst bliebe ein später gebauter Rootfs unsichtbar
+  // und die Plattform meldete dauerhaft FILESYSTEM_ONLY — inklusive der
+  // Netzwerk-/Namensraum-Garantien, die dann tatsächlich verfügbar wären.
+  const reusable =
+    cachedReport !== null && !refresh && missing === null && cachedReport.reason === undefined && cachedReport.requested === requested;
+  if (reusable) return cachedReport as IsolationReport;
   const rootfs = nsRootfsPath();
   const capabilities: IsolationReport["capabilities"] = fs.existsSync("/usr/bin/setpriv") ? "BOUNDING_SET_EMPTY" : "INHERITABLE_AMBIENT_ONLY";
   const cgroup = cgroupAvailable();

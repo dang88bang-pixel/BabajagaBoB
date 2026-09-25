@@ -9,9 +9,9 @@
 | Suite | Dateien | Tests | Inhalt |
 |---|---|---|---|
 | `tests/unit` | 7 | 53 |    Persistenz-Envelope (Digest, Manipulationserkennung, Versionsprüfung, Registry), Control Plane (Mission/Objective/Task, Risiko-/Approval-Regeln, Persistenz), Agent Fabric (11 Rollen, Autonomie-Grenzen, Heartbeat, persistente Handoffs), **Recovery-Tier-Klassifikation** (Stufen 1–5 mit Begründung und Creator-Freigabepflicht), **Store-Migration** (v1 → v2, Sicherungskopie, Journal, fehlende Kette/neuere Datei → fail closed, migrierende Backup-Wiederherstellung, Schutz und Reparatur inhaltsloser Envelopes), **Persistenz von Betriebszustand** (Pipelines, Skills, Werkstatt, Handoffs über Neuladen der Laufzeit), **Audit-Aufbewahrung** (append-only ohne Kürzung, Kürzung nur mit Checkpoint, Rekonstruktion des Kopfes bei Altbeständen, Datei- **und** Ketten-Manipulation erkannt) |
-| `tests/security` | 14 | 89 | Authority-Invarianten (Selbstvergabe, Wildcards, TTL, Risk-Eskalation, Audit-DENY), **Wiederholungssperre für Capability-Token** (zweiter Lauf verweigert, Evidenz + Audit, freigegebene Anzahl Verwendungen, parallele Läufe mit genau einer Freigabe, Vorprüfung ≠ Verbrauch), API-Guard (428/401/403, CSRF-Origin, Session, Legacy-Token fail-closed), argv-Policy (Broker-DENY + Runtime-Defense-in-Depth), API-Gate (Bootstrap, Session, CSRF, Renew/Logout, keine Agent-/Legacy-Token an der Grenze), Creator-Login (Secret-Datei 0600, Konstantzeit, Audit, Sperre), **TOTP als zweiter Faktor** (Fenster ±1, Replay-Schutz, Pflicht bei gesetztem Secret, Replay/Sperre), **Creator Inbox** (Anlegen, Beantworten nur durch Creator, doppelte Beantwortung abgelehnt, unbekannte Aktion 400, Sessionpflicht), Routen-Guards (Provenance/Knowledge/Runs: 428 vor Bootstrap, 401 ohne Authentifizierung, `CREATOR_ONLY` für Agenten-Schreibzugriff, `CAPABILITY_DENIED` ohne `run:manage`, CSRF-Origin, Audit-Integrität), **Direkter Routenaufruf ohne Gate** (428 vor Bootstrap, 401 `UNAUTHENTICATED` nach Bootstrap statt 500/503, 200 mit Session, kein Agenten-/Legacy-Token), **kein Ausführungspfad um den Broker** (`tests/security/gate-bypass.test.ts`: interne Läufe von Regression und Smoke-Test laufen über `SYSTEM-WORKER` → Gate → Broker → Evidenz, der Kill Switch blockiert sie, ohne die Delegationskante `CREATOR → SYSTEM-WORKER` wird nichts ausgeführt, der Zweck steht im Ereignisstrom; Systemausstellung gibt kein erschöpftes Token erneut heraus) |
-| `tests/integration` | 9 | 55 | Sandbox-Fabric mit `REAL_LOCAL` (Bindung, Prozessausführung, Snapshot + Digest, Verifikation, ALLOWLIST fail-closed), Provider-Fabric (Approval-Pflicht, Bindungen, Health, Datenvertrag), App-Module (Fabric-gebundene Sandboxes, Lifecycle), Computer Use (Registrieren ≠ Autorisieren, Allocation nur mit Freigabe), **Ausführungs-Evidenz** (Digest über stdout/Exit-Code, Provenance-Knoten, Persistenz, Kürzung, Manipulationserkennung, **Verweigerungs-Evidenz**: blockierte Autorisierung wird digest-gebunden und ohne Klartext-Argumente festgehalten), **Nebenläufigkeit** (12 parallele autorisierte Ausführungen, 6 verweigerte Fremdbindungen), Backup mit Digest-Prüfung (manipuliertes Backup → 409) und Betriebsmetriken (Prometheus-Text, nur Zahlen, keine Geheimnisse) , **Kernel-Isolation** (`tests/integration/ns-isolation.test.ts`, 7 Tests: Prozess-Probe mit Capabilities/`NoNewPrivs`/`EROFS`, Netzwerk-Namespace, argv-Canary, Prozessgruppen-Timeout, verschwundener Rootfs, fail closed) , **Ressourcenlimits** (CPU-Zeit/Dateigröße per rlimit, Speicher/Prozesse per cgroup mit `pids.max`/`memory.max`, Aufräumen des cgroup-Zweigs, fail closed bei gesetztem aber unbrauchbarem `BOB_CGROUP_DIR`), **Worker-Fehlerkette** (`tests/integration/worker-recovery.test.ts`, 8 Tests: Lease vor dem Start, kontrolliertes Scheitern ohne Zyklusabbruch, Incident über Hypothese/Experiment/Evidenz/Root Cause bis `FIXING`, begonnener Recovery-Plan mit Checkpoint, Lauf in Verifikation, Job-Zurückstellung ohne Versuchsverbrauch, Nachweiszwang vor der Ursache) |
-| `tests/regression` | 1 | 5 | Regression Engine: argv-Policy, Registrierung, PASS/FAIL, Suite fail-closed bei Fehlschlag, Persistenz |
+| `tests/security` | 15 | 95 | Authority-Invarianten (Selbstvergabe, Wildcards, TTL, Risk-Eskalation, Audit-DENY), **Wiederholungssperre für Capability-Token** (zweiter Lauf verweigert, Evidenz + Audit, freigegebene Anzahl Verwendungen, parallele Läufe mit genau einer Freigabe, Vorprüfung ≠ Verbrauch), API-Guard (428/401/403, CSRF-Origin, Session, Legacy-Token fail-closed), argv-Policy (Broker-DENY + Runtime-Defense-in-Depth), API-Gate (Bootstrap, Session, CSRF, Renew/Logout, keine Agent-/Legacy-Token an der Grenze), Creator-Login (Secret-Datei 0600, Konstantzeit, Audit, Sperre), **TOTP als zweiter Faktor** (Fenster ±1, Replay-Schutz, Pflicht bei gesetztem Secret, Replay/Sperre), **Creator Inbox** (Anlegen, Beantworten nur durch Creator, doppelte Beantwortung abgelehnt, unbekannte Aktion 400, Sessionpflicht), Routen-Guards (Provenance/Knowledge/Runs: 428 vor Bootstrap, 401 ohne Authentifizierung, `CREATOR_ONLY` für Agenten-Schreibzugriff, `CAPABILITY_DENIED` ohne `run:manage`, CSRF-Origin, Audit-Integrität), **Token-Ablauf und Leseprojektion** (`authority.test.ts`/`token-read-projection.test.ts`: ohne gültiges `expiresAt` wird kein Token ausgestellt, ein abgelaufenes Token wird bei der Prüfung verweigert, `GET /api/capabilities` und `GET /api/authority` liefern **keinen** `secretHash` mehr), **Direkter Routenaufruf ohne Gate** (428 vor Bootstrap, 401 `UNAUTHENTICATED` nach Bootstrap statt 500/503, 200 mit Session, kein Agenten-/Legacy-Token), **kein Ausführungspfad um den Broker** (`tests/security/gate-bypass.test.ts`: interne Läufe von Regression und Smoke-Test laufen über `SYSTEM-WORKER` → Gate → Broker → Evidenz, der Kill Switch blockiert sie, ohne die Delegationskante `CREATOR → SYSTEM-WORKER` wird nichts ausgeführt, der Zweck steht im Ereignisstrom; Systemausstellung gibt kein erschöpftes Token erneut heraus) |
+| `tests/integration` | 9 | 56 | Sandbox-Fabric mit `REAL_LOCAL` (Bindung, Prozessausführung, Snapshot + Digest, Verifikation, ALLOWLIST fail-closed), Provider-Fabric (Approval-Pflicht, Bindungen, Health, Datenvertrag), App-Module (Fabric-gebundene Sandboxes, Lifecycle), Computer Use (Registrieren ≠ Autorisieren, Allocation nur mit Freigabe), **Ausführungs-Evidenz** (Digest über stdout/Exit-Code, Provenance-Knoten, Persistenz, Kürzung, Manipulationserkennung, **Verweigerungs-Evidenz**: blockierte Autorisierung wird digest-gebunden und ohne Klartext-Argumente festgehalten), **Nebenläufigkeit** (12 parallele autorisierte Ausführungen, 6 verweigerte Fremdbindungen), Backup mit Digest-Prüfung (manipuliertes Backup → 409) und Betriebsmetriken (Prometheus-Text, nur Zahlen, keine Geheimnisse) , **Kernel-Isolation** (`tests/integration/ns-isolation.test.ts`, 7 Tests: Prozess-Probe mit Capabilities/`NoNewPrivs`/`EROFS`, Netzwerk-Namespace, argv-Canary, Prozessgruppen-Timeout, verschwundener Rootfs, fail closed) , **Ressourcenlimits** (CPU-Zeit/Dateigröße per rlimit, Speicher/Prozesse per cgroup mit `pids.max`/`memory.max`, Aufräumen des cgroup-Zweigs, fail closed bei gesetztem aber unbrauchbarem `BOB_CGROUP_DIR`), **Worker-Fehlerkette** (`tests/integration/worker-recovery.test.ts`, 8 Tests: Lease vor dem Start, kontrolliertes Scheitern ohne Zyklusabbruch, Incident über Hypothese/Experiment/Evidenz/Root Cause bis `FIXING`, begonnener Recovery-Plan mit Checkpoint, Lauf in Verifikation, Job-Zurückstellung ohne Versuchsverbrauch, Nachweiszwang vor der Ursache) |
+| `tests/regression` | 3 | 14 | Regression Engine: argv-Policy, Registrierung, PASS/FAIL, Suite fail-closed bei Fehlschlag, Persistenz; **Oberflächenvertrag** (`ui-contract.test.ts`: Navigations-/Quellvertrag der Control-Center-Komponente — kein literales Markdown im sichtbaren Text, jede Tabellenspalte ist ein deklariertes Feld, jede Datenquelle zeigt auf eine existierende Route, Runtimes-Tabelle folgt `RuntimeDefinition`); **Isolationsbericht** (`ns-report-cache.test.ts`: ein später gebauter Rootfs wird ohne Neustart erkannt, ein verschwundener Rootfs fällt sofort auf `FILESYSTEM_ONLY` zurück) |
 | `tests/ui` | 2 | 6 | Control-Center-Oberfläche unter jsdom: **vollständige Navigationsliste (38 Abschnitte)** vorhanden, echte Serverdaten werden als Zeilen gerendert (kein Platzhalter „READY“), fehlende Daten werden ausdrücklich als „nicht verfügbar“ gemeldet, ohne Session erscheint die Anmeldemaske und keine Rohdaten; zweite Datei ruft die **echten Routen-Handler** auf (35 Routen) und prüft, dass gerenderte Datensätze tatsächlich aus der API stammen |
 | `tests/e2e` | 2 | 4 | Kette Creator → Aufgabe → Autorisierung → Sandbox → Ausführung → Evidence → Knowledge sowie Fehlerkette DETECTED → DIAGNOSING → EXPERIMENTING → ROOT_CAUSE_FOUND → FIXING → VERIFYING → LEARNED → REGRESSION_LOCKED |
 
@@ -124,9 +124,13 @@ weist DENY-Datensätze und den Aufbewahrungszustand der Kette aus.
 | 4. Autorisierte Ausführung | Run (201) → `POST /api/runtime` mit `argv:["node","-e",...]`, `shell:false` → 200, stdout `live-ok`, Audit-DECISION `ALLOW`, Timeline-Events, Provenance-Kanten kausal verknüpft | PASS |
 | 5. Blockierte Angriffe | unbekanntes Token 409, Shell-Programm 409 `SHELL_PROGRAM`, Metazeichen 409 `SHELL_METACHAR`, fremde Sandbox-Bindung 409, Audit-HMAC-Kette integer | PASS |
 | 6. Fehlerkette | Incident → Diagnosesandbox (real gestartet) → Hypothese → Experiment → Evidenz → Root Cause → Recovery-Plan (Snapshot) → Restore → Regressionstest → Recovery `VERIFIED` → `fix.verify` `LEARNED` → Lernen → `REGRESSION_LOCKED` + negatives Wissen | PASS |
-| 7. Governance | Kill-Switch-Liste, Lockdown blockiert Ausführung (409 am Gate), Freigabe hebt Block auf, Privacy default `DENY`, Provider nur entdeckt + Verbindung verlangt Approval, Gerät nicht implizit autorisiert, **11 Agentenrollen ohne Selbstvergabe/Produktionszugriff**, **kein Computer vorautorisiert** | PASS |
+| 7. Governance | Kill-Switch-Liste, Lockdown blockiert Ausführung (409 am Gate), Freigabe hebt Block auf, Privacy default `DENY`, Provider nur entdeckt + Verbindung verlangt Approval, Gerät nicht implizit autorisiert, **11 Agentenrollen ohne Selbstvergabe/Produktionszugriff**, **frisch entdeckter Computer bleibt unautorisiert und ist nicht belegbar** (Discovery ≠ Autorisierung, zustandsunabhängig) | PASS |
 | 8. Betrieb | Restore aus Snapshot, Pause, Destroy, Persistenzbericht ohne Integritätsfehler, Readiness, unbekannter Provider 400 | PASS |
 | 9. Betrieb/Backup | Audit-Verifikation per POST, Backup mit Digest-Prüfung, Persistenzbericht mit verifizierten Backups, Prometheus-Metriken (Store-Integrität, Audit-Kette, 11 Agenten), Metriken ohne Session 401 | PASS |
+
+**Letzter Lauf (2026-09-25):** `169 bestanden, 0 fehlgeschlagen`, Exit 0 — zweimal
+hintereinander auf derselben Instanz (vorher einmal auf leerem Storage). Die
+Prüfung ist idempotent; sie verlangt keine jungfräuliche Instanz mehr.
 
 Struktureller Vertrag: `tests/security/api-route-contract.test.ts` prüft, dass **jede** Route außer
 `/api/auth` eine konkrete Aktion prüft, keine leere Aktionsbezeichnung nutzt und keine Route
@@ -171,10 +175,10 @@ BASE=http://127.0.0.1:3100 BOB_BOOTSTRAP_SECRET=… BOB_CREATOR_LOGIN_SECRET=…
 | 1. Robustheit | je POST-Route: unlesbarer Body, leerer Body, unbekannte Aktion → 4xx, nie 5xx; bei body-losen Routen (z. B. `/api/worker`) ist 2xx korrekt |
 | 2. Attribute | je Aktion `{action}` ohne Attribute → 4xx (Ausnahmen: Aktionen ohne Attribute wie `renew`, `backup`, `repair`); je Attribut ein falscher Typ → kein 5xx |
 | 3. Control Plane | Mission → Objective → Task → Agent (Zuweisung, Status, Heartbeat, Handoff mit Annahme) |
-| 4. Runtime | Sandbox → Start → Snapshot (Digest) → Restore → Pause → Reset → Klon → Capability → Run → Execution Gate → autorisierte Ausführung → Reconciliation |
+| 4. Runtime | Sandbox → Start → Snapshot (Digest) → Restore → Pause → Reset → Klon → Capability (**an einen Ablauf gebunden**; ohne `expiresAt` → 400) → Run → Execution Gate → autorisierte Ausführung → Reconciliation |
 | 5. Fehlerkette | Incident → Triaging → Untersuchung → Hypothese → Experiment → Evidenz → Root Cause (mit Nachweispflicht) → Recovery (Stufe/Checkpoint) → Ausführung → Verifikation → Regressionstest → `fix.verify` → Lernen → `REGRESSION_LOCKED` mit negativem Wissen |
 | 6. Fabric/Betrieb | Skills (Registrierung + Lifecycle), Werkstatt (Stufenübergang), Simulation, ausführbares Modul, App + Zustand, Pipeline + Prüfung, Promotion-Gate inkl. Verweigerung |
-| 7. Geräte/Provider | Gerät entdecken (nicht vorautorisiert) → autorisieren → reservieren → freigeben; Computer registrieren → Reservierung ohne Autorisierung verweigert → autorisieren; Provider ohne Freigabe verweigert; Secret-Lease ausstellen/prüfen/widerrufen/redigieren |
+| 7. Geräte/Provider | Gerät entdecken (nicht vorautorisiert) → autorisieren → reservieren → freigeben; Computer registrieren → Reservierung ohne Autorisierung verweigert → **auch bei mitgeschicktem `authorized:true` bleibt die Registrierung unautorisiert** → autorisieren; Provider ohne Freigabe verweigert; Secret-Lease ausstellen/prüfen/widerrufen/redigieren |
 | 8. Kommunikation | Inbox in allen vier Modi (INFORM/ASK/BLOCK/ESCALATE) + Beantwortung, Approval anlegen/prüfen, Wissen anlegen/verknüpfen/aktualisieren, Provenance-Knoten/-Kante, Backup/Repair/Bericht |
 | 9. Worker | Dispatch → Queue-Zustand → Lease/Start/Heartbeat/Complete → Leases abräumen → Worker-Zyklus mit allen Ergebnisklassen |
 | 10. Governance | Kill-Switch setzen/prüfen/aufheben, Autoritätskante delegieren, Lockdown, Guardian, Audit-Kette, Artefakt mit serverseitigem Digest |
@@ -183,12 +187,33 @@ BASE=http://127.0.0.1:3100 BOB_BOOTSTRAP_SECRET=… BOB_CREATOR_LOGIN_SECRET=…
 | 13. Sitzung | `renew`, `logout`, danach ist die Sitzung ungültig (401) |
 | 14. Restaktionen | Run-Lebenszyklus (Start, Abschluss, Abbruch, Fehler + Recovery), Queue-Fehlerpfad und Abbruch, Capability-Modi (`role-check`, `authorize`) inkl. unbekannter Rolle, Selbstvergabe verweigert, Provider-Heartbeat/-Bindung, Computer-Start/Release, Science-Lauf, Inbox-Doppelantwort, Approval-Auflösung mit Capability, Eskalation und unzulässiger Übergang |
 
-**Letzter Lauf (2026-09-25):** `433 bestanden, 0 fehlgeschlagen`, Exit 0.
+**Letzter Lauf (2026-09-25):** `440 bestanden, 0 fehlgeschlagen`, Exit 0 — zweimal
+hintereinander auf derselben Instanz wiederholt (`440/0` und `440/0`).
 
-Hinweis: `scripts/verify-live.sh` prüft Jungfräulichkeit (z. B. „kein Computer
-vorautorisiert"). Es gehört deshalb auf eine **frische** Instanz; `audit-api.sh`
-und `audit-actions.mjs` sind auf jeder initialisierten Instanz wiederholbar und
-werden nach `verify-live.sh` auf derselben Instanz gefahren.
+Alle drei Skripte sind auf derselben Instanz wiederholbar. Eine frühere Fassung
+von `verify-live.sh` prüfte pauschal „kein Computer vorautorisiert" und schlug auf
+jeder Instanz fehl, auf der eine andere Prüfung zuvor einen Computer autorisiert
+hatte; die Prüfung ist jetzt zustandsunabhängig (frisch entdecken → unautorisiert
+→ Belegung verweigert).
+
+## 4d. Oberflächenprüfung des Control Centers (`scripts/audit-ui.mjs`)
+
+Screenshots sind in dieser Umgebung nicht möglich (kein Browser). Geprüft wird
+deshalb dreistufig über Quellcode, echte Auslieferung und echten Datenvertrag:
+
+```bash
+BASE=http://127.0.0.1:3100 BOB_BOOTSTRAP_SECRET=… BOB_CREATOR_LOGIN_SECRET=… \
+  node scripts/audit-ui.mjs      # Exit 0 nur bei 0 Fehlschlägen
+```
+
+| Stufe | Inhalt |
+|---|---|
+| A. Statik | alle 38 Navigationsabschnitte haben einen Renderpfad (kein leerer Abschnitt), kein Renderzweig ohne Navigationseintrag, jede der 27 Datenquellen zeigt auf eine existierende Route, alle im Client genutzten API-Pfade existieren, **kein literales Markdown im sichtbaren Text**, keine Platzhalterwerte, **jede Tabellenspalte ist ein in `lib/`/`app/` deklariertes Feld**, keine Zugangsgeheimnisse im Clientcode |
+| B. Auslieferung | `/` liefert 200 mit `lang="de"` und Titel, alle referenzierten JS-/CSS-Assets sind abrufbar (kein 404), Bootstrap und Creator-Login funktionieren, Session-Cookie ist `HttpOnly` + `SameSite`, **kein Geheimnis und keine Betriebsdaten** im HTML/JS (auch nicht mit Session), Token erscheint nicht im HTML |
+| C. Datenvertrag | je Abschnitt wird die tatsächlich verwendete Route abgerufen: `pick()`-Pfad muss ein Array ergeben (sonst zeigt die Seite fälschlich „keine Einträge"), konfigurierte Spalten müssen in den Daten vorkommen (fehlende optionale Felder werden als solche ausgewiesen), **Antworten dürfen keine Geheimnisfelder (`secretHash`, `secret`, `password`, …) enthalten** |
+
+**Letzter Lauf (2026-09-25):** `65 bestanden, 0 fehlgeschlagen`, Exit 0 — auf der
+Frischinstanz und auf der langlebigen Instanz, jeweils zweimal.
 
 ## 5. CI-Abbildung
 
@@ -198,9 +223,13 @@ Details: `docs/CI_CD.md`.
 
 ## 6. Bekannte Lücken (nicht als bestanden gewertet)
 
-- Keine Browser-/UI-E2E-Tests: das Control Center wird nicht automatisiert im Browser geprüft; die
-  Authentifizierungsgrenze ist über `tests/security/api-gate.test.ts` und einen Live-Lauf gegen den
-  Produktionsserver belegt.
+- Keine Browser-/UI-E2E-Tests: das Control Center wird nicht in einem echten Browser geprüft (in dieser
+  Umgebung steht keiner zur Verfügung). Ersatzweise prüfen `tests/ui/*` die Komponente unter jsdom
+  (einmal gegen eine nachgebildete API, einmal gegen die **echten** Routen-Handler) und
+  `scripts/audit-ui.mjs` die Auslieferung, den Quellvertrag und den Datenvertrag jedes Abschnitts über
+  echtes HTTP; die Authentifizierungsgrenze ist über `tests/security/api-gate.test.ts` und einen
+  Live-Lauf gegen den Produktionsserver belegt. Visuelle Darstellung (Layout, Farben) bleibt
+  `NOT_VERIFIED`.
 - Aktionsspezifische `guardRequest`-Prüfungen sind für die Kern- und Schreibpfade verdrahtet
   (Mission/Objective/Task, Sandbox-Lebenszyklus, Runs, Runtime, Governance, Provider, Provenance/Knowledge);
   für noch nicht verdrahtete Routen bleibt die Middleware die fail-closed-Grenze, ohne Aktionsprüfung.
@@ -223,3 +252,20 @@ Details: `docs/CI_CD.md`.
   möglich ist" (Bericht darf keine Garantien behaupten) und „führt bei erzwungener Isolation nichts
   unisoliert aus (fail closed)". Der Skip-Pfad ist verifiziert: mit
   `BOB_NS_PROBE_FORCE_UNAVAILABLE=1` meldet der Lauf **2 bestanden, 6 übersprungen**.
+
+## 7. Gefundene und behobene Fehler (Runde „GUI und Verträge“, 2026-09-25)
+
+Jeder Fehler wurde nach `REPRODUCE → TRIAGE → ROOT CAUSE → FIX → REGRESSIONSTEST → VERIFY`
+behandelt; kein Test wurde abgeschwächt.
+
+| # | Fehler (Symptom) | Ursache | Fix / Regressionstest |
+|---|---|---|---|
+| 25 | Nach dem Bau des Rootfs meldete `GET /api/runtime` weiterhin `FILESYSTEM_ONLY`, jede Ausführung 409 — erst ein Neustart half | `isolationReport()` gab einen zwischengespeicherten Bericht zurück, ohne die Voraussetzungen erneut zu bewerten | Cache nur bei erfüllten Voraussetzungen wiederverwenden; `tests/regression/ns-report-cache.test.ts` (4 Tests); live nachgewiesen: Rootfs nach Serverstart gebaut → Status wechselt ohne Neustart auf `NAMESPACES` mit 14 Garantien |
+| 26 | Capability-Token **ohne** `expiresAt` wurde ausgestellt und lief nie ab (fail open) | `new Date(undefined) <= new Date()` ist `false`; auch die Prüfung verglich mit `NaN` | Ablauf ist Pflicht (400 `TOKEN_EXPIRY_REQUIRED`), Prüfung wertet unbrauchbare Daten als abgelaufen; Aufruferfehler → 400, Policy-Verweigerung → 403; `tests/security/authority.test.ts` (+2) |
+| 27 | `secretHash` jedes Capability-Tokens ging an den Browser (`GET /api/capabilities`, `GET /api/authority`) | Leseantworten gaben die internen Tokendatensätze unverändert aus | `capabilityTokenViews()` liefert Token ohne Hash; `tests/security/token-read-projection.test.ts` (4 Tests); `scripts/audit-ui.mjs` prüft Geheimnisfelder in jeder Antwort |
+| 28 | Ein Computer konnte **ohne** `computer.authorized`-Nachweis autorisiert in die Flotte kommen | `registerComputer` übernahm `authorized: true` aus dem Aufruf | Registrierung erzwingt `authorized: false`; Autorisierung ausschließlich über den expliziten Creator-Akt; `tests/integration/computer-use.test.ts` (+1) |
+| 29 | `authorizeComputer` prüfte den Actor nicht (Autorisierung mit beliebigem Actor im Nachweis) | Domänenfunktion ohne Actor-Prüfung — anders als `authorizeDevice` | Creator-Pflicht in der Domäne; im selben Testfall geprüft |
+| 30 | Runtimes-Tabelle zeigte vier Spalten, die es im Datenmodell nicht gibt (`language`, `mode`, `status`, `notes`) → dauerhaft „—“ | Oberfläche und `RuntimeDefinition` waren auseinandergelaufen | Spalten an den echten Vertrag (`kind`, `platforms`, `architectures`, `sandboxSupport`, `networkDefault`); `tests/regression/ui-contract.test.ts` prüft jede Spalte gegen `lib/`/`app/` |
+| 31 | Im Secrets-Abschnitt stand literales `**nicht lesbar**` auf dem Bildschirm | Markdown-Syntax im JSX-Text (HTML war die Absicht) | `**…**` und Backticks durch `<strong>`/`<code>` ersetzt; `audit-ui.mjs` und `ui-contract.test.ts` prüfen auf literales Markdown |
+| 32 | `verify-live.sh` schlug auf jeder Instanz fehl, auf der zuvor ein Computer autorisiert worden war („Kein Computer vorautorisiert") | Prüfung verlangte jungfräulichen Zustand statt Discovery ≠ Autorisierung zu testen | Zustandsunabhängige Prüfung: frisch entdecken → unautorisiert → Belegung verweigert; zweimal auf derselben Instanz **169/0** |
+| 33 | Drei Prüfungen in `audit-actions.mjs` verwendeten ein veraltetes Token-Schema (`ttlMs`/`maxRisk`) | Skript war älter als der Vertrag — und der Vertrag akzeptierte die falschen Felder stillschweigend (siehe 26) | Sonden an `expiresAt`/`risk` angepasst, Negativfall ergänzt (ohne Ablauf → 400); `440/0`, zweimal wiederholt |

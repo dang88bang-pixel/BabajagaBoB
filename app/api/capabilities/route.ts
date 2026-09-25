@@ -1,10 +1,10 @@
 import {NextResponse} from "next/server";
-import {abacAllows,roleAllows,authorityGraph,capabilityTokens,issueCapabilityToken,addAuthorityEdge} from "@/lib/authority";
+import {abacAllows,roleAllows,authorityGraph,capabilityTokenViews,issueCapabilityToken,addAuthorityEdge} from "@/lib/authority";
 import type {Role,SubjectContext,PolicyContext} from "@/lib/authority";
 import {guardOrDeny} from "@/lib/api/api-gate";
 import {KNOWN_ROLES} from "@/lib/authority";
 export const runtime="nodejs";
-export async function GET(req:Request){const denied=guardOrDeny(req,{action:"authority:read"});if(denied)return denied;return NextResponse.json({edges:authorityGraph(),tokens:capabilityTokens()})}
+export async function GET(req:Request){const denied=guardOrDeny(req,{action:"authority:read"});if(denied)return denied;return NextResponse.json({edges:authorityGraph(),tokens:capabilityTokenViews()})}
 export async function POST(req:Request){
  try{
   const body=await req.json();

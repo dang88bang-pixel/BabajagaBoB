@@ -1,11 +1,11 @@
 import {NextResponse} from "next/server";
-import {addAuthorityEdge,authorityGraph,authorityStoreIntegrity,capabilityTokens,issueCapabilityToken,revokeCapabilityToken} from "@/lib/authority";
+import {addAuthorityEdge,authorityGraph,authorityStoreIntegrity,capabilityTokenViews,issueCapabilityToken,revokeCapabilityToken} from "@/lib/authority";
 import {actionField,readJson,stringArray,stringField} from "@/lib/request-validation";
 import {guardRequest} from "@/lib/api/guard";
 import type {Risk} from "@/lib/types";
 import {guardOrDeny} from "@/lib/api/api-gate";
 export const runtime="nodejs"; export const dynamic="force-dynamic";
-export async function GET(request:Request){const denied=guardOrDeny(request,{action:"authority:read"});if(denied)return denied;return NextResponse.json({edges:authorityGraph(),tokens:capabilityTokens(),integrity:authorityStoreIntegrity()},{headers:{"Cache-Control":"no-store"}})}
+export async function GET(request:Request){const denied=guardOrDeny(request,{action:"authority:read"});if(denied)return denied;return NextResponse.json({edges:authorityGraph(),tokens:capabilityTokenViews(),integrity:authorityStoreIntegrity()},{headers:{"Cache-Control":"no-store"}})}
 export async function POST(req:Request){try{const b=await readJson(req);const action=actionField(b,["delegate","issue","revoke"]);
 // Capability-Vergabe ist ein Creator-Akt: Agenten sind hier gesperrt (Selbstvergabe verboten).
 guardRequest(req,{action:action==="delegate"?"authority:delegate":action==="issue"?"authority:issue":"authority:revoke",creatorOnly:true});

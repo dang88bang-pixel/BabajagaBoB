@@ -137,6 +137,14 @@ Zentrale Policy für Broker, lokale Runtime, OCI-Runtime und Regression Engine:
   Execution Broker durch. So entsteht die Verweigerungsevidenz an genau der Stelle, die entscheidet;
   nicht-ausführende Aktionen (z. B. Statusmeldung eines Agenten) verbrauchen kein Token.
 - Absturz nach dem Verbrauch führt zu einer Verweigerung, nicht zu einer zweiten Ausführung (fail closed).
+- **Ablauf ist Pflicht (fail closed):** `expiresAt` muss ein gültiger ISO-Zeitpunkt in der Zukunft sein.
+  Ein fehlendes oder unlesbares Datum wird bei der Ausstellung verweigert (400
+  `TOKEN_EXPIRY_REQUIRED`); bei der Prüfung gilt ein unbrauchbarer Wert als **abgelaufen**
+  (`NaN`-Vergleiche sind immer `false` — ein früherer Stand hätte ein solches Token nie ungültig
+  werden lassen).
+- **Leseprojektion:** `GET /api/capabilities` und `GET /api/authority` liefern Token **ohne**
+  `secretHash` (`capabilityTokenViews()`). Der Hash ist Prüfmaterial des Servers; der Browser
+  erhält nur Identität, Bindung, Fähigkeiten, Risiko, Ablauf und Widerrufszustand.
 
 ## 6. Ausführungsbroker (`lib/execution-broker.ts`)
 
@@ -202,9 +210,11 @@ Vorprüfung und Verbrauch), `tests/security/api-guard.test.ts`,
 Pflicht, Ablehnung ohne/mit falschem Code, Akzeptanz und Replay-Ablehnung des zweiten Faktors über
 echtes HTTP), `tests/security/inbox-route.test.ts`,
 `tests/security/api-route-contract.test.ts`, `tests/security/direct-route-denial.test.ts`,
-`tests/security/gate-bypass.test.ts`, `tests/e2e/creator-flow.test.ts`, `tests/e2e/failure-recovery.test.ts`
-(**14 Dateien / 89 Tests** in der Security-Suite, 35 Dateien / 212 Tests gesamt) und der Live-Nachweis
-`scripts/verify-live.sh` (**171 Prüfungen / 0 Fehler** auf frischem Zustand, 169 / 0 auf initialisiertem
-Zustand, jeweils mit aktiver Kernel-Isolation).
+`tests/security/gate-bypass.test.ts`, `tests/security/token-read-projection.test.ts` (kein
+`secretHash` in Leseantworten), `tests/e2e/creator-flow.test.ts`, `tests/e2e/failure-recovery.test.ts`
+(**15 Dateien / 95 Tests** in der Security-Suite, 38 Dateien / 228 Tests gesamt) und der Live-Nachweis
+`scripts/verify-live.sh` (**169 Prüfungen / 0 Fehler**, zweimal wiederholt auf derselben Instanz, mit
+aktiver Kernel-Isolation) sowie `scripts/audit-ui.mjs` (**65 / 0**, u. a. „kein Geheimnisfeld in einer
+Antwort an den Browser").
 Zusammenfassung: `docs/TESTING.md`. Offene, als `PARTIAL`/`UNVERIFIED` gekennzeichnete Punkte sind dort und in
 `docs/TODO.md` gelistet.

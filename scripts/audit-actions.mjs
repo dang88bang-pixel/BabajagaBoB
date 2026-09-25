@@ -256,9 +256,16 @@ async function chainRuntime() {
   expectStatus("Sandbox zurücksetzen", await post("/api/sandboxes", {action: "reset", sandboxId: state.sandboxId}), 200);
   expectStatus("Sandbox klonen", await post("/api/sandboxes", {action: "clone", sourceSandboxId: state.sandboxId, taskId: state.taskId, agentId: "AG-QA", risk: "LOW", type: "test"}), 201);
 
-  const token = await post("/api/authority", {action: "issue", input: {kind: "TOKEN", subject: "AG-QA", subjectId: "AG-QA", issuedBy: "CREATOR", issuedByKind: "CREATOR", taskId: state.taskId, sandboxId: state.sandboxId, capabilities: ["sandbox:run", "run:manage"], maxRisk: "LOW", ttlMs: 600_000}});
+  // Vertrag: `expiresAt` (ISO) und `risk` — nicht `ttlMs`/`maxRisk`. Früher
+  // nahm das Modul jeden Körper an und speicherte Tokens **ohne Ablauf**, die
+  // dadurch nie ungültig wurden (fail open). Seit dem Fix ist der Ablauf Pflicht.
+  const token = await post("/api/authority", {action: "issue", input: {subject: "AG-QA", issuedBy: "CREATOR", issuedByKind: "CREATOR", taskId: state.taskId, sandboxId: state.sandboxId, environment: "test", capabilities: ["sandbox:run", "run:manage"], risk: "LOW", expiresAt: new Date(Date.now() + 600_000).toISOString()}});
   expectStatus("Capability ausstellen", token, [200, 201]);
   state.tokenId = token.json?.token?.tokenId ?? token.json?.tokenId;
+  expectField("Capability ist an einen Ablauf gebunden", token, j => Number.isFinite(Date.parse(String(j.token?.expiresAt ?? ""))), "expiresAt");
+  const noExpiry = await post("/api/authority", {action: "issue", input: {subject: "AG-QA", issuedBy: "CREATOR", issuedByKind: "CREATOR", taskId: state.taskId, sandboxId: state.sandboxId, capabilities: ["sandbox:run"], risk: "LOW"}});
+  expectStatus("Capability ohne Ablauf wird verweigert", noExpiry, 400);
+  expectField("Verweigerungsgrund nennt den Ablauf", noExpiry, j => /expiry|expiresAt/i.test(String(j.message ?? j.error ?? "")), "expiry");
 
   const run = await post("/api/runs", {action: "create", taskId: state.taskId, agentId: "AG-QA", risk: "LOW", sandboxId: state.sandboxId});
   expectStatus("Run anlegen", run, 201);
@@ -371,6 +378,13 @@ async function chainDevicesAndProviders() {
   expectStatus("Computer registrieren", computer, [201, 400]);
   state.computerId = computer.json?.id ?? computer.json?.computer?.id;
   expectStatus("Computer ohne Autorisierung reservieren", await post("/api/computer-use", {action: "allocate", id: state.computerId, taskId: state.taskId, sandboxId: state.sandboxId}), [400, 403, 409]);
+  // Discovery ≠ Autorisierung: die Registrierung darf keine Autorisierung
+  // mitbringen (sie hätte keinen `computer.authorized`-Nachweis in der Kette).
+  const preAuthorized = await post("/api/computer-use", {action: "register", computer: {name: `Audit-Computer-Vorautorisiert-${STAMP}`, kind: "CLI", os: "linux", arch: "x64", network: "DENY", capabilities: [{kind: "CLI", actions: ["PROCESS_READ"], environments: ["test"], network: "DENY", risk: "LOW"}], authorized: true}});
+  expectStatus("Computer mit Autorisierung registrieren", preAuthorized, 201);
+  expectField("Registrierung verwirft die Autorisierung", preAuthorized, j => j.computer?.authorized === false, "authorized=false");
+  const preAuthorizedAllocation = await post("/api/computer-use", {action: "allocate", id: preAuthorized.json?.computer?.id, taskId: state.taskId});
+  expectStatus("Vorautorisiert gemeldeter Computer bleibt gesperrt", preAuthorizedAllocation, [400, 403, 409]);
   expectStatus("Computer autorisieren", await post("/api/computer-use", {action: "authorize", id: state.computerId, authorized: true}), 200);
 
   const provider = await post("/api/providers", {action: "connect", id: `PRV-${STAMP}`, endpoint: "https://provider.invalid", credentialRef: "secret://audit", approvalId: "APR-gibtsnicht"});
@@ -555,7 +569,9 @@ async function chainRemainingActions() {
 
   // --- Authority: Token widerrufen, unbekannte Kante verweigert
   if (state.tokenId) expectStatus("Capability widerrufen", await post("/api/authority", {action: "revoke", id: state.tokenId}), [200, 201]);
-  expectStatus("Selbstvergabe wird verweigert", await post("/api/authority", {action: "issue", input: {kind: "TOKEN", subject: "AG-QA", subjectId: "AG-QA", issuedBy: "AG-QA", capabilities: ["sandbox:run"], ttlMs: 60_000}}), [400, 403]);
+  const selfGrant = await post("/api/authority", {action: "issue", input: {subject: "AG-QA", issuedBy: "AG-QA", capabilities: ["sandbox:run"], risk: "LOW", expiresAt: new Date(Date.now() + 60_000).toISOString()}});
+  expectStatus("Selbstvergabe wird verweigert", selfGrant, [400, 403]);
+  expectField("Verweigerungsgrund ist die Selbstvergabe", selfGrant, j => /self-grant|SELF_GRANT/i.test(JSON.stringify(j)), "SELF_GRANT");
 
   // --- Provider: Discovery ≠ Verbindung; Verbindung nur mit Freigabe
   expectStatus("Provider entdecken (Zustand setzen)", await post("/api/providers", {action: "state", id: `PRV-${STAMP}`, lifecycle: "DISCOVERED", health: "UNKNOWN"}), [200, 400, 404]);
@@ -583,7 +599,7 @@ async function chainRemainingActions() {
   expectStatus("Inbox doppelt beantworten wird verweigert", await post("/api/inbox", {action: "resolve", id: inboxId, decision: "ACKNOWLEDGED"}), 400);
 
   // --- Approvals: Auflösung über Capability statt Sitzung
-  const tokenForApproval = await post("/api/authority", {action: "issue", input: {kind: "TOKEN", subject: "AG-QA", subjectId: "AG-QA", issuedBy: "CREATOR", issuedByKind: "CREATOR", taskId: state.taskId, capabilities: ["approval:resolve"], maxRisk: "LOW", ttlMs: 600_000}});
+  const tokenForApproval = await post("/api/authority", {action: "issue", input: {subject: "AG-QA", issuedBy: "CREATOR", issuedByKind: "CREATOR", taskId: state.taskId, sandboxId: state.sandboxId, environment: "test", capabilities: ["approval:resolve"], risk: "LOW", expiresAt: new Date(Date.now() + 600_000).toISOString()}});
   const approvalTokenId = tokenForApproval.json?.token?.tokenId ?? tokenForApproval.json?.token?.id ?? tokenForApproval.json?.id;
   if (state.approvalId && approvalTokenId) {
     const resolve = await post("/api/approvals/center", {action: "resolve", id: state.approvalId, status: "GRANTED", actor: "CREATOR", capabilityTokenId: approvalTokenId});

@@ -15,6 +15,10 @@ Routen `app/api/persistence/route.ts`, `app/api/metrics/route.ts`,
   `GET /api/runtime` die Stufe `FILESYSTEM_ONLY`; mit `BOB_NS_ISOLATION=on` wird dann **nichts**
   ausgeführt (409, `kernel isolation is enforced … but unavailable`) — fail closed, kein stiller
   Rückfall. Der Rootfs ist Laufzeitdatum und gehört wie `.bob-data` nicht ins Repository.
+  Ein **nachträglich** gebauter Rootfs wird sofort wirksam: `GET /api/runtime` prüft die
+  Voraussetzungen bei jeder Abfrage und liefert erst `NAMESPACES`, wenn Rootfs und
+  `unshare`-Probe es hergeben (vorher blieb der Bericht bis zum Neustart auf
+  `FILESYSTEM_ONLY` stehen und blockierte jede Ausführung).
 - Ressourcenlimits (kernel-seitig, optional aber empfohlen): `BOB_CGROUP_DIR` auf einen
   **delegierten** cgroup-v2-Unterbaum zeigen lassen. Einrichtung und Start:
   `sudo BOB_CGROUP_DIR=/sys/fs/cgroup/bob bash scripts/setup-cgroup-delegation.sh <benutzer>`,
@@ -124,11 +128,18 @@ frühere Fehlerbilder und die autonome Fehlerkette) — letzter Lauf
 `scripts/audit-actions.mjs` prüft zusätzlich **jede Aktion und jedes Attribut**
 der Matrix, die direkt aus dem Quellcode gelesen wird, und fährt 14
 Interaktionsketten mit echten Kennungen durch — letzter Lauf
-**433 Prüfungen / 0 Fehler**, Exit 0; Details in `docs/TESTING.md` §4c.
+**440 Prüfungen / 0 Fehler**, Exit 0, zweimal auf derselben Instanz wiederholt;
+Details in `docs/TESTING.md` §4c.
 
-Prüfumfang des Skripts (**171 Prüfungen** bei Erstinitialisierung, **169** wenn die Instanz
-bereits initialisiert ist — der Bootstrap-Zweig enthält zwei Prüfungen mehr; mit verpflichtendem
-zweitem Faktor **177 / 175**; ohne delegierten cgroup-Unterbaum **168 / 166**):
+`scripts/audit-ui.mjs` prüft die Oberfläche in drei Stufen: Quellvertrag
+(38 Abschnitte, Renderpfade, Spalten, kein literales Markdown), Auslieferung
+(Assets, Sprache, Cookie-Flags, **kein Geheimnis im HTML/JS**) und den
+Datenvertrag jedes Abschnitts gegen die echte Route — letzter Lauf
+**65 Prüfungen / 0 Fehler**, Exit 0; Details in `docs/TESTING.md` §4d.
+
+Prüfumfang des Skripts (**169 Prüfungen** auf einer initialisierten Instanz, wiederholbar; der
+Bootstrap-Zweig enthält zwei Prüfungen mehr, mit verpflichtendem zweitem Faktor zwei weitere, ohne
+delegierten cgroup-Unterbaum zwei weniger):
 Authentifizierung, Mission → Objective → Task → Sandbox → Capability, autorisierte Ausführung
 mit Evidenzprüfung, Angriffsblockaden, **Evidenz einer blockierten Autorisierung
 (`kind=DENIAL`, Digest erneut geprüft, keine Klartext-Argumente)**, Fehlerkette bis
@@ -137,6 +148,10 @@ inkl. Backup und **Store-Reparatur**, Metriken, Readiness, Audit-DENY-Nachweis u
 Aufbewahrungszustand sowie der Agentenweg ohne Browser-Session, die **Replay-Verweigerung**
 (zweiter Lauf mit demselben Token → 409 + `DENIAL`-Evidenz) und die **gemessene Kernel-Isolation**
 (Schritt 11: Capabilities, `NoNewPrivs`, `EROFS`, Loopback, leere Routingtabelle).
+Die Prüfung ist idempotent: eine frühere Fassung verlangte eine jungfräuliche Instanz
+(„kein Computer vorautorisiert") und schlug fehl, sobald eine andere Prüfung zuvor einen Computer
+autorisiert hatte — jetzt wird ein frisch entdeckter Computer geprüft (unautorisiert und nicht
+belegbar).
 
 Mit gesetztem `BOB_CREATOR_TOTP_SECRET` prüft Schritt 12 zusätzlich den zweiten Faktor über HTTP
 (Status, Ablehnung ohne/mit falschem Code, Akzeptanz, Replay-Ablehnung). Das Skript berechnet den

@@ -209,14 +209,20 @@ const SOURCES: Partial<Record<SectionId, {url: string; path?: string[]; columns:
   Runtimes: {
     url: "/api/runtimes",
     path: ["runtimes"],
-    note: "Runtime-Registry: Sprachen/Adapter und ihre Modus-Kennzeichnung (REAL/MOCK).",
+    note: "Runtime-Registry: registrierbare Laufzeiten mit Art, Plattformen, Netzwerk-Default und Sandbox-Unterstützung.",
+    // Spalten exakt nach `RuntimeDefinition` (lib/runtime-registry.ts):
+    // `language`, `mode`, `status` und `notes` gibt es dort nicht — sie hätten
+    // dauerhaft „—“ gezeigt und den Vertrag falsch dargestellt.
     columns: [
       {key: "id", label: "Runtime"},
-      {key: "language", label: "Sprache"},
+      {key: "name", label: "Name"},
       {key: "version", label: "Version"},
-      {key: "mode", label: "Modus"},
-      {key: "status", label: "Status"},
-      {key: "notes", label: "Hinweis"}
+      {key: "kind", label: "Art"},
+      {key: "platforms", label: "Plattformen", render: row => (Array.isArray(row.platforms) ? (row.platforms as string[]).join(", ") : "—")},
+      {key: "architectures", label: "Architekturen", render: row => (Array.isArray(row.architectures) ? (row.architectures as string[]).join(", ") : "—")},
+      {key: "sandboxSupport", label: "Sandbox", render: row => (row.sandboxSupport ? "ja" : "nein")},
+      {key: "networkDefault", label: "Netzwerk"},
+      {key: "packageManager", label: "Paketmanager"}
     ]
   },
   Knowledge: {
@@ -1359,8 +1365,9 @@ export default function ControlCenter() {
           <small>PLATTFORM / SECRETS</small>
           <h2>Secrets</h2>
           <p>
-            Secrets werden serverseitig verwaltet und sind über die API **nicht lesbar** (`GET /api/secrets` existiert nicht; Anlegen/Aktualisieren ist
-            Creator-gebunden). Der Browser erhält niemals Secret-Werte.
+            Secrets werden serverseitig verwaltet und sind über die API <strong>nicht lesbar</strong>: ein lesender Zugriff
+            (<code>GET /api/secrets</code>) existiert nicht, Anlegen und Widerrufen sind Creator-gebunden. Der Browser erhält niemals
+            Secret-Werte — die Oberfläche zeigt ausschließlich die Grenze, keine Platzhalterwerte.
           </p>
           <div className="integrity">
             <strong>KEIN LESEZUGRIFF</strong>

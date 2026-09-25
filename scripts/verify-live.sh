@@ -242,8 +242,21 @@ assert_json "Verbindung verlangt Freigabe" '.error | test("approval"; "i")'
 assert_status "Geräte-Fabric lesbar" 200 "$(api "$BASE/api/devices")"
 assert_json "Gerät vorhanden und nicht implizit autorisiert" '(.devices | length) > 0'
 assert_status "Computer-Use-Fabric lesbar" 200 "$(api "$BASE/api/computer-use")"
-assert_json "Kein Computer vorautorisiert (Discovery != Autorisierung)" '(.computers | length) > 0 and ([.computers[].authorized] | any | not)'
-assert_json "Computer-Netzwerk nicht INTERNET" '([.computers[].network] | index("INTERNET")) == null' 
+assert_json "Computer-Flotte ist nicht leer" '(.computers | length) > 0'
+# Discovery != Autorisierung, zustandsunabhaengig geprueft: ein **frisch
+# entdeckter** Computer ist nicht autorisiert und laesst sich nicht belegen.
+# Die frueher hier stehende Pauschale ("kein Computer autorisiert") galt nur auf
+# leerem Storage und schlug fehl, sobald eine andere Pruefung auf derselben
+# Instanz einen Computer autorisiert hatte.
+assert_status "Computer entdecken (Discovery)" 201 "$(api -X POST -d '{"action":"register","computer":{"name":"Live Discovery","kind":"CLI","os":"linux","arch":"x64","network":"DENY","capabilities":[{"kind":"CLI","actions":["PROCESS_READ"],"environments":["test"],"network":"DENY","risk":"LOW"}],"authorized":true}}' "$BASE/api/computer-use")"
+assert_json "Frisch entdeckter Computer ist nicht autorisiert" '.computer.authorized == false'
+assert_json "Discovery vergibt keine Netzwerkfreigabe" '.computer.network == "DENY"'
+DISC_CMP=$(jqv '.computer.id')
+assert_status "Entdeckter Computer ist nicht belegbar" 400 "$(api -X POST -d "{\"action\":\"allocate\",\"id\":\"$DISC_CMP\",\"taskId\":\"$TID\"}" "$BASE/api/computer-use")"
+assert_json "Belegung nennt die fehlende Autorisierung" '.error | test("not authorized"; "i")'
+# Erneut lesen: der letzte Aufruf war die Belegung (Fehlerkörper ohne `.computers`).
+api "$BASE/api/computer-use" >/dev/null
+assert_json "Computer-Netzwerk nicht INTERNET" '([.computers[].network] | index("INTERNET")) == null'
 
 step "8. Wiederherstellung, Persistenz, Shell-Verbot"
 assert_status "Sandbox aus Snapshot wiederherstellen" 200 "$(api -X POST -d "{\"action\":\"restore\",\"sandboxId\":\"$SB\",\"snapshotId\":\"$SNAP\"}" "$BASE/api/sandboxes")"

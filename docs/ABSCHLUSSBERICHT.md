@@ -148,17 +148,23 @@ Keine Erfolgsaussage stützt sich auf Mock-Verhalten; Simulationen
 
 ## I. Tests und Ergebnisse
 
-- Unit (**7 Dateien / 51 Tests**): Persistenz, Store-Migration, Control Plane, Agent Fabric (11 Rollen,
+- Unit (**7 Dateien / 53 Tests**): Persistenz, Store-Migration, Control Plane, Agent Fabric (11 Rollen,
   harte Grenzen), Recovery-Tier, Betriebszustand, Audit-Aufbewahrung.
-- Integration (**7 / 36**): Sandbox-Runtime, Provider-Fabric, App-Modul-Sandbox, Computer Use,
-  Ausführungs- und Verweigerungs-Evidenz, Backup/Metriken, Nebenläufigkeit.
-- Security (**11 / 64**): Authority-Invarianten, API-Guard, API-Gate, Routen-Guards, direkt aufgerufene
-  Routen ohne Gate, argv-Policy, Creator-Login, Lockout, TOTP, Inbox, Routenvertrag.
+- Integration (**9 / 56**): Sandbox-Runtime, Provider-Fabric, App-Modul-Sandbox, Computer Use
+  (Registrierung erzwingt unauthorisiert, Autorisierung nur als Creator-Akt), Ausführungs- und
+  Verweigerungs-Evidenz, Backup/Metriken, Nebenläufigkeit, Kernel-Isolation, Worker-Fehlerkette.
+- Security (**15 / 95**): Authority-Invarianten (inkl. Token-Ablauf als Pflicht), API-Guard, API-Gate,
+  Routen-Guards, direkt aufgerufene Routen ohne Gate, argv-Policy, Creator-Login, Lockout, TOTP, Inbox,
+  Routenvertrag, Token-Leseprojektion ohne `secretHash`.
 - Regression (1 / 5): Regression Engine (argv-Policy, leere Suite = Fehlschlag).
 - E2E (2 / 4): Erfolgskette Creator → Knowledge; Fehlerkette bis `REGRESSION_LOCKED`.
 - UI (2 / 6): Control Center unter jsdom mit vollständiger Navigation und echten Routen-Handlern.
-- Live: `scripts/verify-live.sh` (**171 Prüfungen, 0 Fehler** bei Erstinitialisierung, mit Kernel-Isolation und Ressourcenlimits).
-- Gesamt: **35 Dateien / 212 Tests grün**.
+- Regression (**3 / 14**): Regression Engine sowie Quellvertrag der Oberfläche
+  (`ui-contract.test.ts`) und der Isolationsbericht (`ns-report-cache.test.ts`).
+- Live: `scripts/verify-live.sh` (**169 Prüfungen, 0 Fehler**, zweimal auf derselben Instanz, mit
+  Kernel-Isolation und Ressourcenlimits), `scripts/audit-api.sh` (**184 / 0**),
+  `scripts/audit-actions.mjs` (**440 / 0**, zweimal), `scripts/audit-ui.mjs` (**65 / 0**).
+- Gesamt: **38 Dateien / 228 Tests grün**.
 
 Details und Befehle: `docs/TESTING.md`.
 

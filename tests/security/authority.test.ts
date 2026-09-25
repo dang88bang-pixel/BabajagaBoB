@@ -127,6 +127,33 @@ describe("Authority (Sicherheitsinvarianten)", () => {
     expect(runs.startRun(created.runId)?.state).toBe("RUNNING");
   });
 
+  it("verweigert ein Capability-Token ohne gültigen Ablauf", () => {
+    // Gefundener Fehler: `new Date(undefined) <= new Date()` ist `false`,
+    // therefore wurde ein Token ohne `expiresAt` ausgestellt — und lief nie ab
+    // (auch die Prüfung verglich mit NaN). Jetzt gilt: fail closed.
+    expect(() => authority.issueCapabilityToken(tokenInput({expiresAt: undefined as never}))).toThrow(/expiry/i);
+    expect(() => authority.issueCapabilityToken(tokenInput({expiresAt: "kein-datum"}))).toThrow(/expiry/i);
+
+    const stored = authority.capabilityTokens();
+    expect(stored.every(token => Number.isFinite(new Date(token.expiresAt).getTime()))).toBe(true);
+  });
+
+  it("wertet ein abgelaufenes Token bei der Prüfung als ungültig", () => {
+    const issued = authority.issueCapabilityToken(tokenInput({expiresAt: new Date(Date.now() + 60_000).toISOString()}));
+    expect(authority.validateCapabilityToken(issued.token.id, ["task:execute"]).valid).toBe(true);
+
+    // Zeit über den Ablauf hinaus verschieben: das Token darf nicht mehr gelten.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(Date.now() + 120_000);
+      const expired = authority.validateCapabilityToken(issued.token.id, ["task:execute"]);
+      expect(expired.valid).toBe(false);
+      expect(expired.reason).toMatch(/expired/i);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("auditiert jede Verweigerung (DENY) nachvollziehbar", () => {
     const denials = audit.auditSnapshot(200).filter(record => record.decision === "DENY");
     expect(denials.length).toBeGreaterThan(0);

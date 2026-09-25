@@ -73,14 +73,23 @@ const hashSecret = (secret: string) => crypto.createHash("sha256").update(secret
 
 export class AuthorityDenied extends Error {
   readonly code: string;
-  constructor(code: string, message: string) {
+  /**
+   * HTTP-Status der Verweigerung: 403 für Policy-/Autoritätsentscheidungen,
+   * 400 für unbrauchbare Anfragen (fehlende oder ungültige Felder). Ein
+   * Aufruferfehler ist keine Rechteentscheidung und darf nicht als solche
+   * erscheinen — sonst ist die Grenze zwischen „darf nicht" und „geht nicht"
+   * im Log nicht mehr lesbar.
+   */
+  readonly status: number;
+  constructor(code: string, message: string, status = 403) {
     super(message);
     this.name = "AuthorityDenied";
     this.code = code;
+    this.status = status;
   }
 }
 
-function deny(code: string, message: string, actor = "UNKNOWN", resource?: string): never {
+function deny(code: string, message: string, actor = "UNKNOWN", resource?: string, status = 403): never {
   observe({
     type: "authority.denied",
     message: `Authority verweigert (${code}): ${message}`,
@@ -91,7 +100,7 @@ function deny(code: string, message: string, actor = "UNKNOWN", resource?: strin
     decision: "DENY",
     argumentsValue: {code, message}
   });
-  throw new AuthorityDenied(code, message);
+  throw new AuthorityDenied(code, message, status);
 }
 
 /* ------------------------------------------------------------------ Root */
@@ -194,17 +203,22 @@ export function issueCapabilityToken(
   const issuedByKind = input.issuedByKind ?? (input.issuedBy === "CREATOR" ? "CREATOR" : "AGENT");
 
   if (input.issuedBy === input.subject) deny("SELF_GRANT", "an agent may not issue a capability token to itself", actor);
-  if (!input.capabilities.length) deny("EMPTY_CAPABILITIES", "capability set must not be empty", actor);
+  if (!input.capabilities.length) deny("EMPTY_CAPABILITIES", "capability set must not be empty", actor, undefined, 400);
   if (input.capabilities.includes("*")) deny("WILDCARD_CAPABILITY", "wildcard capabilities may not be issued to agents", actor);
-  if (new Date(input.expiresAt) <= new Date()) deny("TOKEN_EXPIRED", "capability token would be expired at issuance", actor);
+  // Fail closed: ohne gültigen Ablauf wäre das Token unbegrenzt gültig —
+  // `new Date(undefined) <= new Date()` ist `false` und hätte das früher
+  // stillschweigend durchgelassen (NaN-Vergleiche sind immer falsch).
+  const expiryMs = new Date(input.expiresAt).getTime();
+  if (!Number.isFinite(expiryMs)) deny("TOKEN_EXPIRY_REQUIRED", "capability token requires a valid ISO expiry (expiresAt)", actor, undefined, 400);
+  if (expiryMs <= Date.now()) deny("TOKEN_EXPIRED", "capability token would be expired at issuance", actor);
 
   // Standard ist die einmalige Verwendung; Mehrfachverwendung ist explizit und begrenzt.
   const requestedUses = input.maxUses ?? 1;
   if (!Number.isInteger(requestedUses) || requestedUses < 1 || requestedUses > MAX_TOKEN_USES) {
-    deny("TOKEN_USES_LIMIT", `maxUses must be an integer between 1 and ${MAX_TOKEN_USES}`, actor);
+    deny("TOKEN_USES_LIMIT", `maxUses must be an integer between 1 and ${MAX_TOKEN_USES}`, actor, undefined, 400);
   }
 
-  const ttlMs = new Date(input.expiresAt).getTime() - Date.now();
+  const ttlMs = expiryMs - Date.now();
   const maxTtl = issuedByKind === "CREATOR" ? MAX_TOKEN_TTL_MS : MAX_AGENT_TOKEN_TTL_MS;
   if (ttlMs > maxTtl) deny("TOKEN_TTL", `token lifetime exceeds the allowed maximum of ${maxTtl}ms`, actor);
 
@@ -284,6 +298,24 @@ export function capabilityTokens(): CapabilityToken[] {
   return structuredClone(store.read().tokens);
 }
 
+/**
+ * Token-Sicht für Lesezugriffe (Browser/API).
+ *
+ * Ein Token enthält `secretHash` — Zugangsmaterial zum Freischalten von
+ * Ausführungen. Der Server braucht es zur Prüfung; ein Client nie. Die
+ * Leseantworten liefern daher nur die Metadaten (Identität, Bindung,
+ * Fähigkeiten, Ablauf, Widerruf), nicht den Hash.
+ */
+export type CapabilityTokenView = Omit<CapabilityToken, "secretHash">;
+
+export function capabilityTokenViews(): CapabilityTokenView[] {
+  return capabilityTokens().map(token => {
+    const view = {...token} as Partial<CapabilityToken>;
+    delete view.secretHash;
+    return view as CapabilityTokenView;
+  });
+}
+
 export function getCapabilityToken(id: string): CapabilityToken | null {
   return structuredClone(store.read().tokens.find(t => t.id === id) ?? null);
 }
@@ -329,7 +361,9 @@ function evaluateCapabilityToken(
   const token = payload.tokens.find(t => t.id === id);
   if (!token) return {valid: false, reason: "token not found"};
   if (payload.revokedTokens.includes(id) || token.revoked) return {valid: false, reason: "token revoked"};
-  if (new Date(token.expiresAt).getTime() < Date.now()) return {valid: false, reason: "token expired"};
+  const tokenExpiry = new Date(token.expiresAt).getTime();
+  // Ungültiges/fehlendes Ablaufdatum ist kein Freibrief: fail closed.
+  if (!Number.isFinite(tokenExpiry) || tokenExpiry < Date.now()) return {valid: false, reason: "token expired"};
   if (!required.every(c => token.capabilities.some(g => matches(g, c)))) return {valid: false, reason: "capability not delegated"};
   if (context?.subject && token.subject !== context.subject) return {valid: false, reason: "token subject mismatch"};
   if (context?.taskId && token.taskId !== context.taskId) return {valid: false, reason: "token task scope mismatch"};

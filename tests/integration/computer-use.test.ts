@@ -37,6 +37,30 @@ describe("Computer Use (Discovery ≠ Autorisierung)", () => {
     expect(() => computers.allocateComputer(instance.id, "TASK-Y")).toThrow(/not authorized/);
   });
 
+  it("verwirft eine Autorisierung, die über die Registrierung mitkommt", () => {
+    // Gefundener Fehler: `registerComputer` übernahm `authorized: true` aus dem
+    // Aufruf. Ein so autorisierter Computer hatte keinen
+    // `computer.authorized`-Nachweis in der Audit-Kette — die Autorisierung war
+    // damit nicht nachvollziehbar (Discovery ≠ Autorisierung).
+    const registered = computers.registerComputer({
+      name: "Direkt autorisiert",
+      kind: "CLI",
+      os: "linux",
+      arch: "x64",
+      network: "DENY",
+      capabilities: [{kind: "CLI", actions: ["PROCESS_READ"], environments: ["test"], network: "DENY", risk: "LOW"}],
+      authorized: true
+    });
+    expect(registered.authorized).toBe(false);
+    expect(() => computers.allocateComputer(registered.id, "TASK-DIRECT")).toThrow(/not authorized/);
+
+    // Autorisierung wirkt ausschließlich über den expliziten Creator-Akt …
+    expect(computers.authorizeComputer(registered.id, true, "CREATOR").authorized).toBe(true);
+    expect(computers.allocateComputer(registered.id, "TASK-DIRECT").state).toBe("ALLOCATED");
+    // … und nur der Creator darf sie erteilen.
+    expect(() => computers.authorizeComputer(registered.id, true, "AG-QA")).toThrow(/Creator/);
+  });
+
   it("bindet die Route an Autorisierung (Registrieren/Autorisieren ist Creator-Sache)", async () => {
     const unauthenticated = await route.GET(new Request("http://localhost:3000/api/computer-use"));
     expect([401, 428]).toContain(unauthenticated.status);

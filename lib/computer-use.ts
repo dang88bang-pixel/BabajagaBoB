@@ -18,10 +18,18 @@ export function registerComputer(input:Omit<ComputerInstance,"id"|"state">){
   if(!input||typeof input!=="object")throw new Error("computer required");
   if(typeof input.name!=="string"||input.name.trim().length===0)throw new Error("computer name required");
   if(typeof input.kind!=="string"||input.kind.trim().length===0)throw new Error("computer kind required");
-  const x={...input,id:"CMP-"+Date.now(),state:"AVAILABLE" as const};instances.push(x);persist();observe({type:"computer.registered",message:`Computer ${x.id} registriert`,status:"COMPLETED",actor:"CREATOR",action:"computer.register",resource:x.id});return clone(x)}
+  // Discovery ist keine Autorisierung: ein registrierter Computer kommt **immer**
+  // unautorisiert in die Flotte. Ein im Aufruf mitgeschicktes `authorized:true`
+  // wird verworfen — es hätte keinen `computer.authorized`-Nachweis in der
+  // Audit-Kette erzeugt und die Autorisierung wäre nicht nachvollziehbar.
+  const x={...input,id:"CMP-"+Date.now(),authorized:false,state:"AVAILABLE" as const};instances.push(x);persist();observe({type:"computer.registered",message:`Computer ${x.id} registriert`,status:"COMPLETED",actor:"CREATOR",action:"computer.register",resource:x.id});return clone(x)}
 export function allocateComputer(id:string,taskId:string,sandboxId?:string){const x=instances.find(i=>i.id===id);if(!x||!x.authorized)throw new Error("computer is not authorized");if(x.state!=="AVAILABLE")throw new Error("computer is not available");x.state="ALLOCATED";x.taskId=taskId;x.sandboxId=sandboxId;persist();observe({type:"computer.allocated",message:`Computer ${id} an ${taskId} gebunden`,status:"RUNNING",actor:"AG-BROWSER",agentId:"AG-BROWSER",taskId,sandboxId,action:"computer.allocate",resource:id});return clone(x)}
 export function startComputer(id:string){const x=instances.find(i=>i.id===id);if(!x)throw new Error("computer not found");if(x.state!=="ALLOCATED")throw new Error("computer must be allocated first");x.state="EXECUTING";persist();observe({type:"computer.executing",message:`Computer ${id} führt aus`,status:"EXECUTING",actor:"AG-BROWSER",agentId:"AG-BROWSER",taskId:x.taskId,sandboxId:x.sandboxId,action:"computer.start",resource:id});return clone(x)}
-export function authorizeComputer(id:string,authorized=true,actor="CREATOR"){const x=instances.find(i=>i.id===id);if(!x)throw new Error("computer not found");x.authorized=authorized;persist();observe({type:"computer.authorized",message:`Computer ${id} ${authorized?"autorisiert":"Autorisierung entzogen"}`,status:"COMPLETED",actor,action:"computer.authorize",resource:id,decision:authorized?"ALLOW":"DENY",argumentsValue:{authorized}});return clone(x)}
+export function authorizeComputer(id:string,authorized=true,actor="CREATOR"){const x=instances.find(i=>i.id===id);if(!x)throw new Error("computer not found");
+  // Wie bei Geräten: die Autorisierung ist ein Creator-Akt. Die Route prüft das
+  // bereits — die Domäne prüft es erneut, damit kein interner Pfad einen
+  // beliebigen Actor in den Nachweis schreiben kann.
+  if(actor!=="CREATOR")throw new Error("computer authorization requires Creator authority");x.authorized=authorized;persist();observe({type:"computer.authorized",message:`Computer ${id} ${authorized?"autorisiert":"Autorisierung entzogen"}`,status:"COMPLETED",actor,action:"computer.authorize",resource:id,decision:authorized?"ALLOW":"DENY",argumentsValue:{authorized}});return clone(x)}
 export function releaseComputer(id:string){const x=instances.find(i=>i.id===id);if(!x)throw new Error("computer not found");x.state="RELEASED";x.taskId=undefined;x.sandboxId=undefined;persist();return clone(x)}
 export function computerUseStoreReport(){return store.integrity()}
 export function listComputers(){return clone(instances)}
