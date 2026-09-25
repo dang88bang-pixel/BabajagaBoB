@@ -1,8 +1,10 @@
+import {requireControlPlaneAuth} from "@/lib/control-auth";
 import {NextResponse} from "next/server";
 import {dispatchTask,workerStart,workerComplete,workerFail} from "@/lib/dispatcher";
 import type {Risk} from "@/lib/types";
 
 export async function POST(req:Request){
+ requireControlPlaneAuth(req);
   const body=await req.json();
   if(body.action==="dispatch"){
     const result=await dispatchTask({taskId:body.taskId,agentId:body.agentId,risk:body.risk as Risk,sandboxType:body.sandboxType});
