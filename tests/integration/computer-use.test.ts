@@ -66,3 +66,23 @@ describe("Computer Use (Discovery ≠ Autorisierung)", () => {
     expect([401, 428]).toContain(unauthenticated.status);
   });
 });
+
+
+describe("Device scheduling", () => {
+  it("wählt nur autorisierte, verfügbare Geräte und berücksichtigt Ressourcen", async () => {
+    const devices = await import("../../lib/devices");
+    const first = devices.listDevices()[0];
+    if (first.authorized) devices.authorizeDevice(first.id, false, "CREATOR");
+    const discovered = devices.discoverDevice({id:"DEV-SCHED-1",name:"Scheduler Test",os:"linux",arch:"x64",cpu:16,ramMb:32768,gpu:"none",network:"NONE",trust:"MANAGED",capabilities:["node","python"],lastSeen:new Date().toISOString()});
+    expect(discovered.authorized).toBe(false);
+    devices.authorizeDevice(discovered.id,true,"CREATOR");
+    const allocated = devices.scheduleDevice("TASK-SCHED",{cpu:8,ramMb:4096,os:"linux",arch:"x64",capabilities:["python"],network:"NONE"});
+    expect(allocated.id).toBe(discovered.id);
+    expect(allocated.currentTaskId).toBe("TASK-SCHED");
+  });
+
+  it("verweigert Scheduling ohne passende autorisierte Kapazität", async () => {
+    const devices = await import("../../lib/devices");
+    expect(() => devices.scheduleDevice("TASK-NO-GPU",{gpu:"RTX-UNAVAILABLE"})).toThrow(/no authorized device/);
+  });
+});
