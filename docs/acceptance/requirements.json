@@ -215,8 +215,10 @@
    "phase": "P0",
    "requirement": "Jede Route prüft je Methode eine konkrete Aktion; direkter Handler-Aufruf ohne Gate ist verweigert.",
    "implementation": [
+    "lib/api/guard.ts",
     "lib/api/api-gate.ts",
-    "lib/api/guard.ts"
+    "app/api/approvals/center/route.ts",
+    "app/api/workshop/execute/route.ts"
    ],
    "tests": [
     {
@@ -237,6 +239,10 @@
     {
      "kind": "script",
      "script": "scripts/verify-live.sh"
+    },
+    {
+     "kind": "script",
+     "script": "scripts/audit-api.sh"
     }
    ],
    "docs": [
@@ -1050,21 +1056,35 @@
    ],
    "tests": [
     {
-     "file": "tests/regression/ui-contract.test.ts",
+     "file": "tests/unit/status-model.test.ts",
      "min": 5
+    },
+    {
+     "file": "tests/regression/ui-contract.test.ts",
+     "min": 6
     }
    ],
    "ui": [
     "Queue",
     "Runs",
-    "Agents"
+    "Agents",
+    "Observatory"
    ],
-   "evidence": [],
+   "evidence": [
+    {
+     "kind": "route",
+     "method": "GET",
+     "path": "/api/observatory",
+     "expect": [
+      200
+     ]
+    }
+   ],
    "docs": [
-    "docs/ARCHITECTURE.md"
+    "docs/ARCHITECTURE.md",
+    "docs/ACCEPTANCE.md"
    ],
-   "status": "PARTIAL",
-   "note": "14 Zustände sind typisiert und in Tabellen/Badges sichtbar; es fehlen die Zustände OBSERVING/VALIDATING/SUCCEEDED/FAILED/BUG und ein Nachweis, dass jede UI-Funktion sie nutzt."
+   "status": "PASS"
   },
   {
    "id": "OBS-001",
@@ -1072,25 +1092,40 @@
    "phase": "P1",
    "requirement": "Observatory je Aktivität: Objective, Observation, Hypothese, Aktion, Erwartung, Ergebnis, Evidenz, Schlussfolgerung, nächster Schritt.",
    "implementation": [
-    "lib/observability.ts",
-    "lib/events/log.ts"
+    "lib/observatory.ts",
+    "app/api/observatory/route.ts",
+    "lib/events/log.ts",
+    "lib/science.ts"
    ],
    "tests": [
     {
-     "file": "tests/integration/event-audit-linkage.test.ts",
-     "min": 2
+     "file": "tests/integration/observatory-why.test.ts",
+     "min": 8
     }
    ],
    "ui": [
     "Timeline",
-    "Agents"
+    "Agents",
+    "Observatory"
    ],
-   "evidence": [],
+   "evidence": [
+    {
+     "kind": "route",
+     "method": "GET",
+     "path": "/api/observatory",
+     "expect": [
+      200
+     ]
+    },
+    {
+     "kind": "script",
+     "script": "scripts/audit-api.sh"
+    }
+   ],
    "docs": [
     "docs/ARCHITECTURE.md"
    ],
-   "status": "PARTIAL",
-   "note": "Ereignisse tragen Zweck, Akteur, Entscheidung, Referenzen und Kausalkette (Grundlage des „Why?“); eine aggregierte Observatory-Ansicht je Aktivität mit Erwartung/Ergebnis fehlt."
+   "status": "PASS"
   },
   {
    "id": "TL-001",
@@ -1132,24 +1167,30 @@
    "phase": "P1",
    "requirement": "Strukturierte Begründung je Aktion (Zweck, Entscheidung, Referenzen, Kausalkette) statt verborgener Gedankenkette.",
    "implementation": [
-    "lib/observability.ts",
-    "lib/events/log.ts"
+    "lib/observatory.ts",
+    "lib/events/log.ts",
+    "app/api/events/[id]/why/route.ts"
    ],
    "tests": [
     {
-     "file": "tests/integration/event-audit-linkage.test.ts",
-     "min": 2
+     "file": "tests/integration/observatory-why.test.ts",
+     "min": 8
     }
    ],
    "ui": [
     "Timeline"
    ],
-   "evidence": [],
-   "docs": [
-    "docs/SECURITY.md"
+   "evidence": [
+    {
+     "kind": "script",
+     "script": "scripts/audit-api.sh"
+    }
    ],
-   "status": "PARTIAL",
-   "note": "Der Why-Record ist als Ereignisfeld vorhanden (purpose/decision/authorizationRef/provenanceRef/causalParentId); eine eigene Abfrage „Warum wurde das gemacht?“ über mehrere Ereignisse fehlt."
+   "docs": [
+    "docs/SECURITY.md",
+    "docs/ARCHITECTURE.md"
+   ],
+   "status": "PASS"
   },
   {
    "id": "APR-001",

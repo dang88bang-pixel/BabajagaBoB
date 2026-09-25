@@ -40,7 +40,7 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 | Aktionsprüfung pro Route | **jede** Route außer `/api/auth` prüft ihre konkrete Aktion (Creator-Pflicht für Kern-/Schreibpfade, `sandbox:run`, `task:execute`, `run:manage`; Provenance-/Knowledge-Schreiben nur Creator); strukturell im Test erzwungen | `lib/api/guard.ts`, `app/api/*/route.ts`, `tests/security/route-guards.test.ts`, `tests/security/api-route-contract.test.ts` |
 | Betriebsmetriken | Prometheus-Text unter `GET /api/metrics` (Session-pflichtig), aus Stores/Integritätsprüfungen, nur Zahlen | `lib/metrics.ts`, `tests/integration/metrics-backup.test.ts` |
 | Datenintegrität (aus Live-Prüfung) | **gefundener Fehler behoben:** der Backup-Pfad legte für noch nie beschriebene Stores einen Envelope mit `payload: null` und gültigem Digest an; `/api/inbox` lieferte dadurch 500. Jetzt: Schreiben von `null` wird verweigert, Lesen erkennt und repariert den Zustand (journalliert), `POST /api/persistence {action:"repair"}` saniert alle Stores (auditiert) | `lib/persistence/store.ts`, `app/api/persistence/route.ts`, `tests/unit/store-migration.test.ts` |
-| Control Center an echte Daten | Alle **39 Abschnitte** gebunden; die Bereiche aus §26 der Spezifikation sind vollständig enthalten (Dashboard→Übersicht, Artifacts→Evidenz, Activity/Timeline/Replay→Timeline / Replay, Deployments→CI/CD-Pipeline, Settings→Betrieb/Persistenz); leer = „keine Einträge“, fehlend = „nicht verfügbar“; live alle 35 Routen mit 200 geprüft | `components/control-center.tsx`, `tests/ui/control-center.test.tsx`, `tests/ui/control-center-api.test.tsx` |
+| Control Center an echte Daten | Alle **40 Abschnitte** gebunden; die Bereiche aus §26 der Spezifikation sind vollständig enthalten (Dashboard→Übersicht, Artifacts→Evidenz, Activity/Timeline/Replay→Timeline / Replay, Deployments→CI/CD-Pipeline, Settings→Betrieb/Persistenz); leer = „keine Einträge“, fehlend = „nicht verfügbar“; live alle 38 Routen mit 200 geprüft | `components/control-center.tsx`, `tests/ui/control-center.test.tsx`, `tests/ui/control-center-api.test.tsx` |
 | Supply Chain | GitHub-Actions auf Commit-SHAs gepinnt (checkout v4.3.0, setup-node v4.4.0) | `.github/workflows/ci.yml` |
 | Creator Inbox | `POST {action:"resolve"}` war unerreichbar (stand hinter einem `return`): jede Anfrage legte einen neuen Eintrag an. Jetzt eigener Zweig, Creator-Pflicht, Validierung, Ablehnung doppelter Beantwortung | `app/api/inbox/route.ts`, `tests/security/inbox-route.test.ts` |
 | Ausführungs-Evidenz | jede autorisierte Ausführung erzeugt einen **digestgebundenen, persistenten** Evidenzdatensatz (`ART-…`, SHA-256 über den gespeicherten Inhalt), verknüpft in Provenance (Knoten `EVIDENCE` + Kante) und Audit (`evidence.record` mit Digest); `GET /api/artifacts?verify=…` prüft erneut; Inhalte > 8 KiB werden sichtbar gekürzt (`truncated`) | `lib/artifacts.ts`, `lib/execution-broker.ts`, `tests/integration/execution-evidence.test.ts` |
@@ -71,19 +71,22 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 
 | Nachweis | Ergebnis |
 |---|---|
-| Automatisierte Tests | **35 Dateien / 212 Tests grün** (`npx vitest run`; Unit 53, Security 89, Integration 55, Regression 5, UI 6, E2E 4) |
-| Betriebsprüfung aller Routen | `scripts/audit-api.sh`: **184 Prüfungen / 0 Fehler** (Exit 0), 6 Abschnitte inkl. autonomer Fehlerkette; wiederholbar gegen dieselbe Instanz |
-| Vollständige Aktions-/Attributprüfung | `scripts/audit-actions.mjs`: **433 Prüfungen / 0 Fehler** (Exit 0) — Matrix aus dem Quellcode (38 POST-Routen, 116 Aktionen), Attributtypen, 14 Interaktionsketten bis `REGRESSION_LOCKED` |
+| Automatisierte Tests | **51 Dateien / 314 Tests grün** (`npx vitest run`; Unit 74, Security 109, Integration 96, Regression 15, UI 12, E2E 8) |
+| Betriebsprüfung aller Routen | `scripts/audit-api.sh`: **227 Prüfungen / 0 Fehler** (Exit 0), 8 Abschnitte inkl. autonomer Fehlerkette, Observatory/Warum-Record/Status-Modell; wiederholbar gegen dieselbe Instanz |
+| Vollständige Aktions-/Attributprüfung | `scripts/audit-actions.mjs`: **503 Prüfungen / 0 Fehler** (Exit 0) — Matrix aus dem Quellcode (38 POST-Routen, 116 Aktionen), Attributtypen, 14 Interaktionsketten bis `REGRESSION_LOCKED` |
 | Statische Gates | `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler (10 Warnungen); `npm run build` erfolgreich (Exit-Code geprüft, nicht nur Ausgabe) |
-| Live über HTTP | `scripts/verify-live.sh` gegen `npx next start`: **171 PASS / 0 FAIL** (frisch initialisiert; 169 bei bereits initialisierter Instanz; ohne cgroup-Delegation 168 / 166; mit verpflichtendem zweitem Faktor 177 / 175), jeweils mit aktiver Kernel-Isolation und durchgesetzten Ressourcenlimits – Auth fail closed (428/401/403/201/200), Kette bis Knowledge, Sandbox + Snapshot + Capability, autorisierte Ausführung (`argv`, stdout `live-ok`), Angriffsblockaden mit Audit, Fehlerkette bis `REGRESSION_LOCKED`, Lockdown/Privacy/Provider/Geräte, Restore/Persistenz/Readiness, **Schritt 10: Agentenweg über Capability-Token ohne Browser-Session**, **Evidenz der blockierten Autorisierung** (`kind=DENIAL`, Digest erneut geprüft, ohne Klartext-Argumente), **Replay-Verweigerung** (zweiter Lauf mit demselben Token → 409 + Evidenz), **Schritt 11: kernel-gemessene Isolation** (`CapBnd`/`CapEff` = 0, `NoNewPrivs` = 1, `EROFS`, nur `lo`, leere Routingtabelle) und **Schritt 12: zweiter Faktor live** (Pflicht, Ablehnung ohne/mit falschem Code, Akzeptanz, Replay-Ablehnung) |
+| Live über HTTP | `scripts/verify-live.sh` gegen `npx next start`: **174 PASS / 0 FAIL** auf der bereits initialisierten Instanz (**176** beim allerersten Lauf; ohne cgroup-Delegation 168 / 166; mit verpflichtendem zweitem Faktor 177 / 175), jeweils mit aktiver Kernel-Isolation und durchgesetzten Ressourcenlimits – Auth fail closed (428/401/403/201/200), Kette bis Knowledge, Sandbox + Snapshot + Capability, autorisierte Ausführung (`argv`, stdout `live-ok`), Angriffsblockaden mit Audit, Fehlerkette bis `REGRESSION_LOCKED`, Lockdown/Privacy/Provider/Geräte, Restore/Persistenz/Readiness, **Schritt 10: Agentenweg über Capability-Token ohne Browser-Session**, **Evidenz der blockierten Autorisierung** (`kind=DENIAL`, Digest erneut geprüft, ohne Klartext-Argumente), **Replay-Verweigerung** (zweiter Lauf mit demselben Token → 409 + Evidenz), **Schritt 11: kernel-gemessene Isolation** (`CapBnd`/`CapEff` = 0, `NoNewPrivs` = 1, `EROFS`, nur `lo`, leere Routingtabelle) und **Schritt 12: zweiter Faktor live** (Pflicht, Ablehnung ohne/mit falschem Code, Akzeptanz, Replay-Ablehnung) |
 | Ressourcenlimits | kernel-seitig: CPU-Zeit (`RLIMIT_CPU`) und Dateigröße (`RLIMIT_FSIZE`) immer, Speicher und Prozesse über delegierten cgroup-v2-Unterbaum (`BOB_CGROUP_DIR`); ohne Delegation `UNAVAILABLE` statt Behauptung; Limits per `POST /api/sandboxes {limits}` setzbar (Creator, gegen Obergrenzen geprüft) |
 | Kernel-Isolation der Ausführung | `NAMESPACES` (real gemessen): User-/Netzwerk-/PID-/IPC-/UTS-/Mount-Namespace, Rootfs `EROFS`, nur `/work` schreibbar, leeres Capability-Bounding-Set, `NoNewPrivs` = 1; `scripts/build-ns-rootfs.sh` (126 MB), `lib/ns-isolation.ts`, `scripts/ns-exec.sh`; `BOB_NS_ISOLATION=on` verweigert ohne Rootfs jede Ausführung (fail closed) |
+| Abnahmeplan und Prüfer | `docs/acceptance/requirements.json` mit **85 Anforderungen** über P0–P5 und den 18 Stufen der Zielkette; `node scripts/acceptance.mjs` **15 Prüfungen / 0 Verstöße** (statisch, in CI) und `… --live` **82 / 0** gegen die Instanz, davon **66/66 Routen-Nachweise**; Regel „kein PASS ohne Implementierung + Test + Nachweis"; Selbsttest der Matrix 4/4, Kettentest 4/4 | `docs/ABNAHMEPLAN.md`, `docs/ACCEPTANCE.md`, `tests/unit/acceptance-matrix.test.ts`, `tests/e2e/acceptance-chain.test.ts`, `.github/workflows/ci.yml` |
+| Status-Modell, Observatory, „Warum?" | 20 Zustände mit erzwungener Vollständigkeit (`lib/status.ts`), Observatory mit neun Feldern je Aktivität (`GET /api/observatory`, Lücken benannt), strukturierte Begründung je Ereignis (`GET /api/events/[id]/why`: Zweck, Entscheidung, Referenzen, Kausalkette, Grenzen — keine Gedankenkette); live im UI-Abschnitt „Observatory" (31 Zeilen, alle 11 Spalten belegt) | `lib/status.ts`, `lib/observatory.ts`, `app/api/observatory/route.ts`, `app/api/events/[id]/why/route.ts`, `tests/unit/status-model.test.ts`, `tests/integration/observatory-why.test.ts` |
 | §49-Abnahme 1 (Erfolgspfad) | `tests/e2e/creator-flow.test.ts` + Live-Schritte 2–4 |
 | §49-Abnahme 2 (bewusster Fehler) | `tests/e2e/failure-recovery.test.ts` (Exit-Code 7) + Live-Schritt 6 |
 | §49-Abnahme 3 (blockierter Angriff) | fremder Sandbox-Bindungsversuch 409, unbekanntes Token 409, Shell-Programm/-Metazeichen 409, Audit-DENY + Evidenz; `tests/e2e/creator-flow.test.ts` Test 2, Live-Schritt 5 |
 | Kein Ausführungspfad um den Broker | Regression und Smoke-Test laufen über `lib/system-execution.ts` als SYSTEM-WORKER durch Gate, Broker, Replay-Sperre und Evidenz (Kill Switch blockiert sie; ohne `CREATOR → SYSTEM-WORKER` wird nichts ausgeführt; Zweck im Ereignis); `tests/security/gate-bypass.test.ts`, Live-Schritt 7 |
 | Gefundene und behobene Fehler (Aktions-/Attributprüfung) | **Inhaltslose Mission:** `createMission` akzeptierte leeren Titel/Ziel und legte eine Mission mit `title:""`, `objective:""` an (201) — jetzt Pflichtfelder in Bibliothek **und** Route (400). **Stille No-Ops bei Secrets:** `validate`/`revoke`/`redact` bestätigten ohne Kennung bzw. Wert mit 200 (`lease:null`, `revoked:false`, leerer Wert) — jetzt 400; die Lease-Kennung aus der eigenen Ausgabe (`lease.id`) wird von `validate`/`revoke` zusätzlich zu `leaseId` akzeptiert. **Unbekannte Rolle:** `roleAllows` warf einen TypeError aus dem Rechte-Modul (als 400 durchgereicht) — jetzt fail closed (`false`) und in der Route ein Klartext-400 mit Rollenliste. **`runs.start` unbenutzbar:** ein über die API angelegter Lauf war `CREATED`, `startRun` verlangte `LEASED` → "invalid run transition CREATED -> RUNNING"; die Route führt jetzt Queue und Lease mit aus. **`root_cause` verlangte `evidenceIds`** (weil `stringArray` bei fehlendem Feld wirft), obwohl die Bibliothek die Evidenz des Incidents zusammenführt — Feld ist optional, die Nachweispflicht bleibt. Jeder Fix mit Regressionstest und Live-Nachweis | `lib/control-plane.ts`, `lib/authority.ts`, `app/api/{missions,secrets,capabilities,runs,errors}/route.ts`, `tests/unit/control-plane.test.ts`, `tests/security/{input-validation,authority}.test.ts` |
 | Gefundene und behobene Fehler (Worker/Recovery-Kette) | **Lease fehlte:** `runWorkerCycle` startete Runs direkt aus `QUEUED`, `startRun` warf `invalid run transition QUEUED -> RUNNING` — die Ausnahme brach den **gesamten** Zyklus ab, alle weiteren Jobs blieben unbearbeitet; jetzt Lease (`QUEUED → LEASED → RUNNING`) und Job-Kapselung mit `jobFailures`-Meldung. **Unvollständige Fehlerkette:** der Worker sprang aus `DIAGNOSING` direkt nach `FIXING` (`invalid error transition DIAGNOSING -> FIXING`) — jetzt führt `establishRootCauseFromFailure` Hypothese → Experiment → Evidenz → Root Cause. **Retry nach der Verifikation:** `scheduleRetry` lief aus `VERIFYING` (`invalid run transition VERIFYING -> QUEUED`) — jetzt wird der Job stattdessen zurückgestellt (`deferJob`, Versuch bleibt unverbraucht, wachsende Wartezeit), und Läufe in Behandlung werden nicht erneut gestartet. **Pflichtfelder:** `/api/reliability` antwortete auf fehlendes `id` mit „recovery plan not found" statt 400. Jeder Fix mit Regressionstest und Live-Nachweis | `lib/worker.ts`, `lib/queue.ts`, `lib/error-intelligence.ts`, `app/api/reliability/route.ts`, `tests/integration/worker-recovery.test.ts` |
+| Gefundene und behobene Fehler (P1-Runde) | **Zwei Routen ohne eigene Aktionsprüfung:** die rekursiv verschärfte Vertragsprüfung deckte `app/api/approvals/center` (GET/POST) und `app/api/workshop/execute` (GET/POST) auf — beide prüften ihre Aktion nicht selbst (nur die Middleware verlangte eine Session). Jetzt `approval:read`/`approval:write` bzw. `workshop:read`/`workshop:execute` mit Capability `workshop:step` und validierten Nutzdaten. **Doppelter React-Key:** die Delegations-Tabelle nutzte `entry.id` statt `delegationId` (zwei Delegationen → Key `undefined`). **Werkzeugfehler:** `scripts/audit-api.sh` rief die dynamische Route wörtlich ab; curl sendete wegen URL-Globbing auf `[id]` gar nicht, und `case` behandelte `[id]` als Zeichenklasse — jetzt `curl -g`, Zeichenkettenvergleich, echter Abruf mit Ereignis-ID in Abschnitt 8 | `app/api/approvals/center/route.ts`, `app/api/workshop/execute/route.ts`, `components/control-center.tsx`, `scripts/audit-api.sh`, `tests/security/api-route-contract.test.ts` |
 | Gefundene und behobene Fehler (ältere Runden) | Upgrade-Blocker (Schemaerhöhung sperrte die Anmeldung aus, 500 → 201 nach Migration), Broker-Bypass für interne Läufe (Regression/Smoke liefen an Gate und Evidenz vorbei), erneute Ausgabe erschöpfter System-Token, Store-Vergiftung (`payload: null`), unerreichbarer Inbox-`resolve`-Zweig, fehlende Umgebungsbindung des Agentenwegs (`/api/runtime` erzwang `development`), ungeschützte GET-Methoden in sechs Routen, **Audit-Kürzung ohne Checkpoint** (falscher Alarm `sequence gap`/`chain break`, live gefunden → Checkpoint + Rekonstruktion), **Verweigerungsevidenz fehlte** (§49 verlangt Nachweis, nicht nur Log) — jeder Fix mit Regressionstest |
 | Begrenzter Lastnachweis | `scripts/soak.mjs` (echte HTTP-Oberfläche, Kernel-Isolation aktiv): 2 × 120 autorisierte Ausführungen, 0 Fehler; p50 1,31 s / p95 2,33 s bei Nebenläufigkeit 4, p50 4,84 s / p95 6,66 s bei 8; Audit-Kette und Store-Integrität danach gültig. **Keine** SLO-Aussage (siehe `docs/OPERATIONS.md` §5a) |
 | CI | Läufe `36111364798`, `36111369562` (Commit `d7cc37a`), `36110172943`, `36110176872` (Commit `4df8a00`), `36108086985`, `36108091312` (Commit `1d219c2`), `36107372935`, `36107377587` (Commit `b2391bc`), davor `36104924399`, `36104927512`, `36104319789`, `36104323205`, `36097553143`, `36090732676`, `36090186817`, `36086611264` – alle grün |
@@ -99,7 +102,7 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 | Computer Use | Vertrag + Zustandsmaschine + Autorisierung; kein Browser-/Desktop-Treiber angebunden |
 | Simulation/Visualisierung | Szenarien und Visualisierungsarten persistent, aber keine Renderer/Ausführung |
 | Runtime-Registry | 3 Definitionen (Node 22, Python 3.13, Custom OCI), erweiterbar; kein automatisches Provisionieren |
-| Control Center UI | 39 Abschnitte, jeder an echte Serverdaten gebunden (kein Platzhalterzustand), jsdom-Renderingtests gegen echte Routen-Handler; Browser-E2E offen |
+| Control Center UI | 40 Abschnitte, jeder an echte Serverdaten gebunden (kein Platzhalterzustand), jsdom-Renderingtests gegen echte Routen-Handler; Browser-E2E offen |
 | Metrik-Alarmierung | Export und Empfehlungen vorhanden; kein Scraper/Alertmanager im Repository |
 | Backup-Automation | Backup/Restore implementiert und geprüft; kein geplanter Job und keine Rotation |
 | Legacy-Token | Standardmäßig deaktiviert; Aktivierung nur mit ausdrücklicher Freigabe (dokumentiert, nicht empfohlen) |
@@ -119,7 +122,7 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 - Verhalten über lange Betriebszeit: ein **Dauerlauf über Stunden/Lastkurve** fehlt
   (`scripts/soak.mjs` läuft begrenzt **mit** Schwellen; `lib/slo.ts` bewertet den Zustand, sagt aber
   keine SLO für Dauerbetrieb zu) — `NOT_VERIFIED`.
-- Echte Browser-Darstellung des Control Centers (Playwright/Browser-E2E). Das Rendering ist unter jsdom getestet (`tests/ui/control-center.test.tsx`: 39 Abschnitte, echte Daten, „nicht verfügbar“-Meldung, Anmeldemaske; `tests/ui/control-center-api.test.tsx`: echte Routen-Handler, Metriken und Secret-Grenze).
+- Echte Browser-Darstellung des Control Centers (Playwright/Browser-E2E). Das Rendering ist unter jsdom getestet (`tests/ui/control-center.test.tsx`: 40 Abschnitte, echte Daten, „nicht verfügbar“-Meldung, Anmeldemaske; `tests/ui/control-center-api.test.tsx`: echte Routen-Handler, Metriken und Secret-Grenze).
 
 ## G. Sicherheitsgrenzen
 
@@ -150,31 +153,38 @@ Keine Erfolgsaussage stützt sich auf Mock-Verhalten; Simulationen
 
 ## I. Tests und Ergebnisse
 
-- Unit (**8 Dateien / 62 Tests**): Persistenz, Store-Migration, Control Plane, Agent Fabric (11 Rollen,
-  harte Grenzen), Recovery-Tier, Betriebszustand, Audit-Aufbewahrung.
-- Integration (**12 / 84**): Sandbox-Runtime, Provider-Fabric, App-Modul-Sandbox, Computer Use
-  (Registrierung erzwingt unauthorisiert, Autorisierung nur als Creator-Akt), Ausführungs- und
-  Verweigerungs-Evidenz, Backup/Metriken, Nebenläufigkeit, Kernel-Isolation (11 Tests), Worker-Fehlerkette,
-  Visualisierung (7 Renderarten) sowie **Alarmierung** (16 Regeln an reale Kennzahlen gebunden) und
-  **Backup-Automation** (idempotenter Lauf, Aufbewahrung schützt das neueste Backup).
-- Unit/Service-Level (**8 / 62**): zusätzlich **SLO-Bewertung** — Schwellen mit Zielwert, Warn- und
-  kritischer Grenze, fehlender Messwert = `UNKNOWN` statt gesund, Meldung an die Creator-Inbox ohne
-  Nebenwirkung.
-- Security (**16 / 103**): Authority-Invarianten (inkl. Token-Ablauf als Pflicht), API-Guard, API-Gate,
-  Routen-Guards, direkt aufgerufene Routen ohne Gate, argv-Policy, Creator-Login, Lockout, TOTP, Inbox,
-  Routenvertrag, Token-Leseprojektion ohne `secretHash`, **Geräte-Registrierung** (fail closed, kein
-  Selbst-Grant, Lebenszeichen ohne Rechteänderung).
-- E2E (2 / 4): Erfolgskette Creator → Knowledge; Fehlerkette bis `REGRESSION_LOCKED`.
-- UI (2 / 12): Control Center unter jsdom mit vollständiger Navigation, echten Routen-Handlern,
-  ausgewiesener Geräte-Autorisierung und Backup-Automation.
-- Regression (**3 / 14**): Regression Engine sowie Quellvertrag der Oberfläche
-  (`ui-contract.test.ts`) und der Isolationsbericht (`ns-report-cache.test.ts`).
-- Live auf der Frischinstanz `:3100` (cgroup-delegiert, Kernel-Isolation): `scripts/verify-live.sh`
-  (**176 / 0**), `scripts/audit-actions.mjs` (**502 / 0**, inkl. Ketten „Alarmierung/Backup" und
-  Service-Level), `scripts/audit-api.sh` (**204 / 0**), `scripts/audit-ui.mjs` (**88 / 0**),
+- Unit (**11 Dateien / 74 Tests**): Persistenz, Store-Migration, Control Plane, Agent Fabric (11 Rollen,
+  harte Grenzen), Recovery-Tier, Betriebszustand, Audit-Aufbewahrung, Service-Level-Bewertung (9 Tests,
+  fehlender Messwert = `UNKNOWN`), **Status-Modell** (5 Tests: jeder deklarierte Zustand beschrieben,
+  jeder Tone hat eine CSS-Regel, unbekannte Werte nie „gesund", nur echte Endzustände terminal, jeder
+  neue Zustand hat einen Produzenten) und der Offline-Vektorindex.
+- Security (**17 Dateien / 109 Tests**): Authority-Invarianten (inkl. Token-Ablauf und
+  Wiederholungssperre), API-Guard, API-Gate, Routen-Guards, direkt aufgerufene Routen ohne Gate,
+  argv-Policy, Creator-Login, Lockout, TOTP, Inbox, **Routenvertrag rekursiv** (auch verschachtelte
+  Routen), Token-Leseprojektion ohne `secretHash`, Geräte-Registrierung, Kausalintegrität.
+- Integration (**15 Dateien / 96 Tests**): Sandbox-Runtime, Provider-Fabric, App-Modul-Sandbox, Computer
+  Use, Ausführungs- und Verweigerungs-Evidenz, Backup/Metriken, Nebenläufigkeit, Kernel-Isolation,
+  Worker-Fehlerkette, Visualisierung, Alarmierung, Backup-Automation, Ereignis-/Audit-Verkettung,
+  Laufzeit-Registry sowie **Observatory und Warum-Record** (8 Tests: echte Aktivität aus
+  Mission → Task → Run, neun Felder mit benannten Lücken, Kausalkette ältestes → betrachtetes Ereignis,
+  Grenzen des Records, Route mit Session/404/400, Defekt-Klassifikation `BUG` gegen Umgebungsfehler).
+- Regression (**3 Dateien / 15 Tests**): Regression Engine, Quellvertrag der Oberfläche (inkl. des
+  Renderpfads für Zustandsspalten über das Status-Modell) und der Isolationsbericht.
+- UI (**2 Dateien / 12 Tests**): Control Center unter jsdom mit vollständiger Navigation
+  (**40 Abschnitte**), echten Routen-Handlern (**38 Routen**, inklusive Observatory), ausgewiesener
+  Geräte-Autorisierung und Backup-Automation.
+- E2E (**3 Dateien / 8 Tests**): Erfolgskette Creator → Knowledge, Fehlerkette bis `REGRESSION_LOCKED`
+  und die **Abnahmekette** über alle 18 Stufen der Zielkette (API, Persistenz, Audit/Event, Provenance).
+- Abnahmeprüfer: `node scripts/acceptance.mjs` **15 / 0** (Matrix statisch), `… --live` **82 / 0**,
+  davon **66/66 Routen-Nachweise** mit Creator-Session; Matrix-Selbsttest 4/4, Kettentest 4/4.
+- Live auf der Instanz `:3100` (cgroup-delegiert, Kernel-Isolation): `scripts/verify-live.sh`
+  (**174 / 0** auf der bereits initialisierten Instanz; 176 beim allerersten Lauf),
+  `scripts/audit-actions.mjs` (**503 / 0**, inkl. Ketten „Alarmierung/Backup" und Service-Level),
+  `scripts/audit-api.sh` (**227 / 0**, inkl. Abschnitt 8: Observatory, Warum-Record, Status-Modell),
+  `scripts/audit-ui.mjs` (**89 / 0**, 45 Datenabrufe, 29 Abschnitte mit echten Zeilen),
   `scripts/soak.mjs` (40 autorisierte Ausführungen, p95 2,22 s, Budget 5 s) **`MEETS_BUDGET`**.
-- Gesamt: **48 Dateien / 294 Tests grün** (Unit 66, Security 106, Integration 88,
-  Regression 14, UI 12, E2E 8).
+- Gesamt: **51 Dateien / 314 Tests grün** (Unit 74, Security 109, Integration 96, Regression 15, UI 12,
+  E2E 8); `tsc --noEmit` fehlerfrei, `eslint .` 0 Fehler / 10 Warnungen, `npm run build` erfolgreich.
 
 Details und Befehle: `docs/TESTING.md`.
 

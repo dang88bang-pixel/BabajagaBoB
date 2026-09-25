@@ -101,6 +101,18 @@ describe("Oberflächenvertrag", () => {
     expect(missing).toEqual([]);
   });
 
+  it("rendert Zustandsspalten über das Status-Modell", () => {
+    // Text und Farbe eines Zustands dürfen nur aus lib/status.ts kommen. Der
+    // Test prüft den Renderpfad der Tabelle: Zustandsspalten laufen durch
+    // `isKnownStatus`/`StatusBadge`, unbekannte Werte bleiben Text (nie grün).
+    expect(source).toContain('import {isKnownStatus} from "../lib/status"');
+    expect(source).toContain('column.key === "status" || column.key === "state"');
+    expect(source).toContain("<StatusBadge status={raw} />");
+    const badge = readFileSync(join(process.cwd(), "components", "status-badge.tsx"), "utf8");
+    expect(badge).toContain("statusLabel");
+    expect(badge).toContain("statusTone");
+  });
+
   it("führt in der Runtimes-Tabelle den echten Laufzeitvertrag", () => {
     const runtimes = entries.find(entry => entry.id === "Runtimes");
     expect(runtimes).toBeDefined();

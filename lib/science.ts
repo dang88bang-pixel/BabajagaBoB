@@ -290,7 +290,9 @@ export async function runExperiment(input: {
     const total = 3; // Baseline, Kontrolle, Replikation
     const completed = new Set(payload.runs.filter(r => r.experimentId === input.experimentId).map(r => r.kind)).size;
     record.progress = Math.min(100, Math.round((completed / total) * 100));
-    record.status = input.kind === "REPLICATION" ? "TESTING" : "EXPERIMENT";
+    // Jeder Messlauf — Baseline, Kontrolle, Replikation — erzeugt eine Beobachtung;
+    // der Zustand ist deshalb OBSERVING. Die Bewertung passiert in `validateCausalChain`.
+    record.status = "OBSERVING";
     record.observedResult = result.message;
     record.knowledgeState = result.accepted ? "SUPPORTED" : "CONTRADICTED";
   }
@@ -388,13 +390,15 @@ export function validateCausalChain(experimentId: string): CausalValidation {
   observe({
     type: "science.causal.validation",
     message: `Kausalprüfung ${experimentId}: ${state}`,
-    status: valid ? "COMPLETED" : "TESTING",
+    status: valid ? "SUCCEEDED" : "FAILED",
     actor: "AG-SCIENTIST",
     agentId: "AG-SCIENTIST",
     experimentId,
     action: "science.causal.validate",
     resource: experimentId,
     decision: valid ? "ALLOW" : "DENY",
+    purpose: "Prüfen, ob die Beobachtungen die Behauptung stützen (Baseline, Kontrolle, Replikation, Evidenz).",
+    result: valid ? `ESTABLISHED (${result.replicationRuns} Replikationen, Abweichung ${result.replicationAgreement})` : `nicht belegt: ${result.reasons.join("; ")}`,
     argumentsValue: {reasons: result.reasons, agreement: result.replicationAgreement}
   });
   return result;

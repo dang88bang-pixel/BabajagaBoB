@@ -277,6 +277,25 @@ export function recordExperimentEvidence(incidentId: string, claim: string, valu
   return structuredClone(record);
 }
 
+/**
+ * Defekt im **eigenen** Code: Der festgestellte Grund benennt eine Quelldatei
+ * dieses Repositories (`lib/…`, `app/…`, `components/…`, `scripts/…`, `tests/…`
+ * oder eine `.ts`/`.tsx`/`.mjs`-Datei) oder enthält ein ausdrückliches
+ * Defektmerkmal (Bug, Regression, fehlende Prüfung, unbehandelter Fall).
+ *
+ * Nur dann ist der Zustand `BUG`. Ein Ausfall der Umgebung, ein externer Dienst
+ * oder fehlende Daten sind ein Fehler (`ERROR`) — sie sind kein Defekt unseres
+ * Codes. Die Regel ist bewusst deterministisch und wird in beide Richtungen
+ * getestet; sie ist keine Stimmungsklassifikation.
+ */
+export function isSoftwareDefect(rootCause: string): boolean {
+  const text = rootCause.trim();
+  if (text.length < 5) return false;
+  if (/\b(?:lib|app|components|scripts|tests)\/[A-Za-z0-9._/-]+/.test(text)) return true;
+  if (/\b[A-Za-z0-9_./-]+\.(?:ts|tsx|mjs|cjs|js)\b/.test(text)) return true;
+  return /\b(?:defekt|bug|codefehler|fehler im code|regression|off-by-one|null-?check|unhandled|unbehandelt|nicht abgefangen|fehlende prüfung|falsche bedingung|race condition)\b/i.test(text);
+}
+
 /** Root Cause nur mit Evidenz (Abschnitt 16). */
 export function establishRootCause(incidentId: string, rootCause: string, evidenceIds: string[] = []): ErrorIncident {
   const incident = getErrorIncident(incidentId);
@@ -286,6 +305,25 @@ export function establishRootCause(incidentId: string, rootCause: string, eviden
   if (!rootCause || rootCause.length < 5) throw new Error("root cause must be substantive");
   const updated = transitionError(incidentId, "ROOT_CAUSE_FOUND", {rootCause, evidenceIds: merged});
   if (incident.failureId) resolveFailure(incident.failureId, rootCause, undefined);
+  if (isSoftwareDefect(rootCause)) {
+    observe({
+      type: "error.defect.confirmed",
+      message: `Fehler ${incidentId}: bestätigter Defekt im eigenen Code (${rootCause.slice(0, 160)})`,
+      status: "BUG",
+      actor: incident.agentId ?? "AG-RECOVERY",
+      agentId: incident.agentId ?? "AG-RECOVERY",
+      taskId: incident.taskId,
+      runId: incident.runId,
+      sandboxId: incident.sandboxId,
+      experimentId: incident.experimentId,
+      action: "error.defect.classify",
+      resource: incidentId,
+      decision: "ERROR",
+      purpose: "Ursache einordnen: eigener Code (Defekt) gegen Umgebung, Daten oder externen Dienst abgrenzen.",
+      result: "Softwaredefekt — Fix und Regressionstest erforderlich, bevor der Fehlerfall als gelernt gilt.",
+      argumentsValue: {rootCause, defect: true}
+    });
+  }
   return updated;
 }
 

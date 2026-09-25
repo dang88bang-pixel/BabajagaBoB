@@ -165,3 +165,73 @@ describe("Routen-Guards (Provenance, Knowledge, Runs)", () => {
     expect((await crossOrigin.json()).error).toBe("CSRF_ORIGIN");
   });
 });
+
+/**
+ * Nachgezogene Prüfungen für verschachtelte Routen.
+ *
+ * Der (rekursiv verschärfte) Routenvertrag hat zwei Routen ohne eigene
+ * Aktionsprüfung gefunden: `app/api/approvals/center` und
+ * `app/api/workshop/execute`. Die Middleware verlangte zwar eine Session, die
+ * Route selbst prüfte aber nichts. Dieser Test hält den reparierten Zustand
+ * fest — ohne Abschwächung: ohne Session 401, Agenten-Token ohne
+ * `workshop:step` 403, unbekannte Aktion 400.
+ */
+describe("Nachgezogene Aktionsprüfungen (verschachtelte Routen)", () => {
+  it("verweigert Freigabe-Center und Werkstatt-Ausführung ohne Session (401)", async () => {
+    const approvals = await import("../../app/api/approvals/center/route");
+    const workshop = await import("../../app/api/workshop/execute/route");
+    expect((await approvals.GET(request("/api/approvals/center"))).status).toBe(401);
+    expect((await workshop.GET(request("/api/workshop/execute"))).status).toBe(401);
+    expect(
+      (await workshop.POST(jsonRequest("/api/workshop/execute", {workshopId: "WR-1", action: "TEST"}))).status
+    ).toBe(401);
+    expect(audit.verifyAuditChain().valid).toBe(true);
+  });
+
+  it("erlaubt Lesen mit Creator-Session und weist fehlerhafte Nutzdaten ab (400)", async () => {
+    const approvals = await import("../../app/api/approvals/center/route");
+    const workshop = await import("../../app/api/workshop/execute/route");
+    const cookie = {cookie: sessionCookie};
+    expect((await approvals.GET(request("/api/approvals/center", {headers: cookie}))).status).toBe(200);
+    expect((await workshop.GET(request("/api/workshop/execute", {headers: cookie}))).status).toBe(200);
+
+    // Unbekannte Werkstatt-Aktion: abgelehnt, kein stiller Erfolg.
+    const unknownAction = await workshop.POST(jsonRequest("/api/workshop/execute", {workshopId: "WR-1", action: "ALLES"}, cookie));
+    expect(unknownAction.status).toBe(400);
+    expect((await unknownAction.json()).error).toBe("unsupported action");
+
+    // Unlesbare Nutzdaten (kein JSON): 400 statt 500.
+    const broken = await workshop.POST(request("/api/workshop/execute", {method: "POST", headers: {...cookie, "content-type": "application/json"}, body: "{kaputt"}));
+    expect(broken.status).toBe(400);
+
+    // Gültige Aktion auf ein nicht existierendes Objekt: 400 mit Grund.
+    const missingItem = await workshop.POST(jsonRequest("/api/workshop/execute", {workshopId: "WS-GIBT-ES-NICHT", action: "TEST"}, cookie));
+    expect(missingItem.status).toBe(400);
+    expect((await missingItem.json()).error).toBe("workshop item not found");
+
+    // Freigabe-Center: unbekannte Aktion ebenfalls 400.
+    const unknownApproval = await approvals.POST(jsonRequest("/api/approvals/center", {action: "loeschen"}, cookie));
+    expect(unknownApproval.status).toBe(400);
+  });
+
+  it("verweigert den Werkstattschritt mit Agenten-Token ohne workshop:step (403)", async () => {
+    const workshop = await import("../../app/api/workshop/execute/route");
+    const issued = authority.issueCapabilityToken({
+      subject: AGENT,
+      taskId,
+      sandboxId,
+      capabilities: ["workshop:read"],
+      risk: "LOW",
+      issuedBy: "CREATOR",
+      issuedByKind: "CREATOR",
+      environment: "development",
+      expiresAt: new Date(Date.now() + 5 * 60_000).toISOString()
+    });
+    const agentHeader = {"authorization": `Bobcap ${issued.token.id}.${issued.secret}`};
+    expect((await workshop.GET(request("/api/workshop/execute", {headers: agentHeader}))).status).toBe(200);
+    const denied = await workshop.POST(jsonRequest("/api/workshop/execute", {workshopId: "WR-1", action: "TEST"}, agentHeader));
+    expect(denied.status).toBe(403);
+    expect((await denied.json()).error).toBe("CAPABILITY_DENIED");
+    expect(audit.verifyAuditChain().valid).toBe(true);
+  });
+});

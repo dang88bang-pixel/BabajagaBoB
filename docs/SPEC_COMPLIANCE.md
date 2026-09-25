@@ -345,8 +345,8 @@ Das Gesamtprojekt darf erst als spezifikationskonform bezeichnet werden, wenn:
 | 5. Security Regression Suite | **PASS** – 17 Security-Dateien / 106 Tests, Live-Angriffsblockaden (Schritt 5) samt Evidenz der Verweigerung (`kind=DENIAL`) |
 | 6. Recovery verifiziert | **PASS** – Restore + Regression + `fix.verify` bis `REGRESSION_LOCKED` |
 | 7. Audit/Provenance konsistent | **PASS** – `verifyAuditChain()` in Tests und Live-Lauf grün |
-| 8. UI-Systemzustände sichtbar | **PARTIAL** – 39 Abschnitte mit sichtbaren Zuständen, gegen echte Routen-Handler getestet (`tests/ui/control-center-api.test.tsx`), aber ohne automatisierte Browser-E2E-Prüfung |
-| Zusatz: Betriebsnachweis | **PASS** – `/api/metrics` (nur Zahlen), Backup mit Digest-Prüfung (manipuliert → 409) inkl. Migration älterer Sicherungen, Audit-Verifikation über POST und Aufbewahrungszustand, **176 / 204 / 502 / 88 Live-Prüfungen** (verify-live / audit-api / audit-actions / audit-ui, je 0 Fehler) (128 bei initialisierter Instanz) |
+| 8. UI-Systemzustände sichtbar | **PARTIAL** – 40 Abschnitte mit sichtbaren Zuständen, gegen echte Routen-Handler getestet (`tests/ui/control-center-api.test.tsx`), aber ohne automatisierte Browser-E2E-Prüfung |
+| Zusatz: Betriebsnachweis | **PASS** – `/api/metrics` (nur Zahlen), Backup mit Digest-Prüfung (manipuliert → 409) inkl. Migration älterer Sicherungen, Audit-Verifikation über POST und Aufbewahrungszustand, **174 / 227 / 503 / 89 Live-Prüfungen** (verify-live / audit-api / audit-actions / audit-ui, je 0 Fehler) sowie **82 Matrix-Nachweise** über `node scripts/acceptance.mjs --live` |
 | 9. Dokumentation = realer Zustand | **PASS** – 14 §44-Dokumente plus Abschlussbericht, gegen Code und Nachweise geprüft |
 
 Das Gesamtprojekt ist daher **nicht** als spezifikationskonform abgeschlossen zu

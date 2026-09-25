@@ -1,8 +1,9 @@
 "use client";
 
-import {useCallback, useEffect, useMemo, useRef, useState} from "react";
+import {Fragment, useCallback, useEffect, useMemo, useRef, useState} from "react";
 import type {Agent, Event, Experiment, Mission, Sandbox, Status} from "../lib/types";
 import {StatusBadge} from "./status-badge";
+import {isKnownStatus} from "../lib/status";
 
 /**
  * Control Center (Abschnitt 34/35).
@@ -32,6 +33,7 @@ type SectionId =
   | "Audit"
   | "Provenance"
   | "Timeline"
+  | "Observatory"
   | "Knowledge"
   | "Experiments"
   | "Science"
@@ -73,6 +75,7 @@ const NAV: {id: SectionId; label: string; group: string}[] = [
   {id: "Audit", label: "Audit", group: "Nachweis"},
   {id: "Provenance", label: "Provenance", group: "Nachweis"},
   {id: "Timeline", label: "Timeline / Replay", group: "Nachweis"},
+  {id: "Observatory", label: "Observatory", group: "Nachweis"},
   {id: "Knowledge", label: "Wissen", group: "Nachweis"},
   {id: "Experiments", label: "Experimente", group: "Nachweis"},
   {id: "Science", label: "Wissenschaft", group: "Nachweis"},
@@ -225,6 +228,26 @@ const SOURCES: Partial<Record<SectionId, {url: string; path?: string[]; columns:
       {key: "sandboxSupport", label: "Sandbox", render: row => (row.sandboxSupport ? "ja" : "nein")},
       {key: "networkDefault", label: "Netzwerk"},
       {key: "packageManager", label: "Paketmanager"}
+    ]
+  },
+  Observatory: {
+    url: "/api/observatory",
+    path: ["activities"],
+    note:
+      "Je Aktivität die neun Felder des Observatory (Ziel, Beobachtung, Hypothese, Aktion, Erwartung, Ergebnis, Evidenz, Schlussfolgerung, nächster Schritt). " +
+      "Es ist eine Projektion über Ereignis-Log und Stores — fehlende Felder werden als Lücke benannt, nicht ergänzt. Der Abschnitt schreibt nichts.",
+    columns: [
+      {key: "activityId", label: "Aktivität"},
+      {key: "kind", label: "Art"},
+      {key: "status", label: "Status"},
+      {key: "objective", label: "Ziel"},
+      {key: "observations", label: "Beobachtung", render: row => (Array.isArray(row.observations) ? (row.observations as string[]).join(" · ") : "")},
+      {key: "hypothesis", label: "Hypothese"},
+      {key: "expectation", label: "Erwartung"},
+      {key: "result", label: "Ergebnis"},
+      {key: "conclusion", label: "Schlussfolgerung"},
+      {key: "nextStep", label: "Nächster Schritt"},
+      {key: "gaps", label: "Lücken", render: row => (Array.isArray(row.gaps) ? ((row.gaps as string[]).length ? (row.gaps as string[]).join(" · ") : "vollständig") : "")}
     ]
   },
   Knowledge: {
@@ -501,6 +524,26 @@ type Snapshot = {
 
 type TimelineEntry = Event & {sequence: number};
 
+/** „Warum?“-Record (Abschnitt 12) — dokumentierte Begründung, keine Gedankenkette. */
+type WhyRecordView = {
+  eventId: string;
+  type: string;
+  message: string;
+  timestamp: string;
+  statusLabel: string;
+  actor: string;
+  action?: string;
+  decision?: string;
+  purpose?: string;
+  result?: string;
+  authorizationRef?: string;
+  provenanceRef?: string;
+  chain: {eventId: string; sequence: number; type: string; message: string; actor: string; decision?: string; purpose?: string}[];
+  evidence: {evidenceId: string; claim: string; value: string; knowledgeState: string}[];
+  knowledge: {knowledgeId: string; subject: string; predicate: string; object: string; state: string}[];
+  limitations: string[];
+};
+
 type ErrorIncident = {
   incidentId?: string;
   id?: string;
@@ -540,6 +583,9 @@ type PanelState = {rows: Row[] | null; error: string};
 
 const panel = (rows: Row[] | null, error = ""): PanelState => ({rows, error});
 
+/** Ereignis-IDs des kanonischen Logs (`EVT-…`) — nur diese sind abfragbar. */
+const isKnownEventId = (id: string): boolean => /^EVT-[A-Za-z0-9-]{4,80}$/.test(id);
+
 async function fetchJson<T>(url: string): Promise<{data: T | null; status: number; error: string}> {
   try {
     const response = await fetch(url, {cache: "no-store"});
@@ -568,6 +614,9 @@ export default function ControlCenter() {
   const [section, setSection] = useState<SectionId>("Overview");
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [timeline, setTimeline] = useState<TimelineEntry[] | null>(null);
+  const [whyOpen, setWhyOpen] = useState<string | null>(null);
+  const [why, setWhy] = useState<WhyRecordView | null>(null);
+  const [whyError, setWhyError] = useState("");
   const [panels, setPanels] = useState<Partial<Record<SectionId, PanelState>>>({});
   const [incidents, setIncidents] = useState<ErrorIncident[] | null>(null);
   const [inbox, setInbox] = useState<InboxItem[] | null>(null);
@@ -692,6 +741,29 @@ export default function ControlCenter() {
     void loadMetrics();
     void loadAlerts();
   }, [section, loadMetrics]);
+
+  /**
+   * „Warum?“-Record zu einem Ereignis (Abschnitt 12). Bewusst nur auf Klick:
+   * Die Timeline darf nicht je Eintrag eine Anfrage auslösen. Der Record wird
+   * unverändert angezeigt (inklusive der benannten Grenzen), nicht geglättet.
+   */
+  const loadWhy = async (eventId: string) => {
+    if (whyOpen === eventId) {
+      setWhyOpen(null);
+      setWhy(null);
+      setWhyError("");
+      return;
+    }
+    setWhyOpen(eventId);
+    setWhy(null);
+    setWhyError("");
+    const response = await fetchJson<WhyRecordView>(`/api/events/${encodeURIComponent(eventId)}/why`);
+    if (!response.data) {
+      setWhyError(response.error || `HTTP ${response.status}`);
+      return;
+    }
+    setWhy(response.data);
+  };
 
   const post = async (url: string, body: Record<string, unknown>) => {
     setNotice("");
@@ -901,11 +973,20 @@ export default function ControlCenter() {
             </div>
             {rows.map((row, index) => (
               <div className="dataRow" key={String(row.id ?? row[source?.columns[0].key ?? "id"] ?? index)}>
-                {source?.columns.map(column => (
-                  <span key={column.key} className={column.key === "status" || column.key === "state" ? "state" : ""}>
-                    {column.render ? column.render(row) : String(row[column.key] ?? "—")}
-                  </span>
-                ))}
+                {source?.columns.map(column => {
+                  const raw = column.render ? column.render(row) : String(row[column.key] ?? "—");
+                  // Zustandsspalten laufen ausschließlich über das Status-Modell
+                  // (lib/status.ts): Text und Farbe kommen aus einer Quelle. Ein
+                  // Wert außerhalb des Modells wird als Text gezeigt — nie als
+                  // „gesund“ eingefärbt.
+                  if (column.key === "status" || column.key === "state")
+                    return (
+                      <span key={column.key} className="state">
+                        {isKnownStatus(raw) ? <StatusBadge status={raw} /> : raw}
+                      </span>
+                    );
+                  return <span key={column.key}>{raw}</span>;
+                })}
               </div>
             ))}
           </div>
@@ -1264,18 +1345,89 @@ export default function ControlCenter() {
             .reverse()
             .slice(0, 200)
             .map(entry => (
-              <div className="event" key={entry.id}>
-                <StatusBadge status={entry.status} />
-                <div>
-                  <b>
-                    #{entry.sequence} · {entry.type}
-                  </b>
-                  <span>{entry.message}</span>
-                  <small>
-                    {entry.actor} · kausaler Elternteil {entry.causalParentId ?? "ROOT"} · {entry.time}
-                  </small>
+              <Fragment key={entry.id}>
+                <div className="event">
+                  <StatusBadge status={entry.status} />
+                  <div>
+                    <b>
+                      #{entry.sequence} · {entry.type}
+                    </b>
+                    <span>{entry.message}</span>
+                    <small>
+                      {entry.actor} · kausaler Elternteil {entry.causalParentId ?? "ROOT"} · {entry.time}
+                    </small>
+                  </div>
+                  <button className="whyButton" onClick={() => void loadWhy(entry.id)} disabled={!isKnownEventId(entry.id)}>
+                    {whyOpen === entry.id ? "Warum? schließen" : "Warum?"}
+                  </button>
                 </div>
-              </div>
+                {whyOpen === entry.id && (
+                  <div className="whyPanel">
+                    {whyError && <small className="whyError">Begründung nicht lesbar ({whyError}).</small>}
+                    {!why && !whyError && <small>wird geladen …</small>}
+                    {why && (
+                      <>
+                        <div className="whyGrid">
+                          <span>Zweck</span>
+                          <b>{why.purpose ?? "nicht dokumentiert"}</b>
+                          <span>Entscheidung</span>
+                          <b>{why.decision ?? "—"}</b>
+                          <span>Akteur / Aktion</span>
+                          <b>
+                            {why.actor} · {why.action ?? "—"}
+                          </b>
+                          <span>Ergebnis</span>
+                          <b>{why.result ?? "—"}</b>
+                          <span>Autorisierungsreferenz</span>
+                          <b>{why.authorizationRef ?? "—"}</b>
+                          <span>Provenance-Referenz</span>
+                          <b>{why.provenanceRef ?? "—"}</b>
+                        </div>
+                        <small>Kausalkette (älteste zuerst, {why.chain.length} Ereignisse)</small>
+                        <ol className="whyChain">
+                          {why.chain.map(link => (
+                            <li key={link.eventId}>
+                              <code>#{link.sequence}</code> {link.type} · {link.message}
+                              {link.purpose ? ` · Zweck: ${link.purpose}` : ""}
+                              {link.decision ? ` · ${link.decision}` : ""}
+                            </li>
+                          ))}
+                        </ol>
+                        {why.evidence.length > 0 && (
+                          <>
+                            <small>Evidenz</small>
+                            <ul className="whyChain">
+                              {why.evidence.map(item => (
+                                <li key={item.evidenceId}>
+                                  {item.claim} = {item.value} ({item.knowledgeState})
+                                </li>
+                              ))}
+                            </ul>
+                          </>
+                        )}
+                        {why.knowledge.length > 0 && (
+                          <>
+                            <small>Wissen</small>
+                            <ul className="whyChain">
+                              {why.knowledge.map(item => (
+                                <li key={item.knowledgeId}>
+                                  {item.subject} {item.predicate} {item.object} ({item.state})
+                                </li>
+                              ))}
+                            </ul>
+                          </>
+                        )}
+                        <small>Grenzen dieser Auskunft</small>
+                        <ul className="whyChain whyLimits">
+                          {why.limitations.map(limit => (
+                            <li key={limit}>{limit}</li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                  </div>
+                )}
+              </Fragment>
             ))}
         </section>
       );
@@ -1324,9 +1476,9 @@ export default function ControlCenter() {
                 <div className="dataRow head">
                   {["Delegation", "Von", "An", "Capabilities", "Task", "Sandbox", "Status", "Ablauf"].map(column => <span key={column}>{column}</span>)}
                 </div>
-                {delegations.map(entry => (
-                  <div className="dataRow" key={String(entry.id)}>
-                    <span>{String(entry.id ?? "—")}</span>
+                {delegations.map((entry, index) => (
+                  <div className="dataRow" key={String(entry.delegationId ?? entry.id ?? index)}>
+                    <span>{String(entry.delegationId ?? entry.id ?? "—")}</span>
                     <span>{String(entry.from ?? "—")}</span>
                     <span>{String(entry.to ?? "—")}</span>
                     <span>{Array.isArray(entry.capabilities) ? (entry.capabilities as string[]).join(", ") : "—"}</span>

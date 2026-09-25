@@ -38,8 +38,8 @@ body() { head -c 200 "$BODY" | tr -d '\n'; }
 jqv()  { jq -r "$1" "$BODY" 2>/dev/null; }
 # Feld aus einer bereits geholten Antwort lesen (z. B. eine angelegte ID).
 jqf()  { printf '%s' "$2" | jq -r "$1" 2>/dev/null; }
-api()  { curl -s -b "$JAR" -c "$JAR" -o "$BODY" -w '%{http_code}' -H 'content-type: application/json' "$@"; }
-raw()  { curl -s -o "$BODY" -w '%{http_code}' -H 'content-type: application/json' "$@"; }
+api()  { curl -g -s -b "$JAR" -c "$JAR" -o "$BODY" -w '%{http_code}' -H 'content-type: application/json' "$@"; }
+raw()  { curl -g -s -o "$BODY" -w '%{http_code}' -H 'content-type: application/json' "$@"; }
 
 assert_status() { if [ "$2" = "$3" ]; then ok "$1 ($3)"; else bad "$1: erwartet $2, erhalten $3" "$(body)"; fi; }
 assert_not5xx() { case "$3" in 5*) bad "$1: Serverfehler $3" "$(body)";; *) ok "$1 ($3)";; esac; }
@@ -54,7 +54,9 @@ SECRET="${BOB_CREATOR_LOGIN_SECRET:-}"
 assert_status "Creator-Login" 201 "$(api -X POST -d "{\"action\":\"login\",\"secret\":\"$SECRET\"}" "$BASE/api/auth")"
 
 # Routen, die ohne Parameter korrekt mit 4xx antworten (Pflichtparameter).
-PARAM_ROUTES="simulation/render"
+# Die dynamische Route verlangt eine gültige Ereignis-ID; ohne sie ist 400 die
+# richtige Antwort. Ihr echtes Verhalten prüft Abschnitt 8 mit einer echten ID.
+PARAM_ROUTES="simulation/render events/[id]/why"
 
 # ------------------------------------------------------- 1. GET-Routen
 step "1. Jede GET-Route mit Session (kein 5xx, keine leere Antwort)"
@@ -66,7 +68,8 @@ for route in $(find app/api -name route.ts | sed 's|app/api/||; s|/route.ts||' |
     405) ok "GET /api/$route (405 = nur POST)";;
     # Routen mit Pflichtparametern (z. B. die Bildroute der Visualisierung)
     # verweigern ohne Parameter mit 4xx — das ist korrekt und kein Fehler.
-    4*) case " $PARAM_ROUTES " in *" $route "*) ok "GET /api/$route ($code = Pflichtparameter fehlt)";; *) bad "GET /api/$route: unerwartet $code" "$(body)";; esac;;
+    4*) param=0; for candidate in $PARAM_ROUTES; do [ "$route" = "$candidate" ] && param=1; done
+        if [ "$param" = "1" ]; then ok "GET /api/$route ($code = Pflichtparameter fehlt)"; else bad "GET /api/$route: unerwartet $code" "$(body)"; fi;;
     5*) bad "GET /api/$route: Serverfehler $code" "$(body)";;
     *) bad "GET /api/$route: unerwartet $code" "$(body)";;
   esac
@@ -194,6 +197,27 @@ api "$BASE/api/persistence" >/dev/null
 assert_json "Persistenz-Status zeigt die Backup-Automation" '((.backupAutomation.policy.keepPerStore // 0) >= 1) and ((.backupAutomation.due | type) == "boolean")'
 assert_json "Keine fehlgeschlagenen Sicherungen" '((.backups.failed | length) == 0)'
 assert_status "Unbekannte Persistenz-Aktion wird verweigert" 400 "$(api -X POST -d '{"action":"gibtsnicht"}' "$BASE/api/persistence")"
+
+# ---------------------- 8. Observatory, Warum-Record, Status-Modell
+step "8. Observatory, Warum-Record und Status-Modell (Abschnitt 11/12)"
+assert_status "Observatory lesen" 200 "$(api "$BASE/api/observatory")"
+assert_json "Status-Modell ist vollständig und ohne Lücke" '((.statusModel.total // 0) >= 20) and ((.statusModel.incomplete | length) == 0) and ((.statusModel.duplicateLabels | length) == 0)'
+assert_json "Observatory liefert Aktivitäten als Liste" '(.activities | type) == "array"'
+assert_json "Jede Aktivität nennt ihre Lücken statt sie zu verschweigen" '[.activities[] | select((.gaps | type) != "array")] | length == 0'
+assert_status "Observatory lehnt ungültige Grenze ab" 400 "$(api "$BASE/api/observatory?limit=0")"
+assert_status "Observatory lehnt unbekannte Art ab" 400 "$(api "$BASE/api/observatory?kind=ALLES")"
+code=$(raw "$BASE/api/observatory")
+case "$code" in 401|403|428) ok "Observatory ohne Session → $code";; *) bad "Observatory ohne Session: erwartet 401/403/428, erhalten $code" "$(body)";; esac
+api "$BASE/api/timeline" >/dev/null
+assert_json "Ein echtes Ereignis ist vorhanden" '((.timeline | length) > 0)'
+EVENT_ID="$(jqv '.timeline[0].id')"
+assert_status "Warum-Record eines echten Ereignisses" 200 "$(api "$BASE/api/events/$EVENT_ID/why")"
+assert_json "Warum-Record liefert Kette, Referenzen und benannte Grenzen" '(.found == true) and ((.chain | length) >= 1) and ((.limitations | length) >= 1) and ((.limitations | join(" ")) | test("Gedankenkette"))'
+assert_json "Kette endet beim betrachteten Ereignis" '.chain[-1].eventId == .eventId'
+assert_status "Warum-Record für unbekanntes Ereignis" 404 "$(api "$BASE/api/events/EVT-0000-gibtsnicht/why")"
+assert_status "Warum-Record lehnt ungültige ID ab" 400 "$(api "$BASE/api/events/ungueltig/why")"
+code=$(raw "$BASE/api/events/$EVENT_ID/why")
+case "$code" in 401|403|428) ok "Warum-Record ohne Session → $code";; *) bad "Warum-Record ohne Session: erwartet 401/403/428, erhalten $code" "$(body)";; esac
 
 step "Ergebnis"
 printf "Ergebnis: \033[32m%d bestanden\033[0m, \033[31m%d fehlgeschlagen\033[0m\n" "$PASS" "$FAIL"

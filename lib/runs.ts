@@ -80,7 +80,10 @@ function transition<T extends Run>(run: Run, next: RunState, reason: string, mut
   observe({
     type: `run.${next.toLowerCase()}`,
     message: `Run ${run.runId}: ${next} (${reason})`,
-    status: next === "SUCCEEDED" ? "COMPLETED" : next === "FAILED" || next === "DEAD_LETTER" ? "ERROR" : next === "VERIFYING" ? "TESTING" : "RUNNING",
+    // Das Ereignis trägt den Zustand des Laufs im Status-Modell: Endzustände sind
+    // SUCCEEDED/FAILED, die Verifikation ist VALIDATING (nicht „TESTING“) — der
+    // Unterschied zwischen „wird gerade geprüft“ und „ist belegt/festgestellt“.
+    status: next === "SUCCEEDED" ? "SUCCEEDED" : next === "FAILED" || next === "DEAD_LETTER" ? "FAILED" : next === "VERIFYING" ? "VALIDATING" : "RUNNING",
     actor: run.agentId,
     agentId: run.agentId,
     taskId: run.taskId,

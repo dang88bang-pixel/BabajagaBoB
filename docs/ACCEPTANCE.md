@@ -11,8 +11,8 @@ Eingefroren: 2026-09-25. Quellen: GESAMTAUFTRAG (53 Punkte); docs/MASTER_COMPLET
 
 | Status | Anzahl | Bedeutung |
 |---|---|---|
-| ✅ PASS | 69 | Implementierung + Test + Nachweis vorhanden |
-| 🟡 PARTIAL | 11 | Teilweise umgesetzt, Lücke benannt |
+| ✅ PASS | 72 | Implementierung + Test + Nachweis vorhanden |
+| 🟡 PARTIAL | 8 | Teilweise umgesetzt, Lücke benannt |
 | ❌ FAIL | 0 | Umgesetzt, aber Nachweis fehlgeschlagen |
 | ⚪ NOT_IMPLEMENTED | 2 | Bewusst nicht gebaut (Begründung) |
 | 🔵 NOT_VERIFIED | 3 | Vorhanden, aber Umgebung erlaubt keinen Nachweis |
@@ -33,7 +33,7 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 | AUTH-001 | Autorisierung | Authority ist fail closed: Bindung an Task, Sandbox, Umgebung, Risiko, Ablauf; keine Selbstvergabe, keine Wildcards. | `lib/authority.ts`<br>`lib/policy.ts` | `tests/security/authority.test.ts` (13) | `GET /api/authority` | — | ✅ |
 | AUTH-002 | Autorisierung | Capability-Token sind einmalig nutzbar (Wiederholungssperre, Vorprüfung ≠ Verbrauch). | `lib/authority.ts`<br>`lib/execution-gate.ts` | `tests/security/token-replay.test.ts` (5) | `GET /api/authority` | — | ✅ |
 | AUTH-003 | Autorisierung | Leseantworten liefern keine Token-Hashes (Leseprojektion). | `lib/authority.ts` | `tests/security/token-read-projection.test.ts` (4) | `GET /api/capabilities` | Security | ✅ |
-| AUTH-004 | Autorisierung | Jede Route prüft je Methode eine konkrete Aktion; direkter Handler-Aufruf ohne Gate ist verweigert. | `lib/api/api-gate.ts`<br>`lib/api/guard.ts` | `tests/security/api-route-contract.test.ts` (5)<br>`tests/security/direct-route-denial.test.ts` (4)<br>`tests/security/route-guards.test.ts` (6) | `scripts/verify-live.sh` | — | ✅ |
+| AUTH-004 | Autorisierung | Jede Route prüft je Methode eine konkrete Aktion; direkter Handler-Aufruf ohne Gate ist verweigert. | `lib/api/guard.ts`<br>`lib/api/api-gate.ts`<br>`app/api/approvals/center/route.ts`<br>`app/api/workshop/execute/route.ts` | `tests/security/api-route-contract.test.ts` (5)<br>`tests/security/direct-route-denial.test.ts` (4)<br>`tests/security/route-guards.test.ts` (6) | `scripts/verify-live.sh`<br>`scripts/audit-api.sh` | — | ✅ |
 | BOOT-001 | Creator-Bootstrap | Bootstrap genau einmal, ohne Hardcoding, mit Session-Kopplung und Creator-Authority. | `lib/bootstrap.ts`<br>`lib/creator-auth.ts`<br>`app/api/auth/route.ts` | `tests/security/creator-login.test.ts` (5) | `GET /api/auth` | Overview | ✅ |
 | BOOT-002 | Creator-Bootstrap | Zweiter Faktor (TOTP) und Sperre nach Fehlversuchen sind erzwungen. | `lib/totp.ts`<br>`lib/creator-auth.ts` | `tests/security/creator-totp.test.ts` (9)<br>`tests/security/creator-login-lockout.test.ts` (1) | `scripts/verify-live.sh` | — | ✅ |
 | EVT-001 | Event-Fabric | Ein kanonisches, append-only Ereignis-Log mit Sequenz, Kausalrichtung und Integritätskette; keine zweite Wahrheit. | `lib/events/log.ts`<br>`lib/event-store.ts`<br>`lib/observability.ts` | `tests/integration/event-audit-linkage.test.ts` (2) | `GET /api/events` | Timeline | ✅ |
@@ -46,7 +46,7 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 | GATE-003 | Execution Gate | Keine Shell-Strings: argv[] mit shell:false; Interpreter und Metazeichen sind verboten. | `lib/argv-policy.ts`<br>`lib/runtime-local.ts` | `tests/security/argv-policy.test.ts` (6) | `scripts/verify-live.sh` | — | ✅ |
 | OCI-001 | OCI-Härtung | OCI-Sandbox mit Härtungsflags, Snapshot/Restore und Quota-Durchsetzung.<br><small>Kein Container-Daemon in der Umgebung (Docker/Podman-Downloads gesperrt); Flags sind definiert, aber nicht real ausgeführt.</small> | `lib/oci-runtime.ts` | — | — | — | 🔵 |
 
-## P1 (17/20 PASS)
+## P1 (20/20 PASS)
 
 | ID | Bereich | Anforderung | Implementierung | Test | Nachweis | UI | Status |
 |---|---|---|---|---|---|---|---|
@@ -63,10 +63,10 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 | REC-001 | Recovery | Recovery-Pläne mit Checkpoint, Tier-Klassifikation und Verifikation; abgelehnte Verifikation ist sichtbar. | `lib/recovery-orchestrator.ts`<br>`lib/recovery-tier.ts`<br>`lib/reliability.ts` | `tests/unit/recovery-tier.test.ts` (6) | `GET /api/reliability` | Recovery | ✅ |
 | REG-001 | Regression | Regression-Engine: leere Suite ist ein Fehlschlag, Fehlschlag blockiert die Promotion, Tests sind dauerhaft registriert. | `lib/regression.ts`<br>`lib/promotion.ts` | `tests/regression/regression-engine.test.ts` (5) | `GET /api/cicd` | Regression | ✅ |
 | KNO-001 | Wissen | Knowledge Graph mit vier Schichten, negativem Wissen („Never Again“) und Herkunftsbindung. | `lib/knowledge.ts` | `tests/unit/control-plane.test.ts` (7) | `GET /api/knowledge` | Knowledge | ✅ |
-| STA-001 | Status-Modell | Ein einheitliches Status-Modell für Aktionen und Ressourcen, das in der Oberfläche durchgängig verwendet wird.<br><small>14 Zustände sind typisiert und in Tabellen/Badges sichtbar; es fehlen die Zustände OBSERVING/VALIDATING/SUCCEEDED/FAILED/BUG und ein Nachweis, dass jede UI-Funktion sie nutzt.</small> | `lib/types.ts`<br>`lib/status.ts` | `tests/regression/ui-contract.test.ts` (5) | — | Queue, Runs, Agents | 🟡 |
-| OBS-001 | Agent Observatory | Observatory je Aktivität: Objective, Observation, Hypothese, Aktion, Erwartung, Ergebnis, Evidenz, Schlussfolgerung, nächster Schritt.<br><small>Ereignisse tragen Zweck, Akteur, Entscheidung, Referenzen und Kausalkette (Grundlage des „Why?“); eine aggregierte Observatory-Ansicht je Aktivität mit Erwartung/Ergebnis fehlt.</small> | `lib/observability.ts`<br>`lib/events/log.ts` | `tests/integration/event-audit-linkage.test.ts` (2) | — | Timeline, Agents | 🟡 |
+| STA-001 | Status-Modell | Ein einheitliches Status-Modell für Aktionen und Ressourcen, das in der Oberfläche durchgängig verwendet wird. | `lib/types.ts`<br>`lib/status.ts` | `tests/unit/status-model.test.ts` (5)<br>`tests/regression/ui-contract.test.ts` (6) | `GET /api/observatory` | Queue, Runs, Agents, Observatory | ✅ |
+| OBS-001 | Agent Observatory | Observatory je Aktivität: Objective, Observation, Hypothese, Aktion, Erwartung, Ergebnis, Evidenz, Schlussfolgerung, nächster Schritt. | `lib/observatory.ts`<br>`app/api/observatory/route.ts`<br>`lib/events/log.ts`<br>`lib/science.ts` | `tests/integration/observatory-why.test.ts` (8) | `GET /api/observatory`<br>`scripts/audit-api.sh` | Timeline, Agents, Observatory | ✅ |
 | TL-001 | Timeline/Replay | Zeitachse und Replay einer Kausalkette sind über API und UI abrufbar. | `lib/events/log.ts`<br>`lib/observability.ts` | `tests/integration/event-audit-linkage.test.ts` (2) | `GET /api/timeline` | Timeline | ✅ |
-| WHY-001 | Why-Record | Strukturierte Begründung je Aktion (Zweck, Entscheidung, Referenzen, Kausalkette) statt verborgener Gedankenkette.<br><small>Der Why-Record ist als Ereignisfeld vorhanden (purpose/decision/authorizationRef/provenanceRef/causalParentId); eine eigene Abfrage „Warum wurde das gemacht?“ über mehrere Ereignisse fehlt.</small> | `lib/observability.ts`<br>`lib/events/log.ts` | `tests/integration/event-audit-linkage.test.ts` (2) | — | Timeline | 🟡 |
+| WHY-001 | Why-Record | Strukturierte Begründung je Aktion (Zweck, Entscheidung, Referenzen, Kausalkette) statt verborgener Gedankenkette. | `lib/observatory.ts`<br>`lib/events/log.ts`<br>`app/api/events/[id]/why/route.ts` | `tests/integration/observatory-why.test.ts` (8) | `scripts/audit-api.sh` | Timeline | ✅ |
 | APR-001 | Approval Center | Kritische Änderungen verlangen Freigabe mit Was/Warum/Wirkung/Risiken/Tests/Rollback; ohne Freigabe keine Wirkung. | `lib/approvals.ts`<br>`app/api/approvals/center/route.ts` | `tests/security/api-route-contract.test.ts` (5) | `GET /api/approvals`<br>`GET /api/approvals/center` | Approvals | ✅ |
 | INB-001 | Creator-Inbox | Die Creator-Inbox kennt INFORM/ASK/BLOCK/ESCALATE und kann nur vom Creator beantwortet werden. | `lib/inbox.ts` | `tests/security/inbox-route.test.ts` (4) | `GET /api/inbox` | Inbox | ✅ |
 | GOV-001 | Governance | Kill Switches wirken auf den gesamten Ausführungspfad bis in interne Läufe; Lockdown hält Ausführung an. | `lib/governance.ts`<br>`lib/system-execution.ts` | `tests/security/gate-bypass.test.ts` (3) | `GET /api/governance` | Governance | ✅ |

@@ -1,10 +1,21 @@
 import {NextResponse} from "next/server";
 import {approvalGranted,createApproval,getApproval,listApprovals,resolveApprovalRequest} from "@/lib/approvals";
 import {actionField,readJson,stringArray,stringField,requireCapability} from "@/lib/request-validation";
+import {guardOrDeny} from "@/lib/api/api-gate";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
-export async function GET(){return NextResponse.json({approvals:listApprovals()},{headers:{"Cache-Control":"no-store"}})}
+/**
+ * Freigabe-Center (Abschnitt 20). Beide Methoden prüfen ihre Aktion selbst:
+ * `GET` verlangt `approval:read`, `POST` verlangt `approval:write`. Zuvor fehlte
+ * diese Prüfung (nur die Middleware schützte die Route) — der strukturelle
+ * Routenvertrag hat die Lücke aufgedeckt.
+ */
+export async function GET(request:Request){
+ const denied=guardOrDeny(request,{action:"approval:read"});if(denied)return denied;
+ return NextResponse.json({approvals:listApprovals()},{headers:{"Cache-Control":"no-store"}});
+}
 export async function POST(req:Request){
+ const denied=guardOrDeny(req,{action:"approval:write"});if(denied)return denied;
  try{
   const b=await readJson(req);
   const action=actionField(b,["create","resolve","check"]);

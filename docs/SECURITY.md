@@ -84,8 +84,17 @@ Rechte erzeugen noch den Broker umgehen.
   Regressionstests: `tests/security/route-guards.test.ts` (428/401/403 `CREATOR_ONLY`, `CAPABILITY_DENIED`,
   CSRF, Audit-Integrität).
 - **Strukturell abgesichert:** `tests/security/api-route-contract.test.ts` erzwingt, dass jede Route außer
-  `/api/auth` eine konkrete Aktion prüft und keine Route `publicAction` setzt – eine neue Route ohne
-  Aktionsprüfung lässt den Test fehlschlagen (Regression statt Lücke).
+  `/api/auth` **je exportierter Methode** eine konkrete Aktion prüft und keine Route `publicAction` setzt –
+  eine neue Route ohne Aktionsprüfung lässt den Test fehlschlagen (Regression statt Lücke). Die Prüfung
+  läuft **rekursiv** und erfasst damit auch verschachtelte Routen; genau das hat zwei bestehende Lücken
+  aufgedeckt und behoben:
+  - `app/api/approvals/center` (GET/POST) hatte keine eigene Aktionsprüfung → jetzt `approval:read` /
+    `approval:write`; die Capability-Pflicht (`approval:resolve` mit Token) bleibt zusätzlich bestehen.
+  - `app/api/workshop/execute` (GET/POST) war ungeschützt und nahm einen rohen JSON-Body an → jetzt
+    `workshop:read` bzw. `workshop:execute` mit Agent-Capability `workshop:step`, Nutzdaten über
+    `readJson`/`field`-Prüfungen und `actionField` (nur die acht bekannten Werkstattschritte).
+  Beide Routen waren durch die Middleware (Session-Pflicht) nicht offen für anonyme Aufrufe, aber sie
+  prüften ihre Aktion nicht selbst — der Vertrag verlangt beides.
 - **Betriebsdaten sind geschlossen:** `/api/metrics` verlangt eine Session und exponiert ausschließlich
   Zähler (keine Token-IDs, Subjekte oder Inhalte). Backups sind auf `<BOB_STORAGE_DIR>/backups` beschränkt
   und werden vor einem Restore digest- und versionsgeprüft (manipuliert → 409, fail closed).
@@ -198,6 +207,22 @@ vergleichbar, ohne Geheimnisse zu kopieren. Getestet in `tests/integration/execu
 - Erfolg ohne Nachweis ist ausgeschlossen: Root Cause verlangt Evidenz, Verifikation verlangt Snapshot und
   bestandene Regression, Recovery ohne Verifikation wird `REJECTED`.
 
+### „Warum?“-Record (`GET /api/events/[id]/why`)
+
+Die Frage „warum wurde das gemacht?“ wird serverseitig aus dem Ereignis-Log beantwortet, nicht aus
+Modellausgaben: `lib/observatory.ts` liefert Zweck (`purpose`), Entscheidung (`decision`), Akteur,
+Aktion, Ergebnis, Autorisierungsreferenz, Provenance-Referenz und die Kausalkette bis zur Wurzel.
+
+- **Keine Gedankenkette:** Es gibt kein Feld für verborgene Überlegungen. Was nicht dokumentiert ist,
+  wird in `limitations` benannt (fehlender Zweck, kein kausaler Vorgänger, fehlende Autorisierungs-
+  referenz, abgeschnittene Kette bei 50 Ereignissen).
+- **Kein Schreibpfad:** Der Record ist eine reine Projektion (Ereignis-Log, Evidenz, Wissen,
+  Provenance); er erzeugt keine Ereignisse und ändert keinen Zustand.
+- **Grenzen der Auskunft:** Eingabe-IDs werden streng validiert (`EVT-…`), ungültige IDs sind **400**,
+  unbekannte Ereignisse **404**, ohne Session **401**. Der Record erscheint ausschließlich nach
+  Autorisierung im Browser (Timeline-Abschnitt, Knopf „Warum?“) und enthält keine Geheimnisse.
+- **Nachweis:** `tests/integration/observatory-why.test.ts`, live `scripts/audit-api.sh` Abschnitt 8.
+
 ## 9. Verifikation
 
 Nachweisende Tests: `tests/security/authority.test.ts`, `tests/security/token-replay.test.ts`
@@ -213,9 +238,9 @@ echtes HTTP), `tests/security/inbox-route.test.ts`,
 `tests/security/gate-bypass.test.ts`, `tests/security/token-read-projection.test.ts` (kein
 `secretHash` in Leseantworten), `tests/security/device-enrollment.test.ts` (Enrollment fail closed,
 kein Selbst-Grant, Geheimnis nie in Antworten), `tests/e2e/creator-flow.test.ts`,
-`tests/e2e/failure-recovery.test.ts` (**17 Dateien / 106 Tests** in der Security-Suite, 48 Dateien /
-294 Tests gesamt) und der Live-Nachweis `scripts/verify-live.sh` (**176 Prüfungen / 0 Fehler** auf der
-Frischinstanz mit aktiver Kernel-Isolation) sowie `scripts/audit-ui.mjs` (**88 / 0**, u. a. „kein
+`tests/e2e/failure-recovery.test.ts` (**17 Dateien / 109 Tests** in der Security-Suite, 51 Dateien /
+314 Tests gesamt) und der Live-Nachweis `scripts/verify-live.sh` (**174 Prüfungen / 0 Fehler** auf der
+Instanz mit aktiver Kernel-Isolation) sowie `scripts/audit-ui.mjs` (**89 / 0**, u. a. „kein
 Geheimnisfeld in einer Antwort an den Browser", „kein Gerät ohne Creator-Freigabe autorisiert").
 Zusammenfassung: `docs/TESTING.md`. Offene, als `PARTIAL`/`UNVERIFIED` gekennzeichnete Punkte sind dort und in
 `docs/TODO.md` gelistet.

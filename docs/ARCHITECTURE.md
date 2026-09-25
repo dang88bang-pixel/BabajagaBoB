@@ -156,7 +156,33 @@ Das Control Center zeigt:
 - Simulation
 - Replay
 
-Jeder operative Zustand soll sichtbar sein: `RUNNING`, `EXPERIMENT`, `TESTING`, `APPROVAL_REQUIRED`, `BLOCKED`, `ERROR`, `RECOVERING`, `COMPLETED`.
+### Status-Modell (`lib/status.ts`)
+
+Es gibt genau eine Zuordnung von Zustand → Anzeigetext, Farbe, Gruppe und Ergebnis. Sie ist als
+`Record<Status, StatusMeta>` typisiert: Ein neuer Zustand in `lib/types.ts` ohne Eintrag ist ein
+Compile-Fehler, kein stilles „—" in der Oberfläche. 20 Zustände sind beschrieben, davon vier
+endgültig (`SUCCEEDED`, `FAILED`, `COMPLETED`, `CANCELLED`). Die Oberfläche rendert Zustände
+ausschließlich über `statusLabel`/`statusTone` (Badge und Tabellenspalten `status`/`state`); Werte
+außerhalb des Modells werden als Text gezeigt und nie eingefärbt. `statusModelReport()` meldet das
+Modell zur Laufzeit über `GET /api/observatory` (`statusModel`), damit die Vollständigkeit prüfbar ist.
+
+Produzenten der Zustände sind die echten Pfade: Laufzustände (`lib/runs.ts` — Abschluss `SUCCEEDED`,
+Fehlschlag `FAILED`, Verifikation `VALIDATING`), Messläufe (`lib/science.ts` — `OBSERVING`),
+Kausalprüfung (`SUCCEEDED`/`FAILED`) und die Defekt-Klassifikation der Fehlerintelligenz
+(`lib/error-intelligence.ts` — `BUG`, wenn der festgestellte Grund eigenen Code benennt; Umgebungs- und
+Datenfehler bleiben `ERROR`).
+
+### Agent Observatory und „Warum?“ (Abschnitt 11/12)
+
+`lib/observatory.ts` projiziert je Aktivität (Run, Experiment, Task) neun Felder aus dem Ereignis-Log
+und den Stores: Ziel, Beobachtung, Hypothese, Aktion, Erwartung, Ergebnis, Evidenz, Schlussfolgerung,
+nächster Schritt. Die Projektion schreibt nichts und erfindet nichts: Was fehlt, steht als `gaps` am
+Datensatz. `GET /api/events/[id]/why` beantwortet „warum?“ mit Zweck, Entscheidung, Referenzen und der
+Kausalkette bis zur Wurzel — strukturiert statt als Gedankenkette, mit ausdrücklich benannten Grenzen.
+
+Jeder operative Zustand ist sichtbar: `QUEUED`, `PLANNING`, `RUNNING`, `THINKING`, `EXECUTING`,
+`EXPERIMENT`, `TESTING`, `OBSERVING`, `VALIDATING`, `WAITING`, `BLOCKED`, `APPROVAL_REQUIRED`, `ERROR`,
+`BUG`, `RECOVERING`, `ROLLING_BACK`, `SUCCEEDED`, `FAILED`, `COMPLETED`, `CANCELLED`.
 
 ## 12. Grundsatz
 

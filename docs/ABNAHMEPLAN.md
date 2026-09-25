@@ -7,12 +7,16 @@
 **Letzter Prüferlauf:** 2026-09-25 → **15 Prüfungen bestanden, 0 fehlgeschlagen**; die
 Abnahme-Selbsttests `tests/unit/acceptance-matrix.test.ts` (4/4) und
 `tests/e2e/acceptance-chain.test.ts` (4/4, 18 Stufen) laufen mit.
-**Live-Prüferlauf** gegen die neu aufgebaute Instanz `:3100` (cgroup-delegiert,
-`BOB_NS_ISOLATION=on`, `BOB_DEVICE_ENROLLMENT_SECRET` gesetzt):
-`node scripts/acceptance.mjs --live` → **80 bestanden / 0 fehlgeschlagen**, davon
-**64/64 Routen-Nachweise** mit Creator-Session. Zwei Nachweise waren zuerst falsch
+**Live-Prüferlauf** gegen die Instanz `:3100` (cgroup-delegiert, `BOB_NS_ISOLATION=on`,
+`BOB_DEVICE_ENROLLMENT_SECRET` gesetzt):
+`node scripts/acceptance.mjs --live` → **82 bestanden / 0 fehlgeschlagen**, davon
+**66/66 Routen-Nachweise** mit Creator-Session. Zwei Nachweise waren zuerst falsch
 modelliert (GET auf `POST`-Routen → 405) und wurden in der Matrix korrigiert — der
 Prüfer wurde nicht abgeschwächt.
+**Stand der Umsetzung:** P0 vollständig (außer `OCI-001`, extern), **P1 abgeschlossen**
+(Status-Modell, Observatory und „Warum?" sind implementiert, getestet und live belegt),
+P4 ohne offene Pflicht (Fehlerinjektion, Sabotageautomatisierung und Dauerlauf bleiben
+benannte Lücken), P2/P3/P5 mit dokumentierten externen Abhängigkeiten bzw. Entscheidungen.
 
 ---
 
@@ -53,7 +57,7 @@ zuerst, keine Funktionalität „später füllen".
 | Phase | Inhalt | Anforderungen (Matrix) | Zustand |
 |---|---|---|---|
 | **P0** | Spezifikation einfrieren, Repository/CI, Authentifizierung/Autorisierung, Creator-Bootstrap, Event+Audit+Provenance, Execution Gate + Broker, OCI-Härtung | `SPEC-001`, `CI-001`, `AUTH-001…004`, `BOOT-001/002`, `EVT-001/002`, `AUD-001/002`, `PROV-001`, `GATE-001…003`, `OCI-001` | 16/17 PASS, OCI `NOT_VERIFIED` |
-| **P1** | Autonome Laufzeit: Queue/Worker/Run, Sandbox-Lebenszyklus, Snapshot/Restore, Fehlerintelligenz, Recovery-Verifikation, Experimente, Kausalvalidierung, Regression, Wissen, Status, Observatory, Timeline/Replay, Why, Approvals | `Q-001…003`, `SB-001…004`, `EXP-001`, `SCI-001`, `ERR-001`, `REC-001`, `REG-001`, `KNO-001`, `STA-001`, `OBS-001`, `TL-001`, `WHY-001`, `APR-001`, `INB-001`, `GOV-001` | 17/20 PASS, 3 `PARTIAL` (Status, Observatory, Why) |
+| **P1** | Autonome Laufzeit: Queue/Worker/Run, Sandbox-Lebenszyklus, Snapshot/Restore, Fehlerintelligenz, Recovery-Verifikation, Experimente, Kausalvalidierung, Regression, Wissen, Status, Observatory, Timeline/Replay, Why, Approvals | `Q-001…003`, `SB-001…004`, `EXP-001`, `SCI-001`, `ERR-001`, `REC-001`, `REG-001`, `KNO-001`, `STA-001`, `OBS-001`, `TL-001`, `WHY-001`, `APR-001`, `INB-001`, `GOV-001` | **20/20 PASS** |
 | **P2** | Fabric: Runtime-Registry, Werkzeuge, Skills, Werkstatt, Provider, Geräte, Computer Use, Simulation, Offline, betriebliche Wiederherstellung | `RT-001`, `TOOL-001`, `SKILL-001`, `WS-001`, `PROVF-001/002`, `DEV-001/002`, `CU-001`, `SIM-001`, `OFF-001`, `OPR-001/002` | 9/13 PASS, Computer Use/Geräte `PARTIAL`, Provider live `NOT_VERIFIED`, Offline `NOT_IMPLEMENTED` |
 | **P3** | Control Center vollständig an echte Daten, Visualisierung, Status/Progress, Observability, Approvals, Security, Integrationen | `UI-001…003` | 2/3 PASS, Browser `NOT_VERIFIED` |
 | **P4** | Verifikation: Pyramide, Regression, Fehlerinjektion, Betriebs-/Lastnachweis, die vier §49-Abnahmen | `TEST-001…004`, `LIVE-001`, `LOAD-001`, `ACC-001…004`, `CH-01…CH-18` | PASS mit drei benannten Lücken (Fehlerinjektion, Sabotage-Automatisierung, Dauerlauf) |
@@ -79,11 +83,15 @@ Punkte 2, 6 und 9 werden **maschinell** geprüft; 1, 3–5, 7, 8 über die verla
 
 | Status | Anzahl | Anteil | Bedeutung im Projekt |
 |---|---|---|---|
-| ✅ PASS | 69 | 81 % | mit Implementierung, Test, Nachweis |
-| 🟡 PARTIAL | 11 | 13 % | Lücke benannt (Universal Status, Observatory, Why, Geräte-Scheduling, Computer-Use-Treiber, Deployment/Rollback, Fehlerinjektion, Sabotage-Automatisierung, Dauerlauf, OCI-Platzhalter) |
+| ✅ PASS | 72 | 85 % | mit Implementierung, Test, Nachweis |
+| 🟡 PARTIAL | 8 | 9 % | Lücke benannt (Geräte-Scheduling `DEV-001`, Computer-Use-Treiber `CU-001`, Fehlerinjektion `TEST-003`, Sabotage-Automatisierung `TEST-004`, Dauerlauf `LOAD-001`, Deployment/Rollback `OPS-003` und `CH-15`, Checkpointing `CH-04`) |
 | 🔵 NOT_VERIFIED | 3 | 4 % | OCI-Runtime (`OCI-001`), Provider-Live-Verbindung (`PROVF-002`), Browser-E2E (`UI-003`) |
 | ⚪ NOT_IMPLEMENTED | 2 | 2 % | Offline Fabric (`OFF-001`), Betriebshärtung (`OPS-004`) |
 | ❌ FAIL / ⛔ BLOCKED | 0 | — | keine |
+
+Stand `node scripts/acceptance.mjs` (statisch, 15/0) und `… --live` (82/0): die drei
+zuvor offenen P1-Anforderungen `STA-001`, `OBS-001` und `WHY-001` sind auf **PASS** gehoben —
+mit Implementierung, Test und Route-Nachweis, nicht durch Statusänderung allein.
 
 Die vollständige Tabelle steht in `docs/ACCEPTANCE.md` (generiert), die Einzelbegründungen in
 `docs/acceptance/requirements.json` (`note`-Feld).
@@ -92,11 +100,10 @@ Die vollständige Tabelle steht in `docs/ACCEPTANCE.md` (generiert), die Einzelb
 
 - **Deployment** (`CH-15`/`OPS-003`): Promotion-Gates existieren, ein Ausrollvorgang mit
   Health-Check und Rollback nicht. Solange fehlt der letzte Schritt der Zielkette.
-- **Universal Status** (`STA-001`): 14 Zustände sind typisiert, aber nicht jeder UI-Zustand nutzt
-  sie durchgängig; `OBSERVING`/`VALIDATING`/`SUCCEEDED`/`FAILED`/`BUG` fehlen.
-- **Observatory/Why** (`OBS-001`, `WHY-001`): die Datenbasis (Zweck, Entscheidung, Referenzen,
-  Kausalkette) ist im Ereignis vorhanden, eine aggregierte „Warum?"-Abfrage über mehrere
-  Ereignisse fehlt.
+- **Dauerlauf/Sabotage** (`LOAD-001`, `TEST-004`): Lastspitzen sind gemessen (Soak mit
+  p95-Budget), ein Betrieb über Stunden und automatisch in CI ausgeführte Sabotageproben fehlen.
+- **Geräte-Scheduling/Computer-Use-Treiber** (`DEV-001`, `CU-001`): Discovery, Autorisierung und
+  Freigabe sind umgesetzt; echte Treiber bzw. Ressourcenplanung fehlen ohne Umgebung.
 
 ## 4a. Reparaturen am eingefrorenen Rahmen (2026-09-25, Abnahme-Runde)
 
@@ -106,20 +113,26 @@ reparariert, **ohne** eine Prüfung abzuschwächen:
 
 | Fund | Ursache | Behebung |
 |---|---|---|
+| **Zwei Routen ohne Aktionsprüfung** (P1-Runde) | `tests/security/api-route-contract.test.ts` prüfte nur die erste Verzeichnisebene; `app/api/approvals/center` und `app/api/workshop/execute` lagen darunter und hatten **keine** eigene Aktionsprüfung (nur die Middleware schützte sie). Die Prüfung wurde **verschärft** (rekursiv) und fand die Lücke sofort | `approvals/center`: `approval:read` / `approval:write` + bestehende Capability-Pflicht; `workshop/execute`: `workshop:read` / `workshop:execute` + Capability `workshop:step`, Nutzdaten über `readJson`/`actionField`. Kein Test abgeschwächt |
+| **Doppelter React-Key in der Oberfläche** | Die Delegations-Tabelle nutzte `entry.id`, das Datenmodell führt aber `delegationId` — zwei Delegationen ergaben denselben Key `undefined` | Key und Anzeige auf `delegationId` (mit Rückfall) umgestellt; die React-Warnung ist im UI-Test verschwunden |
+| **`curl` interpretierte `[id]` als Zeichenbereich** | `scripts/audit-api.sh` rief die dynamische Route wörtlich ab; curl sendete die Anfrage wegen URL-Globbing gar nicht, zusätzlich behandelte `case` in der Shell `[id]` als Zeichenklasse | `curl -g` in `api()`/`raw()`, Pflichtparameter-Vergleich per Zeichenkettenvergleich statt `case`-Glob; die dynamische Route wird in Abschnitt 8 mit einer echten Ereignis-ID geprüft |
 | CI „Lint und Typecheck" rot | `tests/security/causal-integrity.test.ts` benutzte eine veraltete Modul-API (`runExperiment` positional, `addEvidence` ohne `knowledgeState`), `tests/integration/event-audit-linkage.test.ts` importierte ungenutzt, `scripts/acceptance.mjs` hatte toten Code | Test auf die echte API umgebaut (reale Sandbox, Token je Lauf wegen Einmalverwendung), tote Importe entfernt |
 | CI „Security" rot | derselbe Kausal-Test „requires accepted, evidenced baseline/control/replication observations" schlug fehl, weil ohne Sandbox/Token keine akzeptierten Läufe entstanden — die Kausalprüfung stufte korrekt nicht auf `ESTABLISHED` | Test baut jetzt reale, autorisierte Läufe auf und erwartet **zusätzlich** die Zwischenzustände (`HYPOTHESIS`, „no evidence recorded") — die Prüfung wurde dadurch strenger, nicht lockerer |
 | Prüfer rot | `tests/e2e/acceptance-chain.test.ts` (ACC-004) fehlte noch | Kettentest über alle 18 Stufen geschrieben (API, Persistenz, Audit, Provenance je Stufe) |
 
 ## 5. Reihenfolge für die nächsten Arbeiten
 
-Phase 0 (Abnahme-Framework) ist damit **abgeschlossen**: Matrix eingefroren, Prüfer 0 Verstöße,
-Selbsttests grün, `docs/ACCEPTANCE.md` generiert.
+Phase 0 (Abnahme-Framework) und **Phase 1 (autonome Laufzeit) sind abgeschlossen**: Matrix
+eingefroren, Prüfer 0 Verstöße, Selbsttests grün, `docs/ACCEPTANCE.md` generiert, Status-Modell
+vollständig, Observatory und „Warum?" live belegt.
 
 Streng in dieser Ordnung, jeweils mit Nachweis (Tests + Live-Lauf + Doku):
 
-1. **P1-Abschluss:** `OBSERVING`/`VALIDATING`/`SUCCEEDED`/`FAILED`/`BUG` in `lib/types.ts`,
-   Statusprüfer („nutzt jede UI-Funktion das Modell?"), Observatory-Aggregation und
-   „Warum?"-Abfrage (`GET /api/events/:id/why`, Kausalkette + Zwecke + Referenzen).
+1. ~~**P1-Abschluss:** Status-Modell, Observatory-Aggregation und „Warum?"-Abfrage.~~
+   **Abgeschlossen (2026-09-25):** 20 Zustände in `lib/status.ts` mit erzwungener Vollständigkeit,
+   `GET /api/observatory` (neun Felder je Aktivität, Lücken benannt), `GET /api/events/[id]/why`
+   (Kausalkette + Zweck + Referenzen + Grenzen); Nachweise: `tests/unit/status-model.test.ts`,
+   `tests/integration/observatory-why.test.ts`, `scripts/audit-api.sh` Abschnitt 8.
 2. **P5-Kern:** Deployment-Objekt (Ausrollen, Health-Check, Rollback, Kill-Switch-Bindung) mit
    Route, UI und Tests — damit ist die Zielkette vollständig.
 3. **P4-Härtung:** Fehlerinjektion (Serverprozess-Abbruch, Netzwerkverlust, konkurrierende

@@ -7,6 +7,12 @@
  * eventId, evidenceId, incidentId, recoveryId, regressionId, knowledgeId.
  */
 
+/**
+ * Einheitliches Status-Modell (Abschnitt 5). Die vollständige Beschreibung jedes
+ * Zustands (Anzeigetext, Farbe, Gruppe, Ergebnis) steht in `lib/status.ts`; dort
+ * ist die Zuordnung als `Record<Status, …>` erzwungen, damit kein Zustand ohne
+ * Darstellung existieren kann. Neue Zustände werden hier ergänzt, nicht in der UI.
+ */
 export type Status =
   | "QUEUED"
   | "PLANNING"
@@ -15,12 +21,17 @@ export type Status =
   | "EXECUTING"
   | "EXPERIMENT"
   | "TESTING"
+  | "OBSERVING"
+  | "VALIDATING"
   | "WAITING"
   | "BLOCKED"
   | "APPROVAL_REQUIRED"
   | "ERROR"
+  | "BUG"
   | "RECOVERING"
   | "ROLLING_BACK"
+  | "SUCCEEDED"
+  | "FAILED"
   | "COMPLETED"
   | "CANCELLED";
 

@@ -33,3 +33,24 @@ form button{justify-self:start;font-size:11px;padding:10px 14px;border:1px solid
   border-radius: 6px;
   background: #ffffff;
 }
+
+/* Status-Modell (lib/status.ts): jede Zustandsfarbe kommt aus einem Tone-Namen.
+   Neue Zustände erhalten hier ihre Farbe — es gibt keine zweite Farbquelle. */
+.badge.queued i,.badge.planning i{background:#8d97a8}
+.badge.running i,.badge.experiment i,.badge.executing i,.badge.succeeded i{background:#6fd39a}
+.badge.thinking i,.badge.observing i,.badge.validating i,.badge.testing i{background:#6fb8d3}
+.badge.waiting i,.badge.approval-required i{background:#e0b168}
+.badge.blocked i,.badge.recovering i,.badge.rolling-back i{background:#c58ce0}
+.badge.error i,.badge.bug i,.badge.failed i{background:#ed737d}
+.badge.completed i,.badge.cancelled i,.badge.unknown i{background:#8793a5}
+.badge{background:#141922}
+
+.whyButton{font-size:9px;border:1px solid #303744;border-radius:6px;padding:5px 8px}
+.whyPanel{margin:0 0 10px 22px;padding:11px 13px;border-left:2px solid #2b3444;background:#0d1117;border-radius:0 8px 8px 0;font-size:11px}
+.whyPanel small{display:block;margin:9px 0 4px;color:#697384;font-size:9px;letter-spacing:1.4px;text-transform:uppercase}
+.whyGrid{display:grid;grid-template-columns:170px 1fr;gap:5px 12px;font-size:11px;color:#a9b3c1}
+.whyGrid span{color:#6f7a8c}
+.whyChain{margin:0;padding-left:17px;color:#9aa4b2;line-height:1.65}
+.whyChain code{color:#8fd6ac}
+.whyLimits{color:#c39a6a}
+.whyError{color:#ef9aa5}
