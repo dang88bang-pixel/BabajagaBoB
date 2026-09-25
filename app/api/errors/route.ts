@@ -2,6 +2,7 @@ import {NextResponse} from "next/server";
 import {createErrorIncident,errorSummary,escalateError,establishRootCause,investigateError,learnFromError,listErrorIncidents,transitionError} from "@/lib/error-intelligence";
 import {actionField,readJson,stringArray,stringField} from "@/lib/request-validation";
 import {requireControlPlaneAuth} from "@/lib/control-auth";
+import type {ErrorLifecycle} from "@/lib/error-intelligence";
 export const runtime="nodejs"; export const dynamic="force-dynamic";
 export async function GET(){return NextResponse.json({incidents:listErrorIncidents(),summary:errorSummary()},{headers:{"Cache-Control":"no-store"}})}
 export async function POST(req:Request){
@@ -10,7 +11,7 @@ export async function POST(req:Request){
   const b=await readJson(req);
   const action=actionField(b,["create","transition","investigate","experiment","recovery","recovery.execute","recovery.verify","evidence","root_cause","learn","escalate"]);
   if(action==="create"){if(!b.input||typeof b.input!=="object"||Array.isArray(b.input))throw new Error("input required");return NextResponse.json(createErrorIncident(b.input as never),{status:201});}
-  if(action==="transition")return NextResponse.json(transitionError(stringField(b,"id",128),stringField(b,"status",64),b.patch as never));
+  if(action==="transition")return NextResponse.json(transitionError(stringField(b,"id",128),stringField(b,"status",64) as ErrorLifecycle,b.patch as never));
   if(action==="investigate")return NextResponse.json(await investigateError(stringField(b,"id",128)));
   if(action==="experiment"){const {startExperiment}=await import("@/lib/error-intelligence");return NextResponse.json(startExperiment(stringField(b,"id",128),stringField(b,"objectiveId",128)),{status:201});}
   if(action==="recovery"){const {prepareErrorRecovery}=await import("@/lib/error-intelligence");return NextResponse.json(await prepareErrorRecovery(stringField(b,"id",128)),{status:201});}
