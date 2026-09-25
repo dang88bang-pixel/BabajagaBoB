@@ -1,3 +1,4 @@
+import {requireControlPlaneAuth} from "@/lib/control-auth";
 import {NextResponse} from "next/server";
 import {addEvidence,createDecision,createExperiment,createObjective,listScience,runExperiment,updateExperiment,validateCausalChain} from "@/lib/science";
 import {actionField,readJson,stringArray,stringField} from "@/lib/request-validation";
@@ -5,6 +6,8 @@ export const runtime="nodejs";
 export const dynamic="force-dynamic";
 export async function GET(){return NextResponse.json(listScience(),{headers:{"Cache-Control":"no-store"}})}
 export async function POST(req:Request){
+ requireControlPlaneAuth(req);
+
  try{
   const b=await readJson(req); const action=actionField(b,["objective","experiment","experiment.update","experiment.run","experiment.validate","evidence","decision"]);
   if(action==="objective"||action==="experiment"||action==="evidence"||action==="decision"){
