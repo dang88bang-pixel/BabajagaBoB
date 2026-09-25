@@ -67,6 +67,8 @@ export function upsertKnowledge(x: {
   conditions?: string;
   verification?: string;
 }): KnowledgeNode {
+  if (x.state === "ESTABLISHED" && (x.evidenceIds ?? []).length === 0) throw new Error("ESTABLISHED knowledge requires evidenceIds");
+  if (x.state === "ESTABLISHED" && !x.verification?.trim()) throw new Error("ESTABLISHED knowledge requires verification");
   const payload = store.read();
   const existing = payload.nodes.find(n => n.subject === x.subject && n.predicate === x.predicate && n.object === x.object);
   const now = new Date().toISOString();
@@ -117,6 +119,8 @@ export function updateKnowledge(
   const payload = store.read();
   const node = payload.nodes.find(n => n.knowledgeId === knowledgeId);
   if (!node) throw new Error("knowledge node not found");
+  if (patch.state === "ESTABLISHED" && (patch.evidenceIds ?? node.evidenceIds).length === 0) throw new Error("ESTABLISHED knowledge requires evidenceIds");
+  if (patch.state === "ESTABLISHED" && !(patch.verification ?? node.verification)?.trim()) throw new Error("ESTABLISHED knowledge requires verification");
   Object.assign(node, patch);
   node.confidence = classify(node.sourceIds, node.evidenceIds);
   node.updatedAt = new Date().toISOString();
