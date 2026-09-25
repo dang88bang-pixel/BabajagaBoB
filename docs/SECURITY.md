@@ -4,6 +4,28 @@
 **Grundsatz:** Alles ist standardmäßig verboten (fail closed). Jede Ausführung ist autorisiert, gebunden,
 auditiert und auf eine isolierte Runtime beschränkt.
 
+## Persistente Daten: Manipulation und leere Envelopes
+
+Store-Dateien liegen als Envelope (`store`, `version`, `writtenAt`, `payload`, `digest`)
+mit SHA-256 über Store-Namen, Version und Inhalt. Daraus folgen drei Schutzregeln:
+
+1. **Kein leerer Inhalt.** `write(null|undefined)` wird verweigert. Ein Envelope mit
+   `payload: null` hätte einen gültigen Digest, wäre also unsichtbar beschädigt — genau
+   dieser Zustand brach in einer Live-Prüfung `/api/inbox` mit HTTP 500. Beim Lesen wird
+   er erkannt, die Datei als `<datei>.null-payload` gesichert, die Reparatur im
+   `migrations.jsonl` vermerkt und der Initialzustand des Moduls geschrieben
+   (`POST /api/persistence {action:"repair"}` saniert alle Stores und auditiert).
+2. **Bindung an den Store-Namen.** Eine unter fremdem Namen abgelegte Datei wird
+   verweigert (Digest deckt den Namen ab). Ältere Envelopes ohne Namen bleiben lesbar,
+   damit Bestandsinstallationen nicht aussperren.
+3. **Fail closed bei Unklarheit.** Ein Digest-Fehler, eine neuere Version oder eine
+   fehlende Migrationskette brechen den Lesezugriff ab, statt Daten zu raten.
+
+Evidenz (`ART-…`) wird serverseitig aus dem kanonischen Inhalt gehasht; ein vom Aufrufer
+gelieferter Digest wird nicht akzeptiert. `verifyArtifact` meldet einen beschädigten
+Store als **Befund** (`ok:false` plus Fehlertext) und bricht den Aufrufer nicht ab, damit
+die Oberfläche den Schaden anzeigen kann, statt eine Ausnahme zu produzieren.
+
 ## 1. Durchsetzungskette
 
 ```

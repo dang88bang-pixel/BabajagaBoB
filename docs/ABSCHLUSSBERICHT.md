@@ -69,7 +69,7 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 
 | Nachweis | Ergebnis |
 |---|---|
-| Automatisierte Tests | **26 Dateien / 145 Tests grün** (`npx vitest run`) |
+| Automatisierte Tests | **27 Dateien / 155 Tests grün** (`npx vitest run`) |
 | Statische Gates | `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler (10 Warnungen); `npm run build` erfolgreich (Exit-Code geprüft, nicht nur Ausgabe) |
 | Live über HTTP | `scripts/verify-live.sh` gegen `npx next start`: **120 PASS / 0 FAIL** – Auth fail closed (428/401/403/201/200), Kette bis Knowledge, Sandbox + Snapshot + Capability, autorisierte Ausführung (`argv`, stdout `live-ok`), vier Angriffsblockaden mit Audit, Fehlerkette bis `REGRESSION_LOCKED`, Lockdown/Privacy/Provider/Geräte, Restore/Persistenz/Readiness sowie **Schritt 10: Agentenweg über Capability-Token ohne Browser-Session** (evidenzgebundene Ausführung; Verweigerungen bei Shell-Programm, Subjekt-Spoofing, Widerruf und Lockdown) |
 | §49-Abnahme 1 (Erfolgspfad) | `tests/e2e/creator-flow.test.ts` + Live-Schritte 2–4 |
@@ -89,7 +89,7 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 | Computer Use | Vertrag + Zustandsmaschine + Autorisierung; kein Browser-/Desktop-Treiber angebunden |
 | Simulation/Visualisierung | Szenarien und Visualisierungsarten persistent, aber keine Renderer/Ausführung |
 | Runtime-Registry | 3 Definitionen (Node 22, Python 3.13, Custom OCI), erweiterbar; kein automatisches Provisionieren |
-| Control Center UI | Vollständige Navigation und Statusanzeige; keine Browser-E2E-Tests |
+| Control Center UI | 20 Abschnitte, jeder an echte Serverdaten gebunden (kein Platzhalterzustand), jsdom-Renderingtest; Browser-E2E offen |
 | Metrik-Alarmierung | Export und Empfehlungen vorhanden; kein Scraper/Alertmanager im Repository |
 | Backup-Automation | Backup/Restore implementiert und geprüft; kein geplanter Job und keine Rotation |
 | Legacy-Token | Standardmäßig deaktiviert; Aktivierung nur mit ausdrücklicher Freigabe (dokumentiert, nicht empfohlen) |

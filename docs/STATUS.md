@@ -25,6 +25,9 @@ Produktionsreife:
 | Bootstrap / Creator-Initialisierung | TESTED | einmaliger Bootstrap, Doppelaufruf verweigert |
 | Server-Session + API-Guard | TESTED | `tests/security/api-guard.test.ts`, `tests/security/api-gate.test.ts` |
 | Aktionsspezifische Routen-Guards | TESTED | `tests/security/route-guards.test.ts`: 428 vor Bootstrap, 401 ohne Auth, `CREATOR_ONLY` für Agenten-Schreibzugriff auf Provenance/Knowledge, `CAPABILITY_DENIED` für Runs ohne `run:manage`, CSRF-Origin |
+| Store-Migration und Reparatur | TESTED | `tests/unit/store-migration.test.ts` (22 Tests): v1→v2 migriert und schreibt v2, Sicherungskopie, Journaleintrag, fehlende Kette oder neuere Datei → fail closed, leerer Envelope (`payload: null`) wird erkannt, als `<datei>.null-payload` gesichert und neu initialisiert, Store-Name im Digest, Backup-Zuordnung ohne Präfixverwechslung (`workshop` vs. `workshop-executions`) |
+| Creator Inbox | TESTED | `tests/security/inbox-route.test.ts`: Anlegen (201), Beantworten ausschließlich durch Creator, doppelte Beantwortung abgelehnt, unbekannte Aktion 400, Sessionpflicht; live `GET /api/inbox` 200 (zuvor 500) |
+| Routen-Guards je Methode | TESTED | `tests/security/api-route-contract.test.ts` prüft jede exportierte Methode einzeln; sechs GET-Routen (`authority`, `cicd`, `devices`, `governance`, `providers`, `worker`) hatten keinen Guard und sind jetzt `*:read`-geschützt |
 | Live-Nachweis über HTTP | VERIFIED | `scripts/verify-live.sh`: **120 Prüfungen / 0 Fehler** gegen `npx next start` (Storage `/tmp/bob-live9`, 2026-09-25); alle drei §49-Abnahmen plus Agentenweg über Capability-Token ohne Browser-Session |
 | Backup mit Digest-Prüfung | TESTED | `tests/integration/metrics-backup.test.ts`: Kopien unter `<BOB_STORAGE_DIR>/backups` (0600), manipuliertes Backup → 409, Restore nur nach Version-/Digest-Prüfung |
 | Betriebsmetriken (Prometheus-Text) | TESTED | `GET /api/metrics` (Session-pflichtig): Store-Integrität, Audit-Kette, Runs, Queue, Token, Incidents, Recovery, Wissen, Fabric, Kill Switches – nur Zahlen |
@@ -71,7 +74,7 @@ Produktionsreife:
 | Provider Fabric | TESTED | Katalog/Bindungen/Telemetrie persistent, Approval-gebundene Verbindung (`tests/integration/provider-fabric.test.ts`) |
 | Device Fabric / Simulation / Computer Use | PARTIAL | persistent; Simulation und Computer Use ohne eigene Tests |
 | CI/CD (`ci.yml`) | TESTED | 5 Jobs (Lint/Typecheck, Unit/Integration/Regression, Security/E2E, Build, Promotion-Gate); grüne Läufe dokumentiert in `docs/CI_CD.md` |
-| Automatisierte Testsuiten | TESTED | **26 Dateien / 145 Tests grün**, siehe `docs/TESTING.md` |
+| Automatisierte Testsuiten | TESTED | **27 Dateien / 155 Tests grün**, siehe `docs/TESTING.md` |
 
 ## Aktuelle Sicherheitsgrenzen
 
