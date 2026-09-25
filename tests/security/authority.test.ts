@@ -44,7 +44,17 @@ describe("Authority (Sicherheitsinvarianten)", () => {
   });
 
   it("verweigert die Selbstvergabe von Capabilities", () => {
-    expect(() => authority.issueCapabilityToken(tokenInput({issuedBy: AGENT_ID, issuedByKind: "AGENT"}))).toThrow();
+    // Nicht nur „irgendein Fehler": Ohne die Prüfung SELF_GRANT würde die
+    // Delegationsprüfung ebenfalls verweigern — die Selbstvergabe wäre dann
+    // nicht mehr nachweisbar verhindert (siehe Sabotageprobe
+    // CAPABILITY_SELF_GRANT im Katalog `docs/acceptance/sabotage-probes.json`).
+    try {
+      authority.issueCapabilityToken(tokenInput({issuedBy: AGENT_ID, issuedByKind: "AGENT"}));
+      throw new Error("erwartete Verweigerung blieb aus");
+    } catch (error) {
+      expect(error).toBeInstanceOf(authority.AuthorityDenied);
+      expect((error as InstanceType<typeof authority.AuthorityDenied>).code).toBe("SELF_GRANT");
+    }
   });
 
   it("verweigert Wildcard-Capabilities", () => {

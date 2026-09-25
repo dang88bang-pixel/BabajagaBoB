@@ -2,7 +2,7 @@ import {approvalGranted} from "./approvals";
 import {executeAuthorized} from "./execution-broker";
 import {executionGate} from "./execution-gate";
 import {enqueueJob, expireLeases, leaseJob, startJob, completeJob, failJob} from "./queue";
-import {getRun, queueRun, startRun, completeRun, failRun, attachExecution, createRun} from "./runs";
+import {getRun, queueRun, leaseRun, startRun, completeRun, failRun, attachExecution, createRun} from "./runs";
 import {createSandbox} from "./sandbox/fabric";
 import {ensureExecutionCapability} from "./authority";
 import {getControlState} from "./control-plane";
@@ -128,6 +128,12 @@ export async function runOnce(input: {runId: string; workerId?: string; argv?: s
   const leased = leaseJob(run.jobId, workerId);
   if (!leased) throw new Error("job could not be leased");
   if (!startJob(run.jobId, workerId)) throw new Error("job could not be started");
+  // Ein frisch dispatchter Run steht auf QUEUED; `startRun` verlangt LEASED
+  // (oder FAILED/RECOVERING). Ohne diesen Schritt konnte der synchrone
+  // Worker-Schritt einen gerade dispatchten Run gar nicht ausführen — der
+  // echte Worker (lib/worker.ts) leaste den Run immer zuerst.
+  const current = getRun(input.runId);
+  if (current?.state === "QUEUED" && !leaseRun(current.runId, workerId)) throw new Error("run could not be leased");
   if (!startRun(run.runId)) throw new Error("run could not be started");
   const state = getControlState();
   const task = state.tasks.find(t => t.taskId === run.taskId);

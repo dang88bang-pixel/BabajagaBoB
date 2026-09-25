@@ -11,11 +11,19 @@ Jobs, die bei jedem Push auf den Feature-Branch laufen:
 |---|---|
 | `lint-and-typecheck` | `npm ci`, `npm run lint`, `npm run typecheck` |
 | `unit-integration` | `npm ci`, `npm run test:unit`, `npm run test:integration`, `npm run test:regression`, `npm run test:ui` |
-| `security` | `npm ci`, `npm run test:security`, `npm run test:e2e`, `npm audit --audit-level=high` |
+| `security` | `npm ci`, `npm run test:security`, `npm run test:e2e`, `npm audit --audit-level=high`, danach `node scripts/fault-injection.mjs --cycles=1 --port=3300` (echter Prozessabbruch des laufenden Dienstes mit Neustart) |
+| `sabotage` | `npm ci`, `node scripts/sabotage.mjs --check` (Katalog: jeder Anker genau einmal, jede Testdatei vorhanden), `node scripts/sabotage.mjs` (Grundprobe + 19 Sabotageproben, Bericht als Artefakt) |
 | `build` | `npm ci`, `npm run build` |
 | `verification-gate` | `node scripts/acceptance.mjs` (maschineller Abnahmeprüfer: Nachweisregel, §44-Bindung, 18 Kettenstufen) und Abschlussprüfung („Alle Verifikationsstufen bestanden. Promotion bleibt manuell und Creator-gebunden") |
 
 `main` wird nie direkt geändert: Feature-Branch → Commit → CI → Pull Request → Review → Merge.
+
+Der Sabotagejob (Pflichtstufe `TEST-004`) entfernt gezielt Schutzregeln aus dem Produktionscode und
+verlangt, dass die zuständigen Suiten **rot** werden (19/19). Vor der ersten Mutation läuft eine
+**Grundprobe** über alle betroffenen Suiten: Wären sie schon vorher rot, könnte keine Sabotage als
+„erkannt" gelten. Nach jeder Probe wird jede Datei byteweise wiederhergestellt und per SHA-256
+geprüft; eine Abweichung beendet den Lauf mit Exit 2. Der Bericht wird als Artefakt hochgeladen
+(auch bei Fehlschlag) und in der Oberfläche im Abschnitt *Fehlerinjektion* angezeigt.
 
 Der Prüfer im `verification-gate` liest `docs/acceptance/requirements.json` und schlägt fehl, sobald
 eine Anforderung ohne Implementierung, Test oder Nachweis auf `PASS` steht, eine genannte Datei
@@ -79,3 +87,8 @@ beim Rückroll geht sie auf `ROLLED_BACK`.
 - `tests/unit/runtime-persistence.test.ts` — Promotion-Gates nach Neustart.
 - `tests/security/api-route-contract.test.ts` — jede Route besitzt einen Guard.
 - `gh run list` — reale CI-Läufe je Commit (im Bericht `docs/ABSCHLUSSBERICHT.md` aufgeführt).
+- `scripts/sabotage.mjs` + `docs/acceptance/sabotage-probes.json` — 19 Proben, die belegen, dass die
+  Suiten abgeschaltete Schutzregeln tatsächlich erkennen (Katalog abgesichert durch
+  `tests/unit/sabotage-plan.test.ts`).
+- `tests/integration/fault-injection.test.ts` und `tests/integration/fault-injection-processes.test.ts`
+  — Fehlerinjektion im eigenen Prozess und mit echten zweiten Prozessen (SIGKILL, vier Writer).

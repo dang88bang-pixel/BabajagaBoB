@@ -197,6 +197,28 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 say(`Sabotageproben — ${selected.length} Probe(n), Katalog ${path.relative(ROOT, CATALOG)}`);
 const results = [];
+
+/**
+ * Grundprobe: Alle Suiten der ausgewählten Proben laufen zuerst **ohne**
+ * Mutation. Wären sie schon vorher rot, würde jede Sabotage „erkannt" — die
+ * Erkennung wäre bedeutungslos. Abschaltbar (nicht empfohlen) über
+ * `SABOTAGE_SKIP_BASELINE=1`.
+ */
+const baseline = {skipped: CHECK_ONLY || process.env.SABOTAGE_SKIP_BASELINE === "1", exitCode: null, failedTests: 0, durationMs: 0, tests: []};
+if (!baseline.skipped) {
+  baseline.tests = [...new Set(selected.flatMap(probe => probe.tests ?? []))];
+  say(`Grundprobe: ${baseline.tests.length} Suite(n) ohne Mutation auf Grün prüfen …`);
+  const run = await runTests(baseline.tests);
+  baseline.exitCode = run.exitCode;
+  baseline.failedTests = run.failedTests;
+  baseline.durationMs = run.durationMs;
+  if (run.exitCode !== 0 || run.failedTests > 0 || run.infrastructureError) {
+    bad(`Grundprobe rot (Exit ${run.exitCode}, ${run.failedTests} Fehler) — ohne grünen Ausgangszustand beweist die Sabotage nichts.`);
+    say(run.output.split("\n").slice(-25).join("\n"));
+    process.exit(2);
+  }
+  ok(`Grundprobe grün (${baseline.tests.length} Suiten, ${Math.round(baseline.durationMs / 1000)} s).`);
+}
 /** Dateien, die ein Lauf verändert zurückließ (Warnung, kein bestandener Lauf). */
 const integrityWarnings = [];
 
@@ -287,6 +309,7 @@ const report = {
   invalid,
   results,
   restored: true,
+  baseline,
   integrityWarnings
 };
 fs.writeFileSync(REPORT, JSON.stringify(report, null, 1), {mode: 0o600});

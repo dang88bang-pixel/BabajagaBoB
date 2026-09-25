@@ -33,7 +33,46 @@ export class StoreIntegrityError extends Error {
   }
 }
 
-export type StoreEnvelope<T> = {store?: string; version: number; writtenAt: string; payload: T; digest: string};
+/**
+ * Zwei Schreibvorgänge sind aufeinander getroffen: Der Datensatz wurde zwischen
+ * Lesen und Schreiben von jemand anderem verändert. Das ist **kein** Datenfehler,
+ * sondern ein Nebenläufigkeitskonflikt — er wird erneut versucht und, wenn er
+ * bleibt, laut gemeldet. Früher galt hier „letzter Schreiber gewinnt": ein
+ * gleichzeitiger zweiter Prozess konnte Änderungen stillschweigend verlieren.
+ */
+export class StoreConflictError extends Error {
+  readonly store: string;
+  readonly expectedRevision: number;
+  readonly actualRevision: number;
+  constructor(store: string, expectedRevision: number, actualRevision: number) {
+    super(`[${store}] concurrent modification detected (expected revision ${expectedRevision}, found ${actualRevision})`);
+    this.name = "StoreConflictError";
+    this.store = store;
+    this.expectedRevision = expectedRevision;
+    this.actualRevision = actualRevision;
+  }
+}
+
+export type StoreEnvelope<T> = {store?: string; version: number; writtenAt: string; payload: T; digest: string; revision?: number};
+
+/** Revision eines Envelopes; Altbestände ohne Feld gelten als Revision 0. */
+function envelopeRevision(envelope: {revision?: number} | null): number {
+  if (!envelope) return 0;
+  const value = envelope.revision;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+/** Kurze synchrone Pause zwischen zwei Konfliktversuchen (kein Busy-Loop). */
+function sleepSync(ms: number) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** Obergrenze der Wiederholungen bei Nebenläufigkeitskonflikten. */
+export const STORE_CONFLICT_RETRIES = 12;
+/** Wartezeit auf die Schreibsperre eines Stores, bevor ein Konflikt gemeldet wird. */
+const LOCK_WAIT_MS = 10_000;
+/** Ab diesem Alter gilt eine Sperre als verwaist (der Halter ist abgestürzt). */
+const LOCK_STALE_MS = 5_000;
 
 /** Ein Migrationsschritt hebt genau eine Version an (`from` → `from + 1`). */
 export type StoreMigration = (payload: unknown) => unknown;
@@ -215,12 +254,26 @@ export class DurableStore<T> {
         backup: safetyCopy
       });
       const repaired = this.create();
-      this.write(repaired);
-      return structuredClone(repaired);
+      return this.writeInitial(repaired);
     }
-    const initial = this.create();
-    this.write(initial);
-    return structuredClone(initial);
+    return this.writeInitial(this.create());
+  }
+
+  /**
+   * Erstanlage/Reparatur: **bedingt** auf Revision 0 schreiben. Hat ein anderer
+   * Prozess den Store in der Zwischenzeit angelegt, wird dessen Datensatz
+   * gelesen statt überschrieben — sonst ginge ein frischer Schreibvorgang
+   * verloren, nur weil beide gleichzeitig angefangen haben.
+   */
+  private writeInitial(payload: T): T {
+    try {
+      return this.writeEnvelope(payload, 0);
+    } catch (error) {
+      if (!(error instanceof StoreConflictError)) throw error;
+      const current = this.read();
+      if (current !== null && current !== undefined) return structuredClone(current);
+      throw error;
+    }
   }
 
   /** Liest ohne Initialzustand zu schreiben (für Diagnose/Integritätsberichte). */
@@ -232,7 +285,91 @@ export class DurableStore<T> {
     }
   }
 
-  write(payload: T): T {
+  /**
+   * Revision des Datensatzes **auf der Platte** (0, wenn es ihn noch nicht gibt).
+   * Bewusst ohne Digest-/Migrationsprüfung: hier wird nur der Zähler gebraucht,
+   * inhaltliche Fehler meldet der normale Lesepfad.
+   */
+  private currentRevision(): number {
+    try {
+      if (!fs.existsSync(this.file)) return 0;
+      const parsed = JSON.parse(fs.readFileSync(this.file, "utf8")) as {revision?: number};
+      return envelopeRevision(parsed);
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Atomares Schreiben. Mit `expectedRevision` wird unmittelbar vor dem
+   * `rename` geprüft, ob der Datensatz noch auf diesem Stand ist — sonst
+   * `StoreConflictError` (der Aufrufer liest neu und versucht erneut).
+   */
+  /**
+   * Exklusive Schreibsperre je Store (`.<name>.lock`).
+   *
+   * Sie ist der Grund, warum die Revisionsprüfung wirklich trägt: Ohne sie ist
+   * zwischen „Revision prüfen" und „rename" ein Fenster, in dem ein zweiter
+   * Prozess dasselbe sieht und beide umbenennen — eine Aktualisierung ginge
+   * still verloren (genau das passierte in der Vier-Prozess-Probe unter Last).
+   *
+   * Verwaiste Sperren blockieren nicht dauerhaft: Ist der eingetragene Prozess
+   * nicht mehr am Leben, wird die Sperre übernommen.
+   */
+  private withWriteLock<R>(fn: () => R): R {
+    const lock = path.join(ensureRoot(), `.${this.name}.lock`);
+    const started = Date.now();
+    let fd: number | null = null;
+    while (fd === null) {
+      try {
+        fd = fs.openSync(lock, "wx", 0o600);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+        let holderAlive = true;
+        let stale = false;
+        try {
+          const info = JSON.parse(fs.readFileSync(lock, "utf8")) as {pid?: number};
+          if (typeof info.pid === "number") {
+            try {
+              process.kill(info.pid, 0);
+            } catch {
+              holderAlive = false;
+            }
+          }
+          stale = Date.now() - fs.statSync(lock).mtimeMs > LOCK_STALE_MS;
+        } catch {
+          /* Sperrdatei verschwand zwischenzeitlich — erneut versuchen. */
+        }
+        if (!holderAlive || stale) {
+          try {
+            fs.rmSync(lock, {force: true});
+          } catch {
+            /* Ein anderer Prozess war schneller; der nächste Versuch greift. */
+          }
+          continue;
+        }
+        if (Date.now() - started > LOCK_WAIT_MS) throw new StoreConflictError(this.name, -1, -1);
+        sleepSync(2);
+      }
+    }
+    try {
+      fs.writeSync(fd, JSON.stringify({pid: process.pid, at: Date.now()}), 0, "utf8");
+      return fn();
+    } finally {
+      try {
+        fs.closeSync(fd);
+      } catch {
+        /* bereits geschlossen */
+      }
+      try {
+        fs.rmSync(lock, {force: true});
+      } catch {
+        /* best effort; eine verwaiste Sperre wird später übernommen */
+      }
+    }
+  }
+
+  private writeEnvelope(payload: T, expectedRevision: number | null): T {
     if (payload === null || payload === undefined) {
       // Ein "leerer" Envelope mit gültigem Digest ist die gefährlichste Form der
       // Beschädigung: er sieht integer aus, bricht aber jeden Lesezugriff.
@@ -240,29 +377,95 @@ export class DurableStore<T> {
       throw new StoreIntegrityError(this.name, "refusing to persist a null payload");
     }
     const root = ensureRoot();
+    const revision = (expectedRevision ?? this.currentRevision()) + 1;
     const envelope: StoreEnvelope<T> = {
       store: this.name,
       version: this.version,
       writtenAt: new Date().toISOString(),
       payload: structuredClone(payload),
-      digest: envelopeDigest(this.version, payload, this.name)
+      digest: envelopeDigest(this.version, payload, this.name),
+      revision
     };
     const tmp = path.join(root, `.${this.name}.${process.pid}.${Date.now()}.${crypto.randomBytes(4).toString("hex")}.tmp`);
     fs.writeFileSync(tmp, JSON.stringify(envelope, null, 2), {encoding: "utf8", mode: 0o600});
-    fs.renameSync(tmp, this.file);
-    try {
-      fs.chmodSync(this.file, 0o600);
-    } catch {
-      /* chmod ist auf Nicht-POSIX-Dateisystemen nicht verfügbar */
-    }
-    return structuredClone(envelope.payload);
+    // Prüfen und Umbenennen liegen **zusammen** in der Sperre: nur so ist die
+    // Revisionsprüfung eine echte Compare-and-Swap-Bedingung.
+    return this.withWriteLock(() => {
+      if (expectedRevision !== null) {
+        const onDisk = this.currentRevision();
+        if (onDisk !== expectedRevision) {
+          try {
+            fs.rmSync(tmp, {force: true});
+          } catch {
+            /* Aufräumen ist best effort; der Datensatz bleibt unverändert. */
+          }
+          throw new StoreConflictError(this.name, expectedRevision, onDisk);
+        }
+      }
+      fs.renameSync(tmp, this.file);
+      try {
+        fs.chmodSync(this.file, 0o600);
+      } catch {
+        /* chmod ist auf Nicht-POSIX-Dateisystemen nicht verfügbar */
+      }
+      return structuredClone(envelope.payload);
+    });
   }
 
-  /** Transaktionale Änderung: liest, mutiert eine Kopie, schreibt atomar zurück. */
+  /**
+   * Unbedingtes Schreiben (Erstbefüllung, Migration, Reparatur). Die Revision
+   * steigt dabei monoton weiter, damit ein späterer Konfliktvergleich stimmt.
+   */
+  write(payload: T): T {
+    return this.writeEnvelope(payload, null);
+  }
+
+  /**
+   * Transaktionale Änderung: lesen, Kopie mutieren, **bedingt** schreiben.
+   *
+   * Der Unterschied zu früher ist der Kern der Nebenläufigkeitsfestigkeit: Wurde
+   * der Datensatz zwischen Lesen und Schreiben von einem anderen Prozess
+   * verändert, wird nicht mehr überschrieben, sondern neu gelesen und erneut
+   * angewandt. Erst nach `STORE_CONFLICT_RETRIES` erfolglosen Versuchen fliegt
+   * ein `StoreConflictError` — verlorene Aktualisierungen gibt es nicht mehr.
+   */
+  /**
+   * Inhalt **und** Revision aus genau einem Lesevorgang. Getrennt gelesen wäre
+   * die Revision bereits die eines fremden, neueren Datensatzes — der bedingte
+   * Schreibvorgang würde dann einen veralteten Entwurf durchlassen (genau dieser
+   * Fehler kostete in der Vier-Prozess-Probe 8 von 240 Aktualisierungen).
+   */
+  private readForUpdate(): {payload: T; revision: number} {
+    const envelope = this.readRaw();
+    if (envelope && envelope.payload !== null) {
+      return {payload: envelope.payload, revision: envelope.revision ?? this.currentRevision()};
+    }
+    // Datei fehlt, ist leer oder wurde als `payload: null` repariert: Der
+    // reguläre Lesepfad legt den Initialzustand an bzw. repariert ihn. Danach
+    // wird **erneut** ein Schnappschuss gelesen — Inhalt und Revision müssen
+    // aus derselben Datei stammen, sonst überschreibt ein Entwurf einen
+    // fremden, neueren Datensatz (verlorene Aktualisierung).
+    this.read();
+    const fresh = this.readRaw();
+    if (fresh && fresh.payload !== null) return {payload: fresh.payload, revision: fresh.revision ?? this.currentRevision()};
+    return {payload: this.create(), revision: 0};
+  }
+
   update(mutator: (draft: T) => void): T {
-    const draft = this.read();
-    mutator(draft);
-    return this.write(draft);
+    let lastConflict: StoreConflictError | null = null;
+    for (let attempt = 1; attempt <= STORE_CONFLICT_RETRIES; attempt += 1) {
+      const snapshot = this.readForUpdate();
+      const draft = structuredClone(snapshot.payload);
+      mutator(draft);
+      try {
+        return this.writeEnvelope(draft, snapshot.revision);
+      } catch (error) {
+        if (!(error instanceof StoreConflictError)) throw error;
+        lastConflict = error;
+        sleepSync(Math.min(2 * attempt, 20));
+      }
+    }
+    throw lastConflict ?? new StoreConflictError(this.name, -1, -1);
   }
 
   integrity(): StoreIntegrityReport {

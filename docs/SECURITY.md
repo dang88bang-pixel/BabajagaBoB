@@ -262,7 +262,7 @@ echtes HTTP), `tests/security/inbox-route.test.ts`,
 `secretHash` in Leseantworten), `tests/security/device-enrollment.test.ts` (Enrollment fail closed,
 kein Selbst-Grant, Geheimnis nie in Antworten), `tests/e2e/creator-flow.test.ts`,
 `tests/e2e/failure-recovery.test.ts` (**18 Dateien / 124 Tests** in der Security-Suite, 57 Dateien /
-371 Tests gesamt) und der Live-Nachweis `scripts/verify-live.sh` (**173 Prüfungen / 0 Fehler** auf der
+391 Tests gesamt) und der Live-Nachweis `scripts/verify-live.sh` (**173 Prüfungen / 0 Fehler** auf der
 Instanz mit aktiver Kernel-Isolation) sowie `scripts/audit-ui.mjs` (**90 / 0**, u. a. „kein
 Geheimnisfeld in einer Antwort an den Browser", „kein Gerät ohne Creator-Freigabe autorisiert").
 Zusammenfassung: `docs/TESTING.md`. Offene, als `PARTIAL`/`UNVERIFIED` gekennzeichnete Punkte sind dort und in

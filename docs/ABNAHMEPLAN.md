@@ -92,6 +92,12 @@ Punkte 2, 6 und 9 werden **maschinell** geprüft; 1, 3–5, 7, 8 über die verla
 | ⚪ NOT_IMPLEMENTED | 2 | 2 % | Offline Fabric (`OFF-001`), Betriebshärtung (`OPS-004`) |
 | ❌ FAIL / ⛔ BLOCKED | 0 | — | keine |
 
+Nachtrag 2026-09-26: `TEST-003` ist zusätzlich auf **Prozessebene** belegt (echter SIGKILL mitten im
+Schreibvorgang, vier gleichzeitige Writer-Prozesse mit 240/240 Einträgen samt Gegenprobe,
+Lease-Ablauf, Netzwerkverlust über den echten Dispatch-Pfad); die Nebenläufigkeitskontrolle des
+Stores (Revision im Envelope, Prüfung und `rename` in einer Sperre) ist dafür die Voraussetzung und
+selbst durch zwei Sabotageproben abgesichert. Der Katalog umfasst jetzt 19 Proben.
+
 Stand `node scripts/acceptance.mjs` (statisch, 15/0): `TEST-003` (Fehlerinjektion) und `TEST-004`
 (Sabotageproben) sind auf **PASS** gehoben — mit Implementierung, Test, ausgeführtem Nachweisprüfer,
 Oberflächensektion und CI-Pflichtstufe, nicht durch Statusänderung allein. Frühere Hebungen
@@ -156,7 +162,8 @@ Streng in dieser Ordnung, jeweils mit Nachweis (Tests + Live-Lauf + Doku):
 3. ~~**P4-Härtung:** Fehlerinjektion (Serverprozess-Abbruch, Netzwerkverlust, konkurrierende
    Schreibvorgänge) und automatisierte Sabotageproben in CI.~~ **Erledigt (2026-09-25):**
    `lib/fault-injection.ts` + `scripts/fault-injection.mjs` (echter `SIGKILL` mit Neustart, 28/28),
-   `scripts/sabotage.mjs` + Katalog (8/8 erkannt), beide als Pflichtstufen in der CI,
+   `scripts/sabotage.mjs` + Katalog `docs/acceptance/sabotage-probes.json` (**19/19 erkannt**, mit
+   vorgeschalteter Grundprobe über alle betroffenen Suiten), beide als Pflichtstufen in der CI;
    Oberflächensektion **Fehlerinjektion**, `TEST-003`/`TEST-004` auf `PASS`.
 4. **P2-Rest:** Computer-Use-Treiber, Geräte-Scheduling nach Ressourcen, Provider-Adapterlauf
    (sobald ein kontrollierter Egress existiert), Offline-Paketbestand.

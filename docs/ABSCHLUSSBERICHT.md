@@ -72,7 +72,7 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 
 | Nachweis | Ergebnis |
 |---|---|
-| Automatisierte Tests | **57 Dateien / 371 Tests grün** (`npx vitest run`; Unit 93, Security 124, Integration 115, Regression 15, UI 13, E2E 11) |
+| Automatisierte Tests | **59 Dateien / 391 Tests grün** (`npx vitest run`; Unit 104, Security 128, Integration 120, Regression 15, UI 13, E2E 11) |
 | Betriebsprüfung aller Routen | `scripts/audit-api.sh`: **242 Prüfungen / 0 Fehler** (Exit 0), 9 Abschnitte inkl. autonomer Fehlerkette, Observatory/Warum-Record/Status-Modell; wiederholbar gegen dieselbe Instanz |
 | Vollständige Aktions-/Attributprüfung | `scripts/audit-actions.mjs`: **517 Prüfungen / 0 Fehler** (Exit 0) — Matrix aus dem Quellcode (40 POST-Routen, 129 Aktionen), inkl. „destruktive Aktion ohne Attribut → 400 statt stillem Erfolg“, Attributtypen, 14 Interaktionsketten bis `REGRESSION_LOCKED` |
 | Statische Gates | `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler (10 Warnungen); `npm run build` erfolgreich (Exit-Code geprüft, nicht nur Ausgabe) |
@@ -184,7 +184,7 @@ Keine Erfolgsaussage stützt sich auf Mock-Verhalten; Simulationen
   `scripts/audit-api.sh` (**227 / 0**, inkl. Abschnitt 8: Observatory, Warum-Record, Status-Modell),
   `scripts/audit-ui.mjs` (**90 / 0**, 46 Datenabrufe, 30 Abschnitte mit echten Zeilen),
   `scripts/soak.mjs` (40 autorisierte Ausführungen, p95 2,22 s, Budget 5 s) **`MEETS_BUDGET`**.
-- Gesamt: **57 Dateien / 371 Tests grün** (Unit 93, Security 124, Integration 115, Regression 15, UI 13,
+- Gesamt: **59 Dateien / 391 Tests grün** (Unit 104, Security 128, Integration 120, Regression 15, UI 13,
   E2E 11); `tsc --noEmit` fehlerfrei, `eslint .` 0 Fehler / 10 Warnungen, `npm run build` erfolgreich.
 
 Details und Befehle: `docs/TESTING.md`.
