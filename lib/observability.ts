@@ -107,6 +107,7 @@ export function observe(input: ObservationInput): DomainEvent {
       actor: input.actor,
       action: input.action,
       resource: input.resource ?? input.taskId ?? input.runId,
+      eventId: event.eventId,
       decision: input.decision ?? "ALLOW",
       causalParentId: event.causalParentId
     },
