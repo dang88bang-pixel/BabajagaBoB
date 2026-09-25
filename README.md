@@ -195,7 +195,16 @@ Wesentliche Endpunkte:
 - `/api/gallery`
 - `/api/tools`
 
-Mutierende Control-Plane-Endpunkte verlangen einen serverseitig konfigurierten Bearer-Token über `BOB_CONTROL_PLANE_TOKEN`. Der Token darf nicht an den Browser ausgeliefert werden.
+Die gesamte API-Oberfläche ist standardmäßig geschlossen: jede Route außer
+`/api/auth` verlangt eine gültige Server-Session. Der Browser erhält nur ein
+HttpOnly-Cookie (`bob_session`), niemals Creator-Secrets oder Provider-Schlüssel.
+Einmaliger Bootstrap mit `BOB_BOOTSTRAP_SECRET`, danach Login mit
+`BOB_CREATOR_LOGIN_SECRET` (oder `<BOB_STORAGE_DIR>/creator-token`, 0600).
+Agenten nutzen ausschließlich den Broker-Weg `POST /api/runtime` mit einem
+Capability-Token (`Authorization: Bobcap <tokenId>.<secret>`, gebunden an Task,
+Sandbox, Environment, Risiko). Details: `docs/BOOTSTRAP.md`, `docs/SECURITY.md`.
+Der Legacy-Token `BOB_CONTROL_PLANE_TOKEN` ist fail closed und nur mit
+`BOB_ALLOW_LEGACY_CONTROL_TOKEN=1` für lokale Administration aktiv.
 
 ## Lokaler Start
 

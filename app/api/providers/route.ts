@@ -4,6 +4,12 @@ export const runtime="nodejs";
 export const dynamic="force-dynamic";
 export async function GET(){return NextResponse.json(providerSnapshot(),{headers:{"Cache-Control":"no-store"}})}
 export async function POST(req:Request){
+ const gate = await import("@/lib/api/api-gate");
+ const body = (await req.clone().json().catch(() => ({}))) as {action?:string};
+ const creatorOnly = ["connect","revoke","disconnect"].includes(String(body.action));
+ const denied = gate.guardOrDeny(req, {action: creatorOnly ? "provider:connect" : "provider:manage", creatorOnly});
+ if (denied) return denied;
+
  try{const b=await req.json();
  if(b.action==="connect")return NextResponse.json({provider:connectProvider(b.id,b.endpoint,b.credentialRef,b.approvalId)});
  if(b.action==="disconnect")return NextResponse.json({provider:disconnectProvider(b.id)});

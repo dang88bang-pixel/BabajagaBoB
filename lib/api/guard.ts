@@ -67,7 +67,7 @@ export type GuardSpec = {
 
 const AGENT_FORBIDDEN_PREFIXES = ["authority:", "governance:", "audit:delete", "session:create"];
 
-function parseCapabilityHeader(header: string | null): {tokenId: string; secret: string} | null {
+export function parseCapabilityHeader(header: string | null): {tokenId: string; secret: string} | null {
   if (!header) return null;
   const match = /^Bobcap ([A-Za-z0-9-]+)\.([A-Za-z0-9_-]+)$/.exec(header.trim());
   return match ? {tokenId: match[1], secret: match[2]} : null;

@@ -86,8 +86,11 @@ des Session-Geheimnisses.
 - **Zweiter Faktor:** Der Creator-Login ist ein einzelnes Inhaber-Secret (Datei/Umgebungsvariable). Ein
   zweiter Faktor (z. B. TOTP/WebAuthn) ist nicht implementiert und als offener Punkt geführt.
 - **Fein-granulare RBAC pro Route:** Die Middleware erzwingt die Authentifizierungsgrenze
-  (`control-plane:access`); aktionsspezifische Prüfungen (Risiko, Task/Sandbox-Bindung,
-  Creator-Pflicht) gehören in die Route über `guardRequest` und sind noch nicht überall verdrahtet.
+  (`control-plane:access`). Zusätzlich prüfen die Kern- und Schreibpfade ihre konkrete Aktion über
+  `guardRequest`/`guardOrDeny` (Creator-Pflicht für Mission/Objective/Task, Sandbox-Lebenszyklus,
+  Runs, Governance, Provider und Provenance-/Knowledge-Schreibzugriff; `sandbox:run` für
+  `POST /api/runtime`; `task:execute` für Task-Status; `run:manage` für Runs). Für noch nicht
+  verdrahtete Routen bleibt die Middleware die Grenze – fail closed, aber ohne Aktionsprüfung.
 - **TLS:** Cookies werden nur dann mit `Secure` gesetzt, wenn die Anfrage über HTTPS kam
   (`x-forwarded-proto: https`) oder `BOB_COOKIE_SECURE=1` gesetzt ist. In Produktion ist TLS über
   einen Reverse Proxy zwingend.

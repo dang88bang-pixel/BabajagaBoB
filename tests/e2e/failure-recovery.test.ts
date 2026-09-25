@@ -126,10 +126,17 @@ describe("E2E: bewusster Fehler → Recovery → Regression → Knowledge (Absch
     const verifiedRecovery = await errors.verifyRecoveryForIncident(incident.incidentId);
     expect(verifiedRecovery.status).toBe("VERIFIED");
     expect(verifiedRecovery.verificationId).toBeTruthy();
+    // Eine verifizierte Recovery führt den Incident in die Fix-Verifikation;
+    // der Eintritt ist idempotent (kein zweiter VERIFYING-Übergang).
+    expect(errors.getErrorIncident(incident.incidentId)?.status).toBe("VERIFYING");
 
     // --- Verifikation des Fixes → LEARNED → REGRESSION_LOCKED --------------
     const fixVerification = await errors.verifyFix(incident.incidentId);
     expect(fixVerification.passed).toBe(true);
+    // Der Eintritt in die Verifikationsphase ist idempotent: ein zweiter Aufruf
+    // nach bereits gelerntem Fix bleibt erfolgreich und wirft keinen Statusfehler.
+    const reverified = await errors.verifyFix(incident.incidentId);
+    expect(reverified.passed).toBe(true);
 
     const locked = errors.learnFromError(incident.incidentId, "Fehlerbedingung wird behandelt; der Lauf bricht nicht mehr ab", "Regression-Suite bestanden");
     expect(locked.status).toBe("REGRESSION_LOCKED");

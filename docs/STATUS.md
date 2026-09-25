@@ -24,6 +24,8 @@ Produktionsreife:
 | Authority (Token, TTL, Bindung) | TESTED | `tests/security/authority.test.ts` |
 | Bootstrap / Creator-Initialisierung | TESTED | einmaliger Bootstrap, Doppelaufruf verweigert |
 | Server-Session + API-Guard | TESTED | `tests/security/api-guard.test.ts`, `tests/security/api-gate.test.ts` |
+| Aktionsspezifische Routen-Guards | TESTED | `tests/security/route-guards.test.ts`: 428 vor Bootstrap, 401 ohne Auth, `CREATOR_ONLY` für Agenten-Schreibzugriff auf Provenance/Knowledge, `CAPABILITY_DENIED` für Runs ohne `run:manage`, CSRF-Origin |
+| Live-Nachweis über HTTP | VERIFIED | `scripts/verify-live.sh`: 83 Prüfungen / 0 Fehler gegen `npx next start` (Storage `/tmp/bob-live5`, 2026-09-25); alle drei §49-Abnahmen enthalten |
 | API-Grenze (Middleware + Auth-Route) | TESTED | `middleware.ts`, `lib/api/api-gate.ts`, `app/api/auth/route.ts`; Creator-Login mit Sperre; live verifiziert (428/201/200/403) |
 | Governance / Kill Switches | IMPLEMENTED | Code + Persistenz vorhanden, kein eigener Test |
 | Execution Gate + Broker | TESTED | `tests/e2e/*`, `tests/security/argv-policy.test.ts` |
@@ -60,12 +62,12 @@ Produktionsreife:
 |---|---|---|
 | Audit Store (HMAC-Kette) | TESTED | `verifyAuditChain()` in mehreren Suiten |
 | Event Store (append-only, kausal) | TESTED | `tests/e2e/failure-recovery.test.ts` prüft Eventtypen |
-| Provenance | TESTED | `AUTHORIZED_BY` / `EXECUTED_IN` im E2E-Erfolgspfad |
+| Provenance | TESTED | Kanten im E2E-Erfolgspfad und im Live-Lauf (§4a in `docs/TESTING.md`); Schreibzugriff ist Creator-Aktion |
 | Privacy / Data Boundary | IMPLEMENTED | default `DENY`, kein eigener Test |
 | Provider Fabric | TESTED | Katalog/Bindungen/Telemetrie persistent, Approval-gebundene Verbindung (`tests/integration/provider-fabric.test.ts`) |
 | Device Fabric / Simulation / Computer Use | PARTIAL | persistent; Simulation und Computer Use ohne eigene Tests |
-| CI/CD (`ci.yml`) | PARTIAL | Gates definiert; Ergebnis für den aktuellen Commit in CI noch zu bestätigen |
-| Automatisierte Testsuiten | TESTED | 47 Tests grün, siehe `docs/TESTING.md` |
+| CI/CD (`ci.yml`) | TESTED | 5 Jobs (Lint/Typecheck, Unit/Integration/Regression, Security/E2E, Build, Promotion-Gate); grüne Läufe dokumentiert in `docs/CI_CD.md` |
+| Automatisierte Testsuiten | TESTED | 15 Dateien / 81 Tests grün, siehe `docs/TESTING.md` |
 
 ## Aktuelle Sicherheitsgrenzen
 
@@ -82,8 +84,8 @@ Produktionsreife:
 
 ## Offene Restarbeiten (faktisch, ohne Wertung)
 
-- Aktionsspezifische `guardRequest`-Prüfungen pro Route ergänzen (die Authentifizierungsgrenze ist über die
-  Middleware bereits geschlossen).
+- Aktionsspezifische `guardRequest`-Prüfungen für die restlichen, noch nicht verdrahteten Routen ergänzen
+  (Kern- und Schreibpfade sind verdrahtet, übrige Routen sind über die Middleware fail closed).
 - OCI-Runtime gegen einen echten Daemon verifizieren (`REAL_OCI`).
 - Browser-/UI-E2E für das Control Center.
 - Fehlende §44-Dokumente ergänzen (u. a. `AUTHORIZATION.md`, `SANDBOX.md`, `RUNTIME.md`, `RECOVERY.md`,

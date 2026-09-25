@@ -45,14 +45,25 @@ Rechte erzeugen noch den Broker umgehen.
   Agent-Capability-Token und Legacy-Token werden an dieser Grenze bewusst **nicht** akzeptiert.
 - **Live verifiziert (2026-09-25):** `GET /api/control` ohne Session → 428, `POST /api/auth`
   (Bootstrap) → 201 + HttpOnly-Cookie, danach `GET /api/control` → 200, `POST /api/control` mit
-  fremdem `Origin` → 403.
+  fremdem `Origin` → 403. Kompletter Nachweis: `scripts/verify-live.sh` (83 Prüfungen, 0 Fehler;
+  Ergebnis in `docs/TESTING.md`).
 - **Creator-Login (Re-Authentifizierung):** Nach Verlust des Cookies meldet sich der Creator mit dem
   server-seitigen Secret an (`<BOB_STORAGE_DIR>/creator-token` 0600 oder `BOB_CREATOR_LOGIN_SECRET`).
   Konstantzeit-Vergleich, Sperre nach fünf Fehlversuchen (423, 15 Minuten), jeder Versuch auditiert; das
   Secret verlässt den Server nie. Details: `docs/BOOTSTRAP.md` §3a.
-- **Offen (PARTIAL):** Aktionsspezifische RBAC-/Risiko-/Bindungsprüfungen pro Route (`guardRequest`
-  mit konkreter Action) sind noch nicht überall verdrahtet; die Middleware deckt bisher die
-  Authentifizierungsgrenze ab. Siehe `docs/BOOTSTRAP.md` §5 und `docs/TODO.md`.
+- **Aktionsspezifische Autorisierung pro Route:** Über die Authentifizierungsgrenze hinaus prüft jede
+  schreibende Route die konkrete Aktion (`guardRequest`/`guardOrDeny`) – Missions/Objectives/Tasks,
+  Sandbox-Lebenszyklus, Governance/Approval/Lockdown und Provider-Verwaltung sind Creator-Aktionen;
+  `POST /api/runtime` verlangt eine `sandbox:run`-Capability (plus 17 Broker-Prüfungen);
+  `POST /api/tasks {action:"status"}` verlangt `task:execute`; Runs verlangen `run:manage`.
+  **Provenance- und Knowledge-Schreibzugriffe sind Creator-Aktionen** (`CREATOR_ONLY`), damit Evidenz und
+  Wissen nicht von Agenten erzeugt oder verändert werden können – die Lesepfade genügen einer Session
+  bzw. einer Lese-Capability.
+  Regressionstests: `tests/security/route-guards.test.ts` (428/401/403 `CREATOR_ONLY`, `CAPABILITY_DENIED`,
+  CSRF, Audit-Integrität).
+- **Offen (PARTIAL):** Nicht jede Route hat bereits eine *aktionsspezifische* Prüfung – nicht abgedeckte
+  Routen sind durch die Middleware weiterhin fail closed geschlossen, aber ohne Aktionsprüfung.
+  Siehe `docs/BOOTSTRAP.md` §5 und `docs/TODO.md`.
 
 ## 4. Keine Shell-Strings (`lib/argv-policy.ts`)
 
@@ -104,6 +115,9 @@ ist damit nachweisbar.
 ## 9. Verifikation
 
 Nachweisende Tests: `tests/security/authority.test.ts`, `tests/security/api-guard.test.ts`,
-`tests/security/argv-policy.test.ts`, `tests/e2e/creator-flow.test.ts`, `tests/e2e/failure-recovery.test.ts`.
+`tests/security/api-gate.test.ts`, `tests/security/route-guards.test.ts`, `tests/security/argv-policy.test.ts`,
+`tests/security/creator-login.test.ts`, `tests/security/creator-login-lockout.test.ts`,
+`tests/e2e/creator-flow.test.ts`, `tests/e2e/failure-recovery.test.ts` (81 Tests / 15 Dateien) und der
+Live-Nachweis `scripts/verify-live.sh`.
 Zusammenfassung: `docs/TESTING.md`. Offene, als `PARTIAL`/`UNVERIFIED` gekennzeichnete Punkte sind dort und in
 `docs/TODO.md` gelistet.

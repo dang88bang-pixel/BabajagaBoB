@@ -1,14 +1,17 @@
 import {NextResponse} from "next/server";
 import {auditGovernance,createDelegation,isKilled,listDelegations,listKillSwitches,revokeDelegation,setKillSwitch,validateDelegation,delegationIntegrity,governanceStoreIntegrity} from "@/lib/governance";
-import {actionField,readJson,stringArray,stringField,requireCapability} from "@/lib/request-validation";
+import {actionField,readJson,stringArray,stringField} from "@/lib/request-validation";
+import {guardRequest} from "@/lib/api/guard";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 export async function GET(){return NextResponse.json({killSwitches:listKillSwitches(),delegations:listDelegations(),integrity:{...delegationIntegrity(),store:governanceStoreIntegrity()}},{headers:{"Cache-Control":"no-store"}})}
 export async function POST(req:Request){
  try{
   const b=await readJson(req); const action=actionField(b,["kill","release","is-killed","delegate","revoke","validate"]);
-  const token=typeof b.capabilityTokenId==="string"?b.capabilityTokenId:undefined;
-  if(action!=="is-killed"&&action!=="validate")requireCapability(token,action==="delegate"?"governance:delegate":action==="revoke"?"governance:revoke":"governance:kill");
+  if(action!=="is-killed"&&action!=="validate"){
+   // Kill Switch und Delegationen sind Governance-Akte: ausschliesslich Creator.
+   guardRequest(req,{action:action==="delegate"?"governance:delegate":action==="revoke"?"governance:revoke":"governance:kill",creatorOnly:true});
+  }else{guardRequest(req,{action:"governance:read"});}
   let result:unknown;
   if(action==="kill"||action==="release"){
    const scope=stringField(b,"scope",32); const targetId=stringField(b,"targetId",128); const reason=typeof b.reason==="string"?b.reason:"manual governance change";
@@ -23,5 +26,5 @@ export async function POST(req:Request){
   else result={delegation:validateDelegation(stringField(b,"id",128),stringField(b,"capability",256))};
   auditGovernance(action,typeof b.targetId==="string"?b.targetId:typeof b.id==="string"?b.id:"delegation",JSON.stringify(result));
   return NextResponse.json(result);
- }catch(e){return NextResponse.json({error:e instanceof Error?e.message:"invalid request"},{status:403})}
+ }catch(e){if(e instanceof Error&&"status" in e){const d=e as {status:number;code?:string;message:string};return NextResponse.json({error:d.code??"DENIED",message:d.message},{status:d.status})}return NextResponse.json({error:e instanceof Error?e.message:"invalid request"},{status:403})}
 }

@@ -313,13 +313,18 @@ export async function verifyFix(incidentId: string): Promise<{incident: ErrorInc
   const incident = getErrorIncident(incidentId);
   if (!incident) throw new Error("error incident not found");
   if (!incident.diagnosticSandboxId) throw new Error("no diagnostic sandbox available");
-  const verifying = transitionError(incidentId, "VERIFYING");
+  // Wiederholte Verifikation ist zulaessig und idempotent: eine bereits
+  // verifizierte Recovery hat den Incident schon nach VERIFYING gefuehrt, ein
+  // bereits gelernter Fix bleibt LEARNED. Der Nachweis wird erneut erbracht,
+  // ohne dass ein Statusfehler entsteht.
+  const alreadyVerified = incident.status === "VERIFYING" || incident.status === "LEARNED";
+  const verifying = alreadyVerified ? incident : transitionError(incidentId, "VERIFYING");
   const suite = await runRegressionSuite(verifying.diagnosticSandboxId!, verifying.regressionId ? [verifying.regressionId] : undefined);
   if (!suite.passed) {
     const reverted = transitionError(incidentId, "ROOT_CAUSE_FOUND", {error: `verification failed: ${suite.failed.join(", ") || "no regression tests registered"}`});
     return {incident: reverted, passed: false, detail: suite.failed.join(", ") || "no regression tests registered"};
   }
-  const learned = transitionError(incidentId, "LEARNED", {error: undefined});
+  const learned = incident.status === "LEARNED" ? incident : transitionError(incidentId, "LEARNED", {error: undefined});
   return {incident: learned, passed: true, detail: `${suite.passedCount}/${suite.total} regression tests passed`};
 }
 
@@ -404,7 +409,16 @@ export async function verifyRecoveryForIncident(incidentId: string) {
   const incident = getErrorIncident(incidentId);
   if (!incident) throw new Error("error incident not found");
   if (!incident.recoveryId) throw new Error("incident has no recovery plan");
-  return verifyRecovery(incident.recoveryId);
+  const plan = await verifyRecovery(incident.recoveryId);
+  // Lebenszyklus weiterfuehren: eine verifizierte Recovery uebergibt an die
+  // Fix-Verifikation (VERIFYING). Ohne Verifikation bleibt der Incident stehen.
+  if (plan.status === "VERIFIED" && incident.status === "FIXING") {
+    transitionError(incidentId, "VERIFYING", {
+      recoveryId: plan.recoveryId,
+      evidenceIds: incident.evidenceIds
+    });
+  }
+  return plan;
 }
 
 export function errorSummary() {

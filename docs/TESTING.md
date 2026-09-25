@@ -2,14 +2,14 @@
 
 **Stand:** 2026-09-25
 **Testrunner:** Vitest 3 (`vitest.config.ts`, Node ≥ 22)
-**Letzter verifizierter Lauf:** `npx vitest run` → **14 Dateien, 75 Tests, alle grün**; `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler / 8 Warnungen; `npm run build` erfolgreich. Zusätzlich live gegen den Produktionsserver geprüft (428 ohne Session, 201 Bootstrap, 200 mit Session, 403 bei Cross-Origin).
+**Letzter verifizierter Lauf:** `npx vitest run` → **15 Dateien, 81 Tests, alle grün**; `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler / 8 Warnungen; `npm run build` erfolgreich. Zusätzlich live gegen den Produktionsserver geprüft: `scripts/verify-live.sh` → **83 Prüfungen, 0 Fehler** (siehe §4a).
 
 ## 1. Suiten und Abdeckung
 
 | Suite | Dateien | Tests | Inhalt |
 |---|---|---|---|
 | `tests/unit` | 2 | 10 | Persistenz-Envelope (Digest, Manipulationserkennung, Versionsprüfung, Registry), Control Plane (Mission/Objective/Task, Risiko-/Approval-Regeln, Persistenz) |
-| `tests/security` | 6 | 36 | Authority-Invarianten (Selbstvergabe, Wildcards, TTL, Risk-Eskalation, Audit-DENY), API-Guard (428/401/403, CSRF-Origin, Session, Legacy-Token fail-closed), argv-Policy (Broker-DENY + Runtime-Defense-in-Depth), API-Gate (Bootstrap, Session, CSRF, Renew/Logout, keine Agent-/Legacy-Token an der Grenze), Creator-Login (Secret-Datei 0600, Konstantzeit, Audit, Sperre) |
+| `tests/security` | 7 | 42 | Authority-Invarianten (Selbstvergabe, Wildcards, TTL, Risk-Eskalation, Audit-DENY), API-Guard (428/401/403, CSRF-Origin, Session, Legacy-Token fail-closed), argv-Policy (Broker-DENY + Runtime-Defense-in-Depth), API-Gate (Bootstrap, Session, CSRF, Renew/Logout, keine Agent-/Legacy-Token an der Grenze), Creator-Login (Secret-Datei 0600, Konstantzeit, Audit, Sperre), Routen-Guards (Provenance/Knowledge/Runs: 428 vor Bootstrap, 401 ohne Authentifizierung, `CREATOR_ONLY` für Agenten-Schreibzugriff, `CAPABILITY_DENIED` ohne `run:manage`, CSRF-Origin, Audit-Integrität) |
 | `tests/integration` | 3 | 20 | Sandbox-Fabric mit `REAL_LOCAL` (Bindung, Prozessausführung, Snapshot + Digest, Verifikation, ALLOWLIST fail-closed), Provider-Fabric (Approval-Pflicht, Bindungen, Health, Datenvertrag), App-Module (Fabric-gebundene Sandboxes, Lifecycle) |
 | `tests/regression` | 1 | 5 | Regression Engine: argv-Policy, Registrierung, PASS/FAIL, Suite fail-closed bei Fehlschlag, Persistenz |
 | `tests/e2e` | 2 | 4 | Kette Creator → Aufgabe → Autorisierung → Sandbox → Ausführung → Evidence → Knowledge sowie Fehlerkette DETECTED → DIAGNOSING → EXPERIMENTING → ROOT_CAUSE_FOUND → FIXING → VERIFIED → LEARNED → REGRESSION_LOCKED |
@@ -58,6 +58,36 @@ npm run verify        # lint + typecheck + test + build
 Zusätzlich gelten als Regressionsschutz: Root Cause ohne Evidenz wird verweigert, leere Regression-Suite gilt
 als Fehlschlag (fail closed), Verifikation ohne Snapshot nicht als `ACCEPT`.
 
+## 4a. Live-Nachweis über die HTTP-Oberfläche (`scripts/verify-live.sh`)
+
+Der Nachweis läuft gegen einen echten Produktionsserver (`npx next start`) und die vollständige
+HTTP-Oberfläche – nicht gegen In-Process-Module. Aufruf:
+
+```bash
+rm -rf /tmp/bob-live && mkdir -p /tmp/bob-live
+BOB_STORAGE_DIR=/tmp/bob-live BOB_BOOTSTRAP_SECRET=<einmal-secret> \
+BOB_CREATOR_LOGIN_SECRET=<creator-secret> BOB_SANDBOX_RUNTIME=local \
+  npx next start -H 0.0.0.0 -p 3000
+
+BOB_STORAGE_DIR=/tmp/bob-live BOB_BOOTSTRAP_SECRET=<einmal-secret> \
+BOB_CREATOR_LOGIN_SECRET=<creator-secret> BASE=http://localhost:3000 \
+  bash scripts/verify-live.sh
+```
+
+Das Skript bricht nie ab, sondern zählt PASS/FAIL und gibt die echte Serverantwort aus. Ergebnis des
+letzten Laufs (2026-09-25, Storage `/tmp/bob-live5`): **83 PASS / 0 FAIL**.
+
+| Schritt | Geprüft | Ergebnis |
+|---|---|---|
+| 1. Authentifizierung | 428 vor Bootstrap, 401 ohne Credentials, falsches Secret nach Initialisierung → 403, Bootstrap 201 + Session, Creator-Login 201, `GET /api/control` 200 | PASS |
+| 2. Kette | Mission → Objective → Task (zugewiesen) → Task-Status → Agent-Fabric | PASS |
+| 3. Sandbox + Capability | Sandbox erstellt/gestartet, an Task+Agent gebunden, Netzwerk `DENY`, Snapshot mit SHA-256-Digest, Capability-Token (≤ 15 min, `sandbox:run`) | PASS |
+| 4. Autorisierte Ausführung | Run (201) → `POST /api/runtime` mit `argv:["node","-e",...]`, `shell:false` → 200, stdout `live-ok`, Audit-DECISION `ALLOW`, Timeline-Events, Provenance-Kanten kausal verknüpft | PASS |
+| 5. Blockierte Angriffe | unbekanntes Token 409, Shell-Programm 409 `SHELL_PROGRAM`, Metazeichen 409 `SHELL_METACHAR`, fremde Sandbox-Bindung 409, Audit-HMAC-Kette integer | PASS |
+| 6. Fehlerkette | Incident → Diagnosesandbox (real gestartet) → Hypothese → Experiment → Evidenz → Root Cause → Recovery-Plan (Snapshot) → Restore → Regressionstest → Recovery `VERIFIED` → `fix.verify` `LEARNED` → Lernen → `REGRESSION_LOCKED` + negatives Wissen | PASS |
+| 7. Governance | Kill-Switch-Liste, Lockdown blockiert Ausführung (409 am Gate), Freigabe hebt Block auf, Privacy default `DENY`, Provider nur entdeckt + Verbindung verlangt Approval, Gerät nicht implizit autorisiert | PASS |
+| 8. Betrieb | Restore aus Snapshot, Pause, Destroy, Persistenzbericht ohne Integritätsfehler, Readiness, unbekannter Provider 400 | PASS |
+
 ## 5. CI-Abbildung
 
 `.github/workflows/ci.yml` führt die Suiten in getrennten Jobs aus (Lint/Typecheck, Unit + Integration +
@@ -69,7 +99,8 @@ Details: `docs/CI_CD.md`.
 - Keine Browser-/UI-E2E-Tests: das Control Center wird nicht automatisiert im Browser geprüft; die
   Authentifizierungsgrenze ist über `tests/security/api-gate.test.ts` und einen Live-Lauf gegen den
   Produktionsserver belegt.
-- Aktionsspezifische `guardRequest`-Prüfungen pro Route (Risiko, Creator-Pflicht, Task-/Sandbox-Bindung) sind
-  noch nicht überall verdrahtet; die Middleware deckt die Authentifizierungsgrenze ab.
+- Aktionsspezifische `guardRequest`-Prüfungen sind für die Kern- und Schreibpfade verdrahtet
+  (Mission/Objective/Task, Sandbox-Lebenszyklus, Runs, Runtime, Governance, Provider, Provenance/Knowledge);
+  für noch nicht verdrahtete Routen bleibt die Middleware die fail-closed-Grenze, ohne Aktionsprüfung.
 - OCI-Runtime, Provider-Fabric-Persistenz und Geräte-/Computer-Use-Integration sind implementiert, aber
   `UNVERIFIED` bzw. `PARTIAL`.

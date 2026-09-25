@@ -1,1 +1,48 @@
-import {NextResponse} from "next/server";import {snapshot} from "../../../lib/control-plane";export const runtime="nodejs";export async function GET(){return NextResponse.json(snapshot().missions)}
+import {NextResponse} from "next/server";
+import {createMission, createObjective, snapshot} from "../../../lib/control-plane";
+import {guardRequest} from "../../../lib/api/guard";
+
+/**
+ * Missionen und Objectives.
+ *
+ * Lesen: authentifizierte Session. Schreiben: ausschließlich Creator
+ * (Mission/Objective setzen Ziele und Risikorahmen der Plattform).
+ */
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET(req: Request) {
+  guardRequest(req, {action: "mission:read"});
+  return NextResponse.json(snapshot().missions, {headers: {"Cache-Control": "no-store"}});
+}
+
+export async function POST(req: Request) {
+  try {
+    const body = (await req.json()) as Record<string, unknown>;
+    if (body.action === "create-mission") {
+      const guard = guardRequest(req, {action: "mission:create", creatorOnly: true});
+      const mission = createMission({
+        title: String(body.title ?? ""),
+        objective: String(body.objective ?? ""),
+        createdBy: guard.actor.actorId
+      });
+      return NextResponse.json({mission}, {status: 201});
+    }
+    if (body.action === "create-objective") {
+      guardRequest(req, {action: "objective:create", creatorOnly: true});
+      const objective = createObjective({
+        missionId: String(body.missionId ?? ""),
+        title: String(body.title ?? ""),
+        description: String(body.description ?? "")
+      });
+      return NextResponse.json({objective}, {status: 201});
+    }
+    return NextResponse.json({error: "unknown action", supported: ["create-mission", "create-objective"]}, {status: 400});
+  } catch (error) {
+    if (error instanceof Error && "status" in error) {
+      const denied = error as {status: number; code?: string; message: string};
+      return NextResponse.json({error: denied.code ?? "DENIED", message: denied.message}, {status: denied.status});
+    }
+    return NextResponse.json({error: error instanceof Error ? error.message : "invalid request"}, {status: 400});
+  }
+}
