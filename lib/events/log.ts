@@ -61,9 +61,10 @@ export type DomainEventInput = Omit<DomainEvent, "eventId" | "sequence" | "times
   causalParentId?: string;
 };
 
-type Payload = {events: DomainEvent[]; maxRetained: number};
+type EventTrimCheckpoint = {sequence: number; eventId: string; trimmedAt: string; reconstructed?: boolean};
+type Payload = {events: DomainEvent[]; maxRetained: number; trimmedThrough?: EventTrimCheckpoint | null};
 const MAX_EVENTS = 5000;
-const store = createStore<Payload>("events", 1, () => ({events: [], maxRetained: MAX_EVENTS}));
+const store = createStore<Payload>("events", 1, () => ({events: [], maxRetained: MAX_EVENTS, trimmedThrough: null}));
 
 export function appendDomainEvent(input: DomainEventInput): DomainEvent {
   const payload = store.read();
@@ -77,7 +78,11 @@ export function appendDomainEvent(input: DomainEventInput): DomainEvent {
     parentDirection: "PREVIOUS"
   };
   payload.events.push(next);
-  if (payload.events.length > payload.maxRetained) payload.events.splice(0, payload.events.length - payload.maxRetained);
+  if (payload.events.length > payload.maxRetained) {
+    const removed = payload.events.splice(0, payload.events.length - payload.maxRetained);
+    const last = removed.at(-1);
+    if (last) payload.trimmedThrough = {sequence: last.sequence, eventId: last.eventId, trimmedAt: new Date().toISOString()};
+  }
   store.write(payload);
   return next;
 }
@@ -119,7 +124,7 @@ export function getDomainEvent(eventId: string): DomainEvent | null {
   return found ? structuredClone(found) : null;
 }
 
-export type EventChainVerification = {valid: boolean; length: number; issues: string[]};
+export type EventChainVerification = {valid: boolean; length: number; issues: string[]; trimmedSequence?: number; headReconstructed?: boolean; retentionIntegrity: "FULL_CHAIN" | "TRIMMED_WITH_CHECKPOINT" | "HEAD_RECONSTRUCTED_FROM_FIRST_RETAINED_EVENT"};
 
 /**
  * Integritätsprüfung der Event-Kette (Abschnitt 6):
@@ -128,31 +133,40 @@ export type EventChainVerification = {valid: boolean; length: number; issues: st
  *  - Zeitstempel dürfen nicht rückwärts laufen
  *  - causedBy darf nur auf existierende, ältere Events verweisen
  */
-export function verifyEventChain(): EventChainVerification {
-  const {events} = store.read();
-  const issues: string[] = [];
-  const bySequence = new Map<number, DomainEvent>();
-  for (const event of events) bySequence.set(event.sequence, event);
+function ensureEventTrimCheckpoint(): {reconstructed: boolean; sequence: number} {
+  const payload = store.read();
+  const first = payload.events[0];
+  if (!first || first.sequence <= 1 || payload.trimmedThrough) return {reconstructed: false, sequence: payload.trimmedThrough?.sequence ?? 0};
+  const checkpoint: EventTrimCheckpoint = {sequence: first.sequence - 1, eventId: first.causalParentId ?? "UNKNOWN", trimmedAt: new Date().toISOString(), reconstructed: true};
+  store.update(current => { current.trimmedThrough = checkpoint; });
+  return {reconstructed: true, sequence: checkpoint.sequence};
+}
 
-  let expected = 1;
+export function verifyEventChain(): EventChainVerification {
+  const repaired = ensureEventTrimCheckpoint();
+  const payload = store.read();
+  const {events} = payload;
+  const issues: string[] = [];
+  const checkpoint = payload.trimmedThrough ?? null;
+  let expected = (checkpoint?.sequence ?? 0) + 1;
   let previousTimestamp = "";
   for (const event of events) {
-    if (event.sequence !== expected) issues.push(`sequence gap at ${event.eventId}: expected ${expected}, found ${event.sequence}`);
+    if (event.sequence !== expected) issues.push("sequence gap at " + event.eventId + ": expected " + expected + ", found " + event.sequence);
     expected = event.sequence + 1;
     if (event.causalParentId) {
       const parent = events.find(e => e.eventId === event.causalParentId);
-      if (!parent) issues.push(`missing causal parent for ${event.eventId}`);
-      else if (parent.sequence >= event.sequence) issues.push(`causal parent ${parent.eventId} is not older than ${event.eventId}`);
+      if (!parent && !(checkpoint && event.sequence === checkpoint.sequence + 1 && event.causalParentId === checkpoint.eventId)) issues.push("missing causal parent for " + event.eventId);
+      else if (parent && parent.sequence >= event.sequence) issues.push("causal parent " + parent.eventId + " is not older than " + event.eventId);
     }
     for (const cause of event.causedBy ?? []) {
       const antecedent = events.find(e => e.eventId === cause);
-      if (!antecedent) issues.push(`unknown causedBy reference ${cause} in ${event.eventId}`);
-      else if (antecedent.sequence >= event.sequence) issues.push(`causedBy reference ${cause} is not older than ${event.eventId}`);
+      if (!antecedent) issues.push("unknown causedBy reference " + cause + " in " + event.eventId);
+      else if (antecedent.sequence >= event.sequence) issues.push("causedBy reference " + cause + " is not older than " + event.eventId);
     }
-    if (previousTimestamp && event.timestamp < previousTimestamp) issues.push(`timestamp regression at ${event.eventId}`);
+    if (previousTimestamp && event.timestamp < previousTimestamp) issues.push("timestamp regression at " + event.eventId);
     previousTimestamp = event.timestamp;
   }
-  return {valid: issues.length === 0, length: events.length, issues};
+  return {valid: issues.length === 0, length: events.length, issues, trimmedSequence: checkpoint?.sequence ?? 0, ...(checkpoint?.reconstructed || repaired.reconstructed ? {headReconstructed: true} : {}), retentionIntegrity: (checkpoint?.sequence ?? 0) === 0 ? "FULL_CHAIN" : checkpoint?.reconstructed || repaired.reconstructed ? "HEAD_RECONSTRUCTED_FROM_FIRST_RETAINED_EVENT" : "TRIMMED_WITH_CHECKPOINT"};
 }
 
 export function eventLogIntegrity() {
