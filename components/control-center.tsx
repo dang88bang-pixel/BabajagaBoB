@@ -232,6 +232,7 @@ export default function ControlCenter() {
   const [providerList, setProviderList] = useState<Provider[]>([]);
   const [panels, setPanels] = useState<PanelData>(emptyPanel);
   const [verifyResult, setVerifyResult] = useState<string>("");
+  const [loadedOnce, setLoadedOnce] = useState(false);
   const [error, setError] = useState("");
   const [auth, setAuth] = useState<{authenticated: boolean; requiresBootstrap: boolean; revoked: boolean; loginAvailable?: boolean; locked?: boolean} | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
@@ -305,6 +306,8 @@ export default function ControlCenter() {
       setError("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unbekannter Fehler");
+    } finally {
+      setLoadedOnce(true);
     }
   }, []);
 
@@ -333,6 +336,9 @@ export default function ControlCenter() {
   const title = section === "Overview" ? "Control Center" : section;
   const avg = Math.round([...agents, ...tasks, ...experiments].reduce((sum, item) => sum + item.progress, 0) / Math.max(1, [...agents, ...tasks, ...experiments].length));
   const taskTitle = (taskId: string | null | undefined) => tasks.find(task => task.taskId === taskId)?.title ?? "—";
+  // „noch nicht geladen“ ist etwas anderes als „nicht verfügbar“: erst nach dem
+  // ersten Ladeversuch wird eine fehlende Antwort als Ausfall gemeldet.
+  const emptyFor = (text: string) => (loadedOnce ? text : "wird geladen …");
 
   const submitAuth = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -484,7 +490,7 @@ export default function ControlCenter() {
                   </div>
                   <span className="live">● LIVE</span>
                 </div>
-                {agents.length === 0 && <Empty text="Keine Agenten geladen." />}
+                {agents.length === 0 && <Empty text={emptyFor("Keine Agenten geladen.")} />}
                 {agents.map(agent => (
                   <div className="agent" key={agent.agentId}>
                     <div className="avatar">{agent.name[0]}</div>
@@ -585,7 +591,7 @@ export default function ControlCenter() {
             subtitle="Leases, Versuche und Idempotenzschlüssel der Ausführungswarteschlange."
             head={["Job", "Task", "Agent", "Status", "Versuche", "Risiko", "Priorität"]}
             rows={(panels.jobs ?? []).map(job => [job.jobId, `${job.taskId} (${taskTitle(job.taskId)})`, job.agentId, job.state, `${job.attempt}/${job.maxAttempts}`, job.risk, String(job.priority)])}
-            empty={panels.jobs === null ? "nicht verfügbar" : "Warteschlange ist leer."}
+            empty={panels.jobs === null ? emptyFor("nicht verfügbar") : "Warteschlange ist leer."}
           />
         );
       case "Approvals":
@@ -595,7 +601,7 @@ export default function ControlCenter() {
             subtitle="Freigaben werden ausschließlich serverseitig entschieden; die Oberfläche zeigt nur den Zustand."
             head={["Freigabe", "Task", "Status", "Grund", "erstellt"]}
             rows={(panels.approvals ?? approvals).map(approval => [approval.id, `${approval.taskId} (${taskTitle(approval.taskId)})`, approval.status, approval.reason, approval.createdAt ?? "—"])}
-            empty={panels.approvals === null ? "nicht verfügbar" : "Keine Freigaben offen."}
+            empty={panels.approvals === null ? emptyFor("nicht verfügbar") : "Keine Freigaben offen."}
           />
         );
       case "Apps":
@@ -673,7 +679,7 @@ export default function ControlCenter() {
               pipeline.checks.length === 0 ? "keine Prüfung erfasst" : pipeline.checks.map(check => `${check.kind}:${check.status}`).join(", "),
               pipeline.updatedAt ?? "—"
             ])}
-            empty={panels.pipelines === null ? "nicht verfügbar" : "Keine Pipelines angelegt."}
+            empty={panels.pipelines === null ? emptyFor("nicht verfügbar") : "Keine Pipelines angelegt."}
             footer="Regressionstests sind je Fehlerfall im Modul Errors sichtbar (Feld Regression); eine Promotion blockiert ohne bestandene Prüfungen."
           />
         );
@@ -691,7 +697,7 @@ export default function ControlCenter() {
               String(pipeline.checks.filter(check => check.status === "PASSED").length) + "/" + String(pipeline.checks.length),
               pipeline.stage === "PRODUCTION" ? "Produktion freigegeben" : "nicht freigegeben"
             ])}
-            empty={panels.pipelines === null ? "nicht verfügbar" : "Keine Deployments/Pipelines vorhanden."}
+            empty={panels.pipelines === null ? emptyFor("nicht verfügbar") : "Keine Deployments/Pipelines vorhanden."}
           />
         );
       case "Artifacts":
@@ -721,7 +727,7 @@ export default function ControlCenter() {
                   </button>
                 );
               }}
-              empty={panels.artifacts === null ? "nicht verfügbar" : "Keine Artefakte vorhanden."}
+              empty={panels.artifacts === null ? emptyFor("nicht verfügbar") : "Keine Artefakte vorhanden."}
             />
             {verifyResult && <div className="integrity"><strong>DIGEST-PRÜFUNG</strong><span>{verifyResult}</span></div>}
           </>
@@ -778,14 +784,14 @@ export default function ControlCenter() {
               subtitle="Entdeckung ist keine Autorisierung: Geräte bleiben bis zur ausdrücklichen Freigabe ungenutzt."
               head={["Gerät", "Name", "OS", "Architektur", "Vertrauen", "Zustand", "Netzwerk", "Capabilities"]}
               rows={(panels.devices ?? []).map(device => [device.id, device.name, device.os, device.arch, device.trust, device.state, device.network, device.capabilities.join(", ")])}
-              empty={panels.devices === null ? "nicht verfügbar" : "Keine Geräte entdeckt."}
+              empty={panels.devices === null ? emptyFor("nicht verfügbar") : "Keine Geräte entdeckt."}
             />
             <Table
               title="Computer Use"
               subtitle="Browser-, Desktop- und CLI-Instanzen mit expliziter Autorisierung."
               head={["Instanz", "Name", "Art", "Netzwerk", "Autorisiert", "Zustand", "Task"]}
               rows={(panels.computers ?? []).map(computer => [computer.id, computer.name, computer.kind, computer.network, computer.authorized ? "ja" : "nein", computer.state, computer.taskId ?? "—"])}
-              empty={panels.computers === null ? "nicht verfügbar" : "Keine Computer-Use-Instanzen registriert."}
+              empty={panels.computers === null ? emptyFor("nicht verfügbar") : "Keine Computer-Use-Instanzen registriert."}
             />
           </>
         );
@@ -797,7 +803,7 @@ export default function ControlCenter() {
               subtitle="Vier Schichten inklusive negativem Wissen (Never Again). Der Wissenszustand trennt beobachtet, gestützt, etabliert, Hypothese, ungeprüft, widersprochen und verworfen."
               head={["Wissen", "Schicht", "Subjekt", "Prädikat", "Objekt", "Zustand", "Belegklasse"]}
               rows={(panels.knowledge ?? []).map(node => [node.knowledgeId, node.layer, node.subject, node.predicate, node.object, node.state, node.confidence])}
-              empty={panels.knowledge === null ? "nicht verfügbar" : "Kein Wissen gespeichert."}
+              empty={panels.knowledge === null ? emptyFor("nicht verfügbar") : "Kein Wissen gespeichert."}
             />
           </>
         );
@@ -808,7 +814,7 @@ export default function ControlCenter() {
             subtitle="Szenarien mit Annahmen und erwarteten Zuständen; Ergebnisse werden als Evidenz geführt."
             head={["Szenario", "Name", "Art", "Zustand", "Annahmen", "Erwartete Zustände"]}
             rows={(panels.scenarios ?? []).map(scenario => [scenario.id, scenario.name, scenario.kind, scenario.state, scenario.assumptions.join(" · ") || "—", scenario.expectedStates.join(" · ") || "—"])}
-            empty={panels.scenarios === null ? "nicht verfügbar" : "Keine Szenarien angelegt."}
+            empty={panels.scenarios === null ? emptyFor("nicht verfügbar") : "Keine Szenarien angelegt."}
           />
         );
       case "Replay":
