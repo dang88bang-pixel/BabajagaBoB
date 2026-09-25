@@ -32,6 +32,12 @@ export type ExecutionRequest = {
   environment?: string;
   argv: string[];
   timeoutMs?: number;
+  /**
+   * Klartext-Zweck der Ausführung (z. B. `REGRESSION`, `SMOKE_TEST`). Interne
+   * Läufe tragen ihn mit, damit im Ereignisstrom nachvollziehbar ist, **warum**
+   * ausgeführt wurde — nicht nur wer und womit.
+   */
+  purpose?: string;
 };
 
 export type ExecutionDenial = {
@@ -243,7 +249,8 @@ export async function executeAuthorized(request: ExecutionRequest): Promise<Exec
     decision: "ALLOW",
     authorizationRef: token.id,
     inputRef: request.runId,
-    argumentsValue: {argv: request.argv, environment}
+    purpose: request.purpose,
+    argumentsValue: {argv: request.argv, environment, ...(request.purpose ? {purpose: request.purpose} : {})}
   });
 
   const result = await activeSandboxRuntime.execute(request.sandboxId, request.argv, request.timeoutMs);

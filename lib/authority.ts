@@ -409,6 +409,10 @@ export function ensureExecutionCapability(
       t.environment === environment &&
       t.capabilities.includes("task:execute") &&
       t.capabilities.includes("sandbox:run") &&
+      // Erschöpfte Token sind nicht wiederverwendbar: sonst würde der Broker den
+      // nächsten Lauf als Replay verweigern, obwohl eine gültige Autorisierung
+      // vorzuliegen scheint (genau eine Autorisierung = eine Ausführung).
+      (t.uses ?? 0) < (t.maxUses ?? 1) &&
       riskRank[t.risk] >= riskRank[risk] &&
       new Date(t.expiresAt).getTime() > Date.now() + 60_000
   );

@@ -26,5 +26,12 @@ export async function POST(req:Request){
   if(action==="root_cause")return NextResponse.json(establishRootCause(stringField(b,"id",128),stringField(b,"rootCause",4096),stringArray(b.evidenceIds,"evidenceIds")));
   if(action==="learn")return NextResponse.json(learnFromError(stringField(b,"id",128),stringField(b,"summary",4096),typeof b.regressionTestId==="string"?b.regressionTestId:undefined));
   return NextResponse.json(escalateError(stringField(b,"id",128),stringField(b,"reason",4096)));
- }catch(e){return NextResponse.json({error:e instanceof Error?e.message:"Error intelligence operation failed"},{status:400})}
+ }catch(e){
+  // Verweigerungen sind Verweigerungen: der Broker/Gate lehnt ab (z. B. Kill Switch),
+  // das ist kein fehlerhafter Request, sondern eine autorisierte Ablehnung.
+  const denied=toDeniedResponse(e);
+  if(denied)return denied;
+  if(e instanceof Error&&e.name==="ExecutionDeniedError")return NextResponse.json({error:e.message,denied:true},{status:409});
+  return NextResponse.json({error:e instanceof Error?e.message:"Error intelligence operation failed"},{status:400})
+ }
 }

@@ -23,7 +23,10 @@ Experiment-Engine mit Kausalvalidierung, Error Intelligence bis
 Knowledge Graph mit negativem Wissen, Agent Fabric (11 Rollen mit
 Autonomie-Vertrag), Provider-Fabric mit Approval-Pflicht, Privacy default `DENY`,
 Device- und Computer-Use-Autorisierung, CI/CD mit Promotion-Gate, 14 §44-Dokumente,
-Live-Nachweis über 114 HTTP-Prüfungen (inkl. Agentenweg über Capability-Token).
+Live-Nachweis über 171 HTTP-Prüfungen (inkl. Agentenweg über Capability-Token,
+Lockdown-Nachweis für interne Läufe und Kernel-Isolation mit Ressourcenlimits),
+kein Ausführungspfad um den Broker (`lib/system-execution.ts`; Regression und
+Smoke-Test laufen als SYSTEM-WORKER über Gate, Broker und Evidenz).
 
 ## 2. Offen – als `PARTIAL` geführt
 

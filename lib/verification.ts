@@ -1,8 +1,9 @@
 import crypto from "node:crypto";
 import {createStore} from "./persistence/store";
-import {activeSandboxRuntime, runtimeModeLabel} from "./runtime-factory";
+import {runtimeModeLabel} from "./runtime-factory";
 import {runRegressionSuite, type RegressionSuiteResult} from "./regression";
 import {observe} from "./observability";
+import {executeSystemAuthorized} from "./system-execution";
 import {addProvenanceEdge} from "./provenance";
 import {listSnapshots} from "./sandbox/fabric";
 
@@ -48,7 +49,8 @@ const SMOKE_ARGV = ["node", "-e", "process.stdout.write('smoke-ok')"];
 export async function runSmokeTest(sandboxId: string, argv: string[] = SMOKE_ARGV) {
   const started = Date.now();
   try {
-    const result = await activeSandboxRuntime.execute(sandboxId, argv);
+    // Auch der Smoke-Test läuft über Gate und Broker (kein Bypass der Autorisierung).
+    const result = await executeSystemAuthorized({purpose: "SMOKE_TEST", sandboxId, argv});
     const accepted = result.accepted && result.stdout.includes("smoke-ok");
     return {
       accepted,

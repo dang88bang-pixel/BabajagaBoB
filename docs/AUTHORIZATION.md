@@ -87,6 +87,30 @@ Rollen `false`.
 | `RECOVERY` | Fehlerbehebung, Rollback | arbeitet Pläne ab, Stufe 4/5 nur mit Creator-Freigabe |
 | `INTEGRATOR` | Integration, Promotion-Vorschlag | Vorschlag, Freigabe bleibt beim Creator |
 
+### 3a. Interne Läufe (System-Worker)
+
+Nicht jede Ausführung stammt von einem Agenten: Regressionstests (`lib/regression.ts`) und der
+Smoke-Test der Verifikation (`lib/verification.ts`) führen echte Prozesse aus, besitzen aber selbst
+keine Session. Sie dürfen den Broker **nicht** umgehen — sonst hätte ein Kill Switch sie nicht
+blockiert und es gäbe keine Evidenz. Deshalb gilt für sie derselbe Weg
+(`lib/system-execution.ts`):
+
+```
+SYSTEM-WORKER → Capability (delegiert von CREATOR) → Execution Gate → Broker → Runtime → Evidenz
+```
+
+- Die Capability wird je Lauf neu ausgestellt: Subjekt = Besitzer der Sandbox, Task/Sandbox/Umgebung =
+  Bindung der Sandbox, Fähigkeiten `task:execute`, `sandbox:run` und der Zweck
+  (`regression:run`), genau eine Verwendung, TTL 2 Minuten.
+- Grundlage ist die Bootstrap-Kante `CREATOR → SYSTEM-WORKER`
+  (`capabilities: task:execute, sandbox:run, sandbox:snapshot, regression:run`). Fehlt sie, schlägt die
+  Ausstellung fehl und es wird nichts ausgeführt (fail closed).
+- Der Zweck erscheint im Domänenereignis (`purpose: "REGRESSION" | "SMOKE_TEST"`), damit im
+  Ereignisstrom nachvollziehbar ist, **warum** ausgeführt wurde.
+- Rollen, die eigene Sandboxes betreiben, tragen `task:execute`: `BUILDER`, `SCIENTIST`, `QA`,
+  `RECOVERY` (zuletzt ergänzt, weil der Broker die Fähigkeit sonst bei jedem legitimen Test-,
+  Experiment- und Recovery-Lauf verweigert hätte). Die Broker-Prüfung selbst bleibt unverändert streng.
+
 ## 4. Approval-Pflicht (`lib/approvals.ts`, `lib/execution-gate.ts`)
 
 - Tasks können `requiresApproval` tragen; der Broker verlangt dann ein `approvalId`,

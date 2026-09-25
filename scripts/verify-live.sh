@@ -202,6 +202,18 @@ issue_task_token() {
   api -X POST -d "{\"action\":\"issue\",\"input\":{\"subject\":\"AG-BUILD\",\"taskId\":\"$TID\",\"sandboxId\":\"$SB\",\"environment\":\"$ENV\",\"capabilities\":[\"task:execute\",\"sandbox:run\"],\"risk\":\"LOW\",\"issuedBy\":\"CREATOR\",\"issuedByKind\":\"CREATOR\",\"expiresAt\":\"$EXPIRES\"}}" "$BASE/api/authority" >/dev/null
   jqv '.token.id'
 }
+# Zweiter Incident: fuehrt den Nachweis, dass auch interne Laeufe (Regression,
+# Smoke-Test) im Lockdown verweigert werden. Sie laufen ueber denselben Weg
+# SYSTEM-WORKER -> Gate -> Broker -> Evidenz; ein Bypass existiert nicht mehr.
+assert_status "Zweiter Incident (Lockdown-Nachweis)" 201 "$(api -X POST -d "{\"action\":\"create\",\"input\":{\"severity\":\"LOW\",\"symptom\":\"Nachweis interner Laeufe\",\"incident\":\"Lockdown-Nachweis\",\"failureMode\":\"kein\",\"contributingFactors\":[],\"prevention\":[],\"evidenceIds\":[],\"taskId\":\"$TID\",\"agentId\":\"AG-BUILD\"}}" "$BASE/api/errors")"
+INC2=$(jqv '.incidentId')
+assert_status "Investigieren (interner Lauf)" 200 "$(api -X POST -d "{\"action\":\"investigate\",\"id\":\"$INC2\"}" "$BASE/api/errors")"
+assert_status "Hypothese (interner Lauf)" 200 "$(api -X POST -d "{\"action\":\"hypothesis\",\"id\":\"$INC2\",\"hypothesis\":\"Der interne Lauf geht durch Gate und Broker\"}" "$BASE/api/errors")"
+assert_status "Experiment (interner Lauf)" 201 "$(api -X POST -d "{\"action\":\"experiment\",\"id\":\"$INC2\"}" "$BASE/api/errors")"
+assert_status "Evidenz (interner Lauf)" 200 "$(api -X POST -d "{\"action\":\"evidence\",\"id\":\"$INC2\",\"claim\":\"reproduction\",\"value\":\"interner Lauf vorbereitet\"}" "$BASE/api/errors")"
+assert_status "Root Cause (interner Lauf)" 200 "$(api -X POST -d "{\"action\":\"root_cause\",\"id\":\"$INC2\",\"rootCause\":\"Nachweis der Gate-Grenze\",\"evidenceIds\":[]}" "$BASE/api/errors")"
+assert_status "Regressionstest (interner Lauf)" 201 "$(api -X POST -d "{\"action\":\"regression\",\"id\":\"$INC2\",\"argv\":[\"node\",\"-e\",\"process.stdout.write('locked-ok')\"]}" "$BASE/api/errors")"
+assert_status "Recovery vorbereiten (interner Lauf)" 201 "$(api -X POST -d "{\"action\":\"recovery\",\"id\":\"$INC2\"}" "$BASE/api/errors")"
 LOCK_TOK=$(issue_task_token); LOCK_SEC=$(jqv '.secret')
 RELEASE_TOK=$(issue_task_token); RELEASE_SEC=$(jqv '.secret')
 # Fuehrt eine Ausfuehrung als Creator aus; das Token bleibt der Autorisierungsnachweis.
@@ -212,8 +224,15 @@ assert_status "Lockdown aktivieren" 200 "$(api -X POST -d '{"action":"lockdown",
 assert_json "Lockdown ist aktiv" '.locked == true'
 assert_status "Ausführung bei Lockdown verweigert" 409 "$(lockdown_exec "$LOCK_TOK" "$LOCK_SEC" x)"
 assert_json "Verweigerung nennt das Gate" '.error | test("EXECUTION_GATE|lock|kill"; "i")'
+# Auch interne Läufe (Regression/Smoke) dürfen den Kill Switch nicht umgehen:
+# sie laufen über dieselbe Grenze (SYSTEM-WORKER → Gate → Broker → Evidenz).
+assert_status "Regressionstest im Lockdown verweigert" 409 "$(api -X POST -d "{\"action\":\"fix.verify\",\"id\":\"$INC2\"}" "$BASE/api/errors")"
+assert_json "Verweigerung nennt das Gate (interner Lauf)" '.error | test("EXECUTION_GATE|lockdown|lock"; "i")' 
 assert_status "Lockdown aufheben" 200 "$(api -X POST -d '{"action":"lockdown","locked":false}' "$BASE/api/control")"
 assert_status "Ausführung nach Freigabe wieder erlaubt" 200 "$(lockdown_exec "$RELEASE_TOK" "$RELEASE_SEC" again)"
+# Nach dem Aufheben läuft derselbe interne Lauf wieder über den Broker durch.
+assert_status "Regressionstest nach Freigabe wieder erlaubt" 200 "$(api -X POST -d "{\"action\":\"fix.verify\",\"id\":\"$INC2\"}" "$BASE/api/errors")"
+assert_json "Interner Lauf bestanden und gelernt" '.passed == true and .incident.status == "LEARNED"' 
 assert_status "Privacy-Policy lesbar" 200 "$(api "$BASE/api/privacy")"
 assert_json "Externe Weitergabe standardmäßig DENY" 'tostring | test("DENY")'
 assert_status "Provider-Katalog lesbar" 200 "$(api "$BASE/api/providers")"

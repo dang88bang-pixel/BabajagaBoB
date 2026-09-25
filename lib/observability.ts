@@ -30,6 +30,8 @@ export type ObservationInput = {
   outputRef?: string;
   authorizationRef?: string;
   provenanceRef?: string;
+  /** Klartext-Zweck der beobachteten Aktion (Nachvollziehbarkeit). */
+  purpose?: string;
   result?: string;
   causedBy?: string[];
   causalParentId?: string;
@@ -85,7 +87,8 @@ export function observe(input: ObservationInput): DomainEvent {
     provenanceRef: input.provenanceRef,
     result: input.result,
     causedBy: input.causedBy,
-    causalParentId: input.causalParentId
+    causalParentId: input.causalParentId,
+    purpose: input.purpose
   });
 
   addProvenanceNode({id: event.eventId, kind: "EVENT", label: event.type});

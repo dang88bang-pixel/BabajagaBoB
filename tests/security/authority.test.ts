@@ -82,6 +82,21 @@ describe("Authority (Sicherheitsinvarianten)", () => {
     expect(authority.validateCapabilityToken(issued.token.id, ["task:execute"], context).valid).toBe(false);
   });
 
+  it("gibt aus dem Systempfad kein erschöpftes Token erneut heraus", () => {
+    // Eine Autorisierung = eine Ausführung. Liefert die Systemausstellung ein
+    // bereits verbrauchtes Token zurück, würde der Broker den nächsten Lauf als
+    // Replay verweigern — obwohl scheinbar eine gültige Autorisierung vorliegt.
+    const taskId = "TASK-0002";
+    const sandboxId = "SB-0002";
+    const first = authority.ensureExecutionCapability(AGENT_ID, taskId, sandboxId, "MODERATE", "development");
+    expect(authority.ensureExecutionCapability(AGENT_ID, taskId, sandboxId, "MODERATE", "development").id).toBe(first.id);
+
+    authority.consumeCapabilityToken(first.id, AGENT_ID);
+    const second = authority.ensureExecutionCapability(AGENT_ID, taskId, sandboxId, "MODERATE", "development");
+    expect(second.id).not.toBe(first.id);
+    expect(authority.precheckCapabilityToken(second.id, ["task:execute", "sandbox:run"], {subject: AGENT_ID, taskId, sandboxId}).valid).toBe(true);
+  });
+
   it("auditiert jede Verweigerung (DENY) nachvollziehbar", () => {
     const denials = audit.auditSnapshot(200).filter(record => record.decision === "DENY");
     expect(denials.length).toBeGreaterThan(0);

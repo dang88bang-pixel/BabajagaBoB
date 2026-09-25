@@ -145,6 +145,18 @@ Risiko, Sandbox-Bindung, Token-Existenz/-Validität/-Bindung/-Risiko/-Umgebung, 
 Approval, Netzwerkpolicy, Ressourcenlimits. Jede Verweigerung erzeugt `observe(...)` + `recordAudit(DENY)` und
 ist damit nachweisbar.
 
+**Kein Ausführungspfad umgeht den Broker.** Regressionstests (`lib/regression.ts`) und der
+Smoke-Test der Verifikationspipeline (`lib/verification.ts`) führen echte Prozesse aus, gehören aber
+selbst keinem Agenten. Sie laufen deshalb über `lib/system-execution.ts`: das Modul stellt je Lauf eine
+kurzlebige, eng gebundene Capability aus, die aus der Bootstrap-Delegation `CREATOR → SYSTEM-WORKER`
+abgeleitet ist (Subjekt = Sandbox-Besitzer, Task/Sandbox/Umgebung = Bindung der Sandbox, genau eine
+Verwendung, Zweck `REGRESSION` bzw. `SMOKE_TEST`), und ruft ausschließlich `executeAuthorized` des
+Brokers auf. Damit greifen Kill Switch, Policy, Gate, Tokenbindung, Replay-Sperre und Evidenz auch für
+interne Läufe; ohne die Delegationskante wird **nichts** ausgeführt (fail closed). Der Zweck steht im
+Domänenereignis (`purpose`), also ist „warum" nachprüfbar. Getestet in
+`tests/security/gate-bypass.test.ts`, live in `scripts/verify-live.sh` (Schritt 7: `fix.verify` im
+Lockdown → 409 + Gate-Grund, nach Freigabe → bestanden).
+
 **Verweigerungsevidenz ohne Klartext-Argumente.** Zusätzlich legt jede Verweigerung einen
 digest-gebundenen Evidenzdatensatz (`kind: "DENIAL"`) an, der über den Broker, das Audit und die
 Provenance verkettet ist – damit ist eine blockierte Autorisierung nachweisbar, nicht nur protokolliert
@@ -190,9 +202,9 @@ Vorprüfung und Verbrauch), `tests/security/api-guard.test.ts`,
 Pflicht, Ablehnung ohne/mit falschem Code, Akzeptanz und Replay-Ablehnung des zweiten Faktors über
 echtes HTTP), `tests/security/inbox-route.test.ts`,
 `tests/security/api-route-contract.test.ts`, `tests/security/direct-route-denial.test.ts`,
-`tests/e2e/creator-flow.test.ts`, `tests/e2e/failure-recovery.test.ts`
-(**12 Dateien / 69 Tests** in der Security-Suite, 32 Dateien / 182 Tests gesamt) und der Live-Nachweis
-`scripts/verify-live.sh` (**159 Prüfungen / 0 Fehler** auf frischem Zustand, 157 / 0 auf initialisiertem
+`tests/security/gate-bypass.test.ts`, `tests/e2e/creator-flow.test.ts`, `tests/e2e/failure-recovery.test.ts`
+(**13 Dateien / 73 Tests** in der Security-Suite, 33 Dateien / 186 Tests gesamt) und der Live-Nachweis
+`scripts/verify-live.sh` (**171 Prüfungen / 0 Fehler** auf frischem Zustand, 169 / 0 auf initialisiertem
 Zustand, jeweils mit aktiver Kernel-Isolation).
 Zusammenfassung: `docs/TESTING.md`. Offene, als `PARTIAL`/`UNVERIFIED` gekennzeichnete Punkte sind dort und in
 `docs/TODO.md` gelistet.

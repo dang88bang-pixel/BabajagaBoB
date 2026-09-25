@@ -3,6 +3,7 @@ import {createStore} from "./persistence/store";
 import {assertArgvPolicy} from "./argv-policy";
 import {activeSandboxRuntime} from "./runtime-factory";
 import {observe} from "./observability";
+import {executeSystemAuthorized} from "./system-execution";
 import {addProvenanceEdge} from "./provenance";
 
 /**
@@ -118,7 +119,13 @@ export async function runRegressionTest(regressionId: string, sandboxId: string)
   const test = store.read().tests.find(t => t.regressionId === regressionId);
   if (!test) throw new Error(`regression test not found: ${regressionId}`);
   if (test.status !== "ACTIVE") throw new Error(`regression test is not active: ${regressionId}`);
-  const result = await activeSandboxRuntime.execute(sandboxId, test.argv);
+  // Kein direkter Runtime-Aufruf mehr: der Lauf geht durch Gate und Broker
+  // (Kill Switch greift, Autorisierung ist gebunden, Evidenz entsteht).
+  const result = await executeSystemAuthorized({
+    purpose: "REGRESSION",
+    sandboxId,
+    argv: test.argv
+  });
   const finishedAt = new Date();
   const run: RegressionRun = {
     regressionRunId: `RRUN-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,

@@ -51,6 +51,8 @@ export type DomainEvent = {
   result?: string;
   causedBy?: string[];
   causalParentId?: string;
+  /** Klartext-Zweck (z. B. `REGRESSION`, `SMOKE_TEST`) — beantwortet "warum". */
+  purpose?: string;
   /** Richtung von causalParentId: immer das ältere (vorhergehende) Event. */
   parentDirection: "PREVIOUS";
 };

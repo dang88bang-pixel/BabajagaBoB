@@ -38,12 +38,12 @@ const seed = (): ControlState => {
       ["AG-PLAN", "Planner", "Planning", "PLANNER", ["mission:plan", "task:read", "objective:write"], "MODERATE"],
       ["AG-BUILD", "Builder", "Engineering", "BUILDER", ["repo:branch", "sandbox:run", "task:execute", "artifact:write"], "HIGH"],
       ["AG-RESEARCH", "Research", "Research", "RESEARCH", ["web:research", "knowledge:write", "source:read"], "MODERATE"],
-      ["AG-SCIENTIST", "Scientist", "Science", "SCIENTIST", ["experiment:run", "sandbox:run", "evidence:write"], "HIGH"],
-      ["AG-QA", "QA", "Verification", "QA", ["test:run", "artifact:read", "regression:write"], "MODERATE"],
+      ["AG-SCIENTIST", "Scientist", "Science", "SCIENTIST", ["experiment:run", "sandbox:run", "task:execute", "evidence:write"], "HIGH"],
+      ["AG-QA", "QA", "Verification", "QA", ["test:run", "task:execute", "artifact:read", "regression:write"], "MODERATE"],
       ["AG-BROWSER", "Browser", "Computer Use", "BROWSER", ["computer:use", "sandbox:run", "screenshot:write"], "MODERATE"],
       ["AG-GUARD", "Guardian", "Security", "GUARDIAN", ["policy:read", "audit:read", "approval:request", "kill-switch:read"], "HIGH"],
       ["AG-OPS", "Operator", "Operations", "OPERATOR", ["deployment:execute", "sandbox:run", "runtime:read"], "HIGH"],
-      ["AG-RECOVERY", "Recovery", "Reliability", "RECOVERY", ["recovery:execute", "sandbox:snapshot", "regression:run"], "HIGH"],
+      ["AG-RECOVERY", "Recovery", "Reliability", "RECOVERY", ["recovery:execute", "sandbox:snapshot", "regression:run", "task:execute"], "HIGH"],
       ["AG-INT", "Integrator", "Integration", "INTEGRATOR", ["provider:bind", "provider:evaluate", "device:read"], "MODERATE"]
     ] as [string, string, string, AgentKind, string[], Risk][]
   ).map(([agentId, name, role, kind, capabilities, maxRisk]) => ({
