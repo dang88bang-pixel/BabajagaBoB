@@ -1,5 +1,12 @@
 import {SESSION_COOKIE, createSession, resolveSession, revokeSession} from "../../../lib/session";
 import {BootstrapError, bootstrapStatus, completeBootstrap} from "../../../lib/bootstrap";
+import {
+  CreatorAuthError,
+  creatorLoginAvailable,
+  creatorLockState,
+  creatorSecretSource,
+  verifyCreatorLogin
+} from "../../../lib/creator-auth";
 import {observe} from "../../../lib/observability";
 
 /**
@@ -10,8 +17,13 @@ import {observe} from "../../../lib/observability";
  * Browser erhält ausschließlich ein HttpOnly-Cookie – niemals Root-, Provider-,
  * Device- oder Runtime-Secrets.
  *
- *   GET  /api/auth              → Status (initialisiert? angemeldet?)
- *   POST /api/auth {action}     → bootstrap | renew | logout
+ *   GET  /api/auth              → Status (initialisiert? angemeldet? Login moeglich?)
+ *   POST /api/auth {action}     → bootstrap | login | renew | logout
+ *
+ * Re-Authentifizierung: Nach Verlust des Cookies meldet sich der Creator mit dem
+ * serverseitigen Creator-Secret an (Datei <BOB_STORAGE_DIR>/creator-token, Rechte 0600,
+ * oder Serverumgebungsvariable BOB_CREATOR_LOGIN_SECRET). Das Secret verlaesst den
+ * Server niemals ueber eine API.
  */
 
 const DEFAULT_TTL_MS = 8 * 3600_000;
@@ -62,7 +74,10 @@ export function GET(request: Request): Response {
     revoked: Boolean(status.revokedAt),
     failClosed: status.failClosed,
     authenticated: Boolean(session),
-    actor: session ? {actorId: session.actorId, role: session.role, expiresAt: session.expiresAt} : null
+    actor: session ? {actorId: session.actorId, role: session.role, expiresAt: session.expiresAt} : null,
+    loginAvailable: !status.revokedAt && creatorLoginAvailable(),
+    loginSecretSource: creatorSecretSource(),
+    locked: creatorLockState().locked
   });
 }
 
@@ -104,6 +119,29 @@ export async function POST(request: Request): Promise<Response> {
     }
   }
 
+  if (action === "login") {
+    if (!status.initialized) return json({error: "BOOTSTRAP_REQUIRED", message: "complete the creator bootstrap first"}, 428);
+    if (status.revokedAt) return json({error: "ROOT_REVOKED", message: "root authority is revoked"}, 423);
+    if (!secret) return json({error: "CREATOR_SECRET_REQUIRED", message: "creator secret is required"}, 400);
+    try {
+      verifyCreatorLogin(secret);
+      const issued = createSession({
+        actorId: "CREATOR",
+        role: "OWNER",
+        ttlMs: DEFAULT_TTL_MS,
+        userAgent: request.headers.get("user-agent") ?? undefined
+      });
+      return json(
+        {ok: true, actor: {actorId: issued.session.actorId, role: issued.session.role, expiresAt: issued.session.expiresAt}},
+        201,
+        `${SESSION_COOKIE}=${issued.token}; ${cookieAttributes(request, DEFAULT_TTL_MS / 1000)}`
+      );
+    } catch (error) {
+      if (error instanceof CreatorAuthError) return json({error: error.code, message: error.message}, error.status);
+      throw error;
+    }
+  }
+
   const token = cookieValue(request, SESSION_COOKIE);
   const session = token ? resolveSession(token) : null;
   if (!session) return json({error: "SESSION_REQUIRED", message: "a valid browser session is required"}, 401);
@@ -132,5 +170,5 @@ export async function POST(request: Request): Promise<Response> {
     return json({ok: true}, 200, `${SESSION_COOKIE}=; ${cookieAttributes(request, 0)}`);
   }
 
-  return json({error: "UNKNOWN_ACTION", message: "supported actions: bootstrap, renew, logout"}, 400);
+  return json({error: "UNKNOWN_ACTION", message: "supported actions: bootstrap, login, renew, logout"}, 400);
 }

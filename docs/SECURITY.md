@@ -46,6 +46,10 @@ Rechte erzeugen noch den Broker umgehen.
 - **Live verifiziert (2026-09-25):** `GET /api/control` ohne Session → 428, `POST /api/auth`
   (Bootstrap) → 201 + HttpOnly-Cookie, danach `GET /api/control` → 200, `POST /api/control` mit
   fremdem `Origin` → 403.
+- **Creator-Login (Re-Authentifizierung):** Nach Verlust des Cookies meldet sich der Creator mit dem
+  server-seitigen Secret an (`<BOB_STORAGE_DIR>/creator-token` 0600 oder `BOB_CREATOR_LOGIN_SECRET`).
+  Konstantzeit-Vergleich, Sperre nach fünf Fehlversuchen (423, 15 Minuten), jeder Versuch auditiert; das
+  Secret verlässt den Server nie. Details: `docs/BOOTSTRAP.md` §3a.
 - **Offen (PARTIAL):** Aktionsspezifische RBAC-/Risiko-/Bindungsprüfungen pro Route (`guardRequest`
   mit konkreter Action) sind noch nicht überall verdrahtet; die Middleware deckt bisher die
   Authentifizierungsgrenze ab. Siehe `docs/BOOTSTRAP.md` §5 und `docs/TODO.md`.

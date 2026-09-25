@@ -48,6 +48,33 @@ Antwort `201` mit `Set-Cookie: bob_session=<sessionId>.<secret>; HttpOnly; SameS
   (`middleware.ts` → `lib/api/api-gate.ts`). Agent-Token und Legacy-Administrationstoken werden
   dort **nicht** akzeptiert.
 
+## 3a. Re-Authentifizierung (Creator-Login)
+
+Damit der Creator nach Verlust des Cookies nicht ausgesperrt bleibt, erzeugt der Bootstrap genau ein
+server-seitiges Creator-Secret:
+
+- Datei `<BOB_STORAGE_DIR>/creator-token` mit Rechten `0600` (nur der SHA-256-Hash wird persistiert), oder
+- Serverumgebungsvariable `BOB_CREATOR_LOGIN_SECRET` (>= 16 Zeichen) in kontrollierten Deployments.
+
+```bash
+curl -X POST http://localhost:3000/api/auth \
+  -H 'content-type: application/json' \
+  -d '{"action":"login","secret":"<creator-secret>"}'
+```
+
+| Fall | Status |
+|---|---|
+| Anmeldung erfolgreich | 201 + neue HttpOnly-Session |
+| falsches Secret | 403 `CREATOR_SECRET_MISMATCH` |
+| 5 Fehlversuche innerhalb von 15 Minuten | 423 `CREATOR_LOCKED` (Sperre 15 Minuten) |
+| kein Secret konfiguriert | 428 `NO_CREATOR_SECRET` |
+| Root widerrufen | 423 `ROOT_REVOKED` |
+
+Eigenschaften: Vergleich in konstanter Zeit, jeder Versuch wird auditiert (`creator.login` ALLOW/DENY bzw.
+`creator.login.locked`), Fehlversuche werden nach Ablauf des Fensters bereinigt, und das Secret verlässt den
+Server niemals über eine API. `GET /api/auth` meldet nur `loginAvailable`, `loginSecretSource` und `locked`.
+Rotation: `rotateCreatorSecret(actor)` (nur CREATOR) erzeugt ein neues Secret.
+
 ## 4. Was der Browser niemals erhält
 
 Root-/Authority-Token, Provider-Secrets, Geräte-Credentials, Runtime-Secrets und das
@@ -56,11 +83,8 @@ des Session-Geheimnisses.
 
 ## 5. Betriebsgrenzen (offen)
 
-- **Re-Authentifizierung:** Es gibt (noch) keinen zweiten Creator-Login-Weg. Das Einmal-Secret wird
-  beim Bootstrap bewusst vernichtet; bei Root-Widerruf ist Re-Bootstrap standardmäßig deaktiviert
-  (`revokeRoot`). Geht das Session-Cookie verloren, bleibt die Oberfläche geschlossen
-  (`401 SESSION_REQUIRED`) – das ist fail closed, aber operativ eine Lücke und als offener Punkt in
-  `docs/STATUS.md` geführt.
+- **Zweiter Faktor:** Der Creator-Login ist ein einzelnes Inhaber-Secret (Datei/Umgebungsvariable). Ein
+  zweiter Faktor (z. B. TOTP/WebAuthn) ist nicht implementiert und als offener Punkt geführt.
 - **Fein-granulare RBAC pro Route:** Die Middleware erzwingt die Authentifizierungsgrenze
   (`control-plane:access`); aktionsspezifische Prüfungen (Risiko, Task/Sandbox-Bindung,
   Creator-Pflicht) gehören in die Route über `guardRequest` und sind noch nicht überall verdrahtet.

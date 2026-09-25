@@ -24,7 +24,7 @@ Produktionsreife:
 | Authority (Token, TTL, Bindung) | TESTED | `tests/security/authority.test.ts` |
 | Bootstrap / Creator-Initialisierung | TESTED | einmaliger Bootstrap, Doppelaufruf verweigert |
 | Server-Session + API-Guard | TESTED | `tests/security/api-guard.test.ts`, `tests/security/api-gate.test.ts` |
-| API-Grenze (Middleware + Auth-Route) | TESTED | `middleware.ts`, `lib/api/api-gate.ts`, `app/api/auth/route.ts`; live verifiziert (428/201/200/403) |
+| API-Grenze (Middleware + Auth-Route) | TESTED | `middleware.ts`, `lib/api/api-gate.ts`, `app/api/auth/route.ts`; Creator-Login mit Sperre; live verifiziert (428/201/200/403) |
 | Governance / Kill Switches | IMPLEMENTED | Code + Persistenz vorhanden, kein eigener Test |
 | Execution Gate + Broker | TESTED | `tests/e2e/*`, `tests/security/argv-policy.test.ts` |
 | Sandbox Fabric (Task-/Agent-Bindung) | TESTED | `tests/integration/sandbox-runtime.test.ts` |
@@ -84,8 +84,6 @@ Produktionsreife:
 
 - Aktionsspezifische `guardRequest`-Prüfungen pro Route ergänzen (die Authentifizierungsgrenze ist über die
   Middleware bereits geschlossen).
-- Re-Authentifizierung des Creators nach Verlust des Session-Cookies klären (derzeit fail closed blockiert,
-  siehe `docs/BOOTSTRAP.md` §5).
 - OCI-Runtime gegen einen echten Daemon verifizieren (`REAL_OCI`).
 - Browser-/UI-E2E für das Control Center.
 - Fehlende §44-Dokumente ergänzen (u. a. `AUTHORIZATION.md`, `SANDBOX.md`, `RUNTIME.md`, `RECOVERY.md`,

@@ -5,6 +5,7 @@ import {createStore, storageRoot} from "./persistence/store";
 import {observe} from "./observability";
 import {addAuthorityEdge, hasActiveRootAuthority, rootAuthorityId, setRootAuthority} from "./authority";
 import {createDelegation} from "./governance";
+import {initializeCreatorSecret} from "./creator-auth";
 import {registerAgent, getControlState} from "./control-plane";
 
 /**
@@ -153,8 +154,11 @@ export function completeBootstrap(input: {secret: string; creatorName: string}) 
     next.secretHash = null;
   });
 
-  // Einmal-Secret vernichten.
+  // Einmal-Secret vernichten und dauerhaften Creator-Anmeldeweg einrichten.
+  // Der Browser erhaelt weiterhin nur eine HttpOnly-Session; das Creator-Secret
+  // bleibt serverseitig (Datei 0600 bzw. Serverumgebungsvariable).
   if (fs.existsSync(secretFile())) fs.rmSync(secretFile());
+  const creatorSecret = initializeCreatorSecret();
 
   observe({
     type: "bootstrap.completed",
@@ -164,7 +168,7 @@ export function completeBootstrap(input: {secret: string; creatorName: string}) 
     action: "bootstrap.complete",
     resource: rootAuthorityId,
     decision: "ALLOW",
-    argumentsValue: {creatorName: input.creatorName, rootAuthorityId}
+    argumentsValue: {creatorName: input.creatorName, rootAuthorityId, creatorSecretSource: creatorSecret.source}
   });
 
   const agents = getControlState().agents.length;
