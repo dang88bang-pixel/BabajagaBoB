@@ -15,6 +15,13 @@ Routen `app/api/persistence/route.ts`, `app/api/metrics/route.ts`,
   `GET /api/runtime` die Stufe `FILESYSTEM_ONLY`; mit `BOB_NS_ISOLATION=on` wird dann **nichts**
   ausgeführt (409, `kernel isolation is enforced … but unavailable`) — fail closed, kein stiller
   Rückfall. Der Rootfs ist Laufzeitdatum und gehört wie `.bob-data` nicht ins Repository.
+- Ressourcenlimits (kernel-seitig, optional aber empfohlen): `BOB_CGROUP_DIR` auf einen
+  **delegierten** cgroup-v2-Unterbaum zeigen lassen. Einrichtung und Start:
+  `sudo BOB_CGROUP_DIR=/sys/fs/cgroup/bob bash scripts/setup-cgroup-delegation.sh <benutzer>`,
+  danach die Plattform mit `bash scripts/cgroup-exec.sh npx next start …` starten (siehe
+  `docs/RUNTIME.md` §2b — das `chown` der Kontrolldateien **und** der Start innerhalb des
+  delegierten Baums sind beide nötig; ohne sie meldet `/api/runtime` ehrlich `UNAVAILABLE` und
+  Ausführungen mit Speicher-/Prozesslimits werden verweigert, statt still ohne Limit zu laufen).
 - Root-Verzeichnis `0700`, jede Store-Datei `0600`, geschrieben atomar (tmp + rename).
 - Jeder Store ist ein Umschlag `{store, version, writtenAt, payload, digest}`; `digest` ist
   SHA-256 über `{store, version, payload}` und damit **an den Store-Namen gebunden**. Eine unter

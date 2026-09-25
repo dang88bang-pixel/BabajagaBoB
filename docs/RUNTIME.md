@@ -114,11 +114,38 @@ sobald er verfügbar ist.
 Setup der Delegation (einmalig, mit Administratorrechten; `bob` = Benutzer der Plattform):
 
 ```bash
-sudo mkdir -p /sys/fs/cgroup/bob
-sudo chown $(id -u):$(id -g) /sys/fs/cgroup/bob
-echo "+cpu +memory +pids" | sudo tee /sys/fs/cgroup/bob/cgroup.subtree_control
+sudo BOB_CGROUP_DIR=/sys/fs/cgroup/bob bash scripts/setup-cgroup-delegation.sh bob
 export BOB_CGROUP_DIR=/sys/fs/cgroup/bob
 ```
+
+Das Skript ist idempotent und macht genau das, was der Kernel verlangt — beides ist in dieser
+Umgebung **gemessen** worden, nicht angenommen:
+
+1. `chown` des Verzeichnisses **und der Kontrolldateien** (`cgroup.procs`,
+   `cgroup.subtree_control`, `memory.max`, `pids.max`, `cpu.max`). Ohne `chown` scheitert der
+   Beitritt zur Sandbox-cgroup mit `EACCES`, obwohl das Verzeichnis dem Benutzer gehört: cgroup v2
+   prüft die Schreibrechte auf `cgroup.procs` des Ziels.
+2. Freigabe der Controller im übergeordneten Zweig und Weitergabe an die Kinder
+   (`+cpu +memory +pids` in `cgroup.subtree_control`), damit `memory.max`/`pids.max` in den
+   Je-Ausführung-Zweigen überhaupt existieren und gesetzt werden können.
+
+Zusätzlich gilt die **Delegation-Containment**-Regel: ein Prozess darf nur **innerhalb** seines
+eigenen delegierten Teilbaums verschoben werden. Läuft der Plattformprozess (z. B. `next start`)
+selbst in einem fremden, root-eigenen Zweig — etwa dem Standardzweig der Sitzung —, schlägt jeder
+Beitritt zur Sandbox-cgroup mit `EACCES` fehl. Deshalb startet die Plattform so:
+
+```bash
+BOB_CGROUP_DIR=/sys/fs/cgroup/bob bash scripts/cgroup-exec.sh npx next start -p 3000 -H 0.0.0.0
+```
+
+`scripts/cgroup-exec.sh` verschiebt sich einmalig in den delegierten Baum (genau ein
+privilegierter Schritt, ohne `sudo` bricht es mit Begründung ab — kein stiller Lauf ohne Limits)
+und startet das eigentliche Kommando als Kind. Danach liegen Server und alle Sandbox-Ausführungen
+innerhalb der Delegation und Speicher-/Prozesslimits greifen je Ausführung.
+
+`sudo` ist in der CI nicht verfügbar; die Skripte werden deshalb **nicht** von CI geprüft, sondern
+durch den Live-Nachweis (`scripts/verify-live.sh` prüft `resourceLimits` bedingt und meldet ohne
+Delegation ehrlich `UNAVAILABLE`).
 
 Ist `BOB_CGROUP_DIR` gesetzt, aber nicht nutzbar (fehlt, nicht beschreibbar), dann werden
 Ausführungen mit Limits **verweigert** statt still ohne Limit zu laufen. `GET /api/runtime`
