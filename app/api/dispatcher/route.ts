@@ -2,6 +2,7 @@ import {NextResponse} from "next/server";
 import {dispatchTask} from "@/lib/dispatcher";
 import {runWorkerCycle} from "@/lib/worker";
 import type {Risk} from "@/lib/types";
+import {guardOrDeny} from "@/lib/api/api-gate";
 
 /**
  * Dispatcher-/Worker-Endpunkt.
@@ -13,6 +14,12 @@ import type {Risk} from "@/lib/types";
  */
 export async function POST(req: Request) {
   const body = await req.json();
+  const denied = guardOrDeny(req, {
+    action: body.action === "dispatch" ? "task:dispatch" : "worker:cycle",
+    taskId: typeof body.taskId === "string" ? body.taskId : undefined,
+    risk: typeof body.risk === "string" ? (body.risk as Risk) : undefined
+  });
+  if (denied) return denied;
   if (body.action === "dispatch") {
     const result = await dispatchTask({
       taskId: body.taskId,

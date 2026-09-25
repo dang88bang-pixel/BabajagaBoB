@@ -37,7 +37,9 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 | Persistenz | kanonischer Store mit Envelope (Version + SHA-256-Digest), atomarem Schreiben (tmp `0600` + rename), Manipulationserkennung | `lib/persistence/store.ts`, `tests/unit/persistence.test.ts` |
 | Autorisierung | Capability-Token mit TTL-/Bindungs-/Risikogrenzen, RBAC/ABAC, kein Selbstausstellen, keine Wildcards | `lib/authority.ts`, `tests/security/authority.test.ts` |
 | API-Grenze | jede `/api/*`-Route außer `/api/auth` verlangt Session; agentenspezifischer Sonderweg nur `POST /api/runtime`; CSRF-Origin-Prüfung; Legacy-Token fail closed | `middleware.ts`, `lib/api/api-gate.ts`, `tests/security/api-guard.test.ts`, `tests/security/api-gate.test.ts` |
-| Aktionsprüfung pro Route | Creator-Pflicht für Kern-/Schreibpfade, `sandbox:run`, `task:execute`, `run:manage`; Provenance-/Knowledge-Schreiben nur Creator | `lib/api/guard.ts`, `app/api/*/route.ts`, `tests/security/route-guards.test.ts` |
+| Aktionsprüfung pro Route | **jede** Route außer `/api/auth` prüft ihre konkrete Aktion (Creator-Pflicht für Kern-/Schreibpfade, `sandbox:run`, `task:execute`, `run:manage`; Provenance-/Knowledge-Schreiben nur Creator); strukturell im Test erzwungen | `lib/api/guard.ts`, `app/api/*/route.ts`, `tests/security/route-guards.test.ts`, `tests/security/api-route-contract.test.ts` |
+| Betriebsmetriken | Prometheus-Text unter `GET /api/metrics` (Session-pflichtig), aus Stores/Integritätsprüfungen, nur Zahlen | `lib/metrics.ts`, `tests/integration/metrics-backup.test.ts` |
+| Backup/Wiederherstellbarkeit | digest-/versionsgeprüfte Kopien unter `<BOB_STORAGE_DIR>/backups`, Restore nur nach Prüfung, manipuliert → 409 | `lib/persistence/store.ts`, `app/api/persistence/route.ts`, `tests/integration/metrics-backup.test.ts` |
 | Creator-Zugang | einmaliger Bootstrap, danach Login mit server-seitigem Secret (Datei 0600 oder Env), Konstantzeitvergleich, Sperre nach 5 Fehlversuchen (423, 15 min), Rotation | `lib/bootstrap.ts`, `lib/creator-auth.ts`, `app/api/auth/route.ts`, `tests/security/creator-login*.test.ts` |
 | Execution Gate + Broker | 17 Preflight-Prüfungen (Request-Form, argv-Policy, Task/Agent/Sandbox-Bindung, Risiko, Token, Umgebung, Kill Switches, Approval, Netzwerk, Limits) mit Audit + Observation je Verweigerung | `lib/execution-gate.ts`, `lib/execution-broker.ts`, `tests/e2e/creator-flow.test.ts` |
 | argv-Policy | kein Shell-String: `spawn(argv, {shell:false})`; Shell-Interpreter und Metazeichen in jedem Argument verboten, in Broker **und** Runtime erzwungen | `lib/argv-policy.ts`, `lib/runtime-local.ts`, `tests/security/argv-policy.test.ts` |
@@ -61,9 +63,9 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 
 | Nachweis | Ergebnis |
 |---|---|
-| Automatisierte Tests | **17 Dateien / 88 Tests grün** (`npx vitest run`) |
+| Automatisierte Tests | **19 Dateien / 98 Tests grün** (`npx vitest run`) |
 | Statische Gates | `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler (8 Warnungen); `npm run build` erfolgreich |
-| Live über HTTP | `scripts/verify-live.sh` gegen `npx next start`: **89 PASS / 0 FAIL** – Auth fail closed (428/401/403/201/200), Kette bis Knowledge, Sandbox + Snapshot + Capability, autorisierte Ausführung (`argv`, stdout `live-ok`), vier Angriffsblockaden mit Audit, Fehlerkette bis `REGRESSION_LOCKED`, Lockdown/Privacy/Provider/Geräte, Restore/Persistenz/Readiness |
+| Live über HTTP | `scripts/verify-live.sh` gegen `npx next start`: **101 PASS / 0 FAIL** – Auth fail closed (428/401/403/201/200), Kette bis Knowledge, Sandbox + Snapshot + Capability, autorisierte Ausführung (`argv`, stdout `live-ok`), vier Angriffsblockaden mit Audit, Fehlerkette bis `REGRESSION_LOCKED`, Lockdown/Privacy/Provider/Geräte, Restore/Persistenz/Readiness |
 | §49-Abnahme 1 (Erfolgspfad) | `tests/e2e/creator-flow.test.ts` + Live-Schritte 2–4 |
 | §49-Abnahme 2 (bewusster Fehler) | `tests/e2e/failure-recovery.test.ts` (Exit-Code 7) + Live-Schritt 6 |
 | §49-Abnahme 3 (blockierter Angriff) | fremder Sandbox-Bindungsversuch 409, unbekanntes Token 409, Shell-Programm/-Metazeichen 409, Audit-DENY + Evidenz; `tests/e2e/creator-flow.test.ts` Test 2, Live-Schritt 5 |
@@ -82,14 +84,15 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 | Runtime-Registry | 3 Definitionen (Node 22, Python 3.13, Custom OCI), erweiterbar; kein automatisches Provisionieren |
 | Control Center UI | Vollständige Navigation und Statusanzeige; keine Browser-E2E-Tests |
 | Tier-Klassifikation Recovery | Tier wird im Plan gesetzt, nicht automatisch aus dem Fehlerbild abgeleitet |
-| Aktionsspezifische Guards | Kern- und Schreibpfade verdrahtet; übrige Routen nur über die Middleware-Grenze geschlossen |
+| Metrik-Alarmierung | Export und Empfehlungen vorhanden; kein Scraper/Alertmanager im Repository |
+| Backup-Automation | Backup/Restore implementiert und geprüft; kein geplanter Job und keine Rotation |
 | Legacy-Token | Standardmäßig deaktiviert; Aktivierung nur mit ausdrücklicher Freigabe (dokumentiert, nicht empfohlen) |
 
 ## E. Nicht implementiert (NOT_IMPLEMENTED)
 
 - Zweiter Faktor (TOTP/WebAuthn) für den Creator-Login.
 - Automatisches Deployment/Produktionsfreigabe (Promotion ist bewusst manuell und Creator-gebunden).
-- Metrik-/Alerting-Export (Prometheus/OTel) und Backup-Automation.
+- Alarmierung/Scraping (Prometheus-Server, Alertmanager) und geplante Backups mit Aufbewahrungsregel.
 - Vektor-/Embedding-Suche im Knowledge Graph.
 - Statistische Signifikanzprüfung in der Kausalvalidierung (strukturell, nicht frequentistisch).
 
@@ -149,8 +152,9 @@ Details und Befehle: `docs/TESTING.md`.
 ## K. Persistenz, Recovery, Provider, Device Fabric
 
 - **Persistenz:** alle Stores als digest-geprüfte Envelopes, atomares Schreiben mit
-  `0600`; Manipulation führt zu `StoreIntegrityError` (fail closed). Kein
-  Parallel-Backup-Store – ein zweiter Zustand wäre ein Scheinerfolg.
+  `0600`; Manipulation führt zu `StoreIntegrityError` (fail closed). Backups sind
+  digest-/versionsgeprüfte Kopien (kein zweiter Live-Zustand); ein manipuliertes
+  Backup wird beim Restore mit 409 abgelehnt.
 - **Recovery:** Checkpoint → Plan (Tier/Steps/Verifikationsplan) → Restore →
   Verifikation mit echten Tests; nur `ACCEPT` ergibt `VERIFIED`, sonst `REJECTED`.
 - **Provider:** Discovery ohne Rechte, Verbindung nur mit freigegebener Approval,
@@ -171,7 +175,7 @@ Details und Befehle: `docs/TESTING.md`.
 | Netzwerk/Egress-Allowlist | **PARTIAL** | bewusst fail closed, kein Egress-Proxy implementiert |
 | Provider/Device/Computer Use | **PARTIAL** | Verträge, Zustandsmaschinen und Autorisierung vollständig; keine echten externen Verbindungen/Treiber |
 | UI/Control Center | **PARTIAL** | Funktion vorhanden, keine Browser-E2E-Abdeckung |
-| Beobachtbarkeit/Betrieb | **PARTIAL** | Statusrouten, Events, Audit, Readiness; kein Metrik-/Alerting-Export, keine Backup-Automation |
+| Beobachtbarkeit/Betrieb | **PARTIAL** | Statusrouten, Events, Audit, Readiness, Prometheus-Export und geprüftes Backup vorhanden; kein Scraper/Alertmanager, keine geplante Rotation |
 | Last/Robustheit über Zeit | **NOT_VERIFIED** | keine Last- oder Soak-Tests |
 
 **Gesamtaussage:** Die Plattform erfüllt die Sicherheits- und Nachweisziele des

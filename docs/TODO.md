@@ -14,7 +14,8 @@ Die historische Zerlegung bleibt in `docs/IMPLEMENTATION_ROADMAP.md` erhalten
 Vollständige Liste mit Belegen: `docs/STATUS.md`, `docs/ABSCHLUSSBERICHT.md` §B/§C.
 
 Control Plane über HTTP, Server-Authentifizierung (Session + Creator-Login +
-Capability-Weg), aktionsspezifische Routen-Guards, Execution Gate + Broker mit 17
+Capability-Weg), aktionsspezifische Routen-Guards auf **allen** Routen (strukturell
+erzwungen), Betriebsmetriken (Prometheus-Text), Backup/Restore mit Digest-Prüfung, Execution Gate + Broker mit 17
 Prüfungen, argv-Policy ohne Shell, Sandbox-Fabric mit Task-/Agent-Bindung,
 Snapshots mit SHA-256 und verifiziertem Restore, lokale Runtime mit Timeout-Kill,
 Experiment-Engine mit Kausalvalidierung, Error Intelligence bis
@@ -22,7 +23,7 @@ Experiment-Engine mit Kausalvalidierung, Error Intelligence bis
 Knowledge Graph mit negativem Wissen, Agent Fabric (11 Rollen mit
 Autonomie-Vertrag), Provider-Fabric mit Approval-Pflicht, Privacy default `DENY`,
 Device- und Computer-Use-Autorisierung, CI/CD mit Promotion-Gate, 14 §44-Dokumente,
-Live-Nachweis über 89 HTTP-Prüfungen.
+Live-Nachweis über 101 HTTP-Prüfungen.
 
 ## 2. Offen – als `PARTIAL` geführt
 
@@ -35,10 +36,9 @@ Live-Nachweis über 89 HTTP-Prüfungen.
 | Computer Use | kein Browser-/Desktop-Treiber angebunden | Playwright-/VNC-Treiber im Sandbox-Workspace, Aktionen über Broker |
 | Simulation/Visualisierung | Szenarien persistent, keine Renderer | Renderer für `ARCHITECTURE`/`TIMELINE`/`SCENE_3D` ergänzen |
 | Control-Center-UI | keine Browser-E2E-Tests | Playwright-Suite gegen Testserver mit Gate-Prüfung |
-| Aktionsspezifische Guards | nur Kern-/Schreibpfade verdrahtet | restliche Routen auf `guardRequest` mit konkreter Action umstellen |
 | Recovery-Tier-Ableitung | Tier wird im Plan gesetzt | Klassifikation aus Fehlerbild/Historie ableiten und begründen |
-| Beobachtbarkeit | kein Metrik-/Alerting-Export | OTel/Prometheus-Export + Alert-Regeln |
-| Backup/Restore der Storages | Dateisystem-Backup ist Betriebsaufgabe | Snapshot-/Backup-Job mit Integritätsprüfung dokumentieren |
+| Alarmierung | Prometheus-Export vorhanden, aber kein Scraper/Alertmanager | Scraper + Alarmregeln aus `docs/OPERATIONS.md` §4a aufsetzen |
+| Backup-Automation | Backup/Restore mit Digest-Prüfung implementiert, aber manuell | geplanten Job und Aufbewahrungsregel ergänzen |
 | Last-/Soak-Tests | nicht durchgeführt | Nebenläufigkeits- und Langzeittest mit definierten SLOs |
 
 ## 3. Nicht implementiert (bewusst)

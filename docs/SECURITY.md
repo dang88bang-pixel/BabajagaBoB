@@ -45,14 +45,14 @@ Rechte erzeugen noch den Broker umgehen.
   Agent-Capability-Token und Legacy-Token werden an dieser Grenze bewusst **nicht** akzeptiert.
 - **Live verifiziert (2026-09-25):** `GET /api/control` ohne Session → 428, `POST /api/auth`
   (Bootstrap) → 201 + HttpOnly-Cookie, danach `GET /api/control` → 200, `POST /api/control` mit
-  fremdem `Origin` → 403. Kompletter Nachweis: `scripts/verify-live.sh` (89 Prüfungen, 0 Fehler;
+  fremdem `Origin` → 403. Kompletter Nachweis: `scripts/verify-live.sh` (101 Prüfungen, 0 Fehler;
   Ergebnis in `docs/TESTING.md`).
 - **Creator-Login (Re-Authentifizierung):** Nach Verlust des Cookies meldet sich der Creator mit dem
   server-seitigen Secret an (`<BOB_STORAGE_DIR>/creator-token` 0600 oder `BOB_CREATOR_LOGIN_SECRET`).
   Konstantzeit-Vergleich, Sperre nach fünf Fehlversuchen (423, 15 Minuten), jeder Versuch auditiert; das
   Secret verlässt den Server nie. Details: `docs/BOOTSTRAP.md` §3a.
-- **Aktionsspezifische Autorisierung pro Route:** Über die Authentifizierungsgrenze hinaus prüft jede
-  schreibende Route die konkrete Aktion (`guardRequest`/`guardOrDeny`) – Missions/Objectives/Tasks,
+- **Aktionsspezifische Autorisierung pro Route:** Über die Authentifizierungsgrenze hinaus prüft **jede**
+  Route außer `/api/auth` ihre konkrete Aktion (`guardRequest`/`guardOrDeny`) – Missions/Objectives/Tasks,
   Sandbox-Lebenszyklus, Governance/Approval/Lockdown und Provider-Verwaltung sind Creator-Aktionen;
   `POST /api/runtime` verlangt eine `sandbox:run`-Capability (plus 17 Broker-Prüfungen);
   `POST /api/tasks {action:"status"}` verlangt `task:execute`; Runs verlangen `run:manage`.
@@ -61,9 +61,12 @@ Rechte erzeugen noch den Broker umgehen.
   bzw. einer Lese-Capability.
   Regressionstests: `tests/security/route-guards.test.ts` (428/401/403 `CREATOR_ONLY`, `CAPABILITY_DENIED`,
   CSRF, Audit-Integrität).
-- **Offen (PARTIAL):** Nicht jede Route hat bereits eine *aktionsspezifische* Prüfung – nicht abgedeckte
-  Routen sind durch die Middleware weiterhin fail closed geschlossen, aber ohne Aktionsprüfung.
-  Siehe `docs/BOOTSTRAP.md` §5 und `docs/TODO.md`.
+- **Strukturell abgesichert:** `tests/security/api-route-contract.test.ts` erzwingt, dass jede Route außer
+  `/api/auth` eine konkrete Aktion prüft und keine Route `publicAction` setzt – eine neue Route ohne
+  Aktionsprüfung lässt den Test fehlschlagen (Regression statt Lücke).
+- **Betriebsdaten sind geschlossen:** `/api/metrics` verlangt eine Session und exponiert ausschließlich
+  Zähler (keine Token-IDs, Subjekte oder Inhalte). Backups sind auf `<BOB_STORAGE_DIR>/backups` beschränkt
+  und werden vor einem Restore digest- und versionsgeprüft (manipuliert → 409, fail closed).
 
 ## 4. Keine Shell-Strings (`lib/argv-policy.ts`)
 

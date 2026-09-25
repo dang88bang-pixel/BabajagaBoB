@@ -210,3 +210,77 @@ export function storeIntegrityReport(): {root: string; stores: StoreIntegrityRep
 export function backupAllStores(): string[] {
   return registry.map(entry => new DurableStore(entry.store, entry.version, () => null).backup());
 }
+
+export type BackupFileReport = {
+  store: string;
+  file: string;
+  name: string;
+  bytes: number;
+  writtenAt?: string;
+  version?: number;
+  digestOk: boolean;
+  ok: boolean;
+  error?: string;
+};
+
+function backupDir(): string {
+  return path.join(ensureRoot(), "backups");
+}
+
+function backupFilesFor(storeName: string): string[] {
+  const dir = backupDir();
+  if (!fs.existsSync(dir)) return [];
+  return fs
+    .readdirSync(dir)
+    .filter(name => name.startsWith(`${storeName}-`) && name.endsWith(".json"))
+    .map(name => path.join(dir, name))
+    .sort();
+}
+
+/**
+ * Prüft eine Backup-Datei **ohne** sie anzuwenden: Version, Digest und Lesbarkeit.
+ * Ein beschädigtes Backup ist damit sichtbar, bevor jemand es einliest.
+ */
+export function verifyStoreBackup(storeName: string, file: string): BackupFileReport {
+  const entry = registry.find(item => item.store === storeName);
+  const base: BackupFileReport = {store: storeName, file, name: path.basename(file), bytes: 0, digestOk: false, ok: false};
+  if (!entry) return {...base, error: "unknown store"};
+  const dir = path.resolve(backupDir()) + path.sep;
+  const resolved = path.resolve(file);
+  if (!resolved.startsWith(dir)) return {...base, error: "backup path outside configured backup directory"};
+  try {
+    const raw = fs.readFileSync(resolved, "utf8");
+    const envelope = JSON.parse(raw) as StoreEnvelope<unknown>;
+    const digestOk = envelope.digest === envelopeDigest(envelope.version, envelope.payload);
+    const report: BackupFileReport = {
+      ...base,
+      bytes: Buffer.byteLength(raw),
+      writtenAt: envelope.writtenAt,
+      version: envelope.version,
+      digestOk
+    };
+    if (envelope.version !== entry.version) return {...report, error: "backup version mismatch"};
+    if (!digestOk) return {...report, error: "backup integrity check failed"};
+    return {...report, ok: true};
+  } catch (error) {
+    return {...base, error: error instanceof Error ? error.message : "backup unreadable"};
+  }
+}
+
+/** Alle Backups aller registrierten Stores, jeweils digest-geprüft. */
+export function listStoreBackups(): BackupFileReport[] {
+  return registry.flatMap(entry => backupFilesFor(entry.store).map(file => verifyStoreBackup(entry.store, file)));
+}
+
+/**
+ * Stellt einen Store aus einem geprüften Backup wieder her. Reihenfolge ist
+ * bindend: Pfadbindung → Version → Digest → erst dann wird geschrieben.
+ */
+export function restoreStoreBackup(storeName: string, file: string): {store: string; file: string; restoredAt: string} {
+  const entry = registry.find(item => item.store === storeName);
+  if (!entry) throw new Error("unknown store");
+  const report = verifyStoreBackup(storeName, file);
+  if (!report.ok) throw new StoreIntegrityError(storeName, report.error ?? "backup verification failed");
+  new DurableStore(entry.store, entry.version, () => null).restore(file);
+  return {store: storeName, file, restoredAt: new Date().toISOString()};
+}

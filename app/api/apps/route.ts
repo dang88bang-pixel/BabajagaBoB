@@ -2,11 +2,16 @@ import {NextResponse} from "next/server";
 import {createApp,listApps,listModules,registerExecutableModule,setAppState,installExecutableModule} from "@/lib/apps";
 import {listGallery} from "@/lib/gallery";
 export const runtime="nodejs";export const dynamic="force-dynamic";
+import {guardOrDeny} from "@/lib/api/api-gate";
 export async function GET(req:Request){
+ const deniedRead=guardOrDeny(req,{action:"app:read"});if(deniedRead)return deniedRead;
  const url=new URL(req.url);const appId=url.searchParams.get("appId")??undefined;
  return NextResponse.json({apps:listApps(),modules:listModules(appId),gallery:listGallery({appId})},{headers:{"Cache-Control":"no-store"}});
 }
-export async function POST(req:Request){try{
+export async function POST(req:Request){
+ // Apps und ausfuehrbare Module veraendern die Laufzeitumgebung: Creator-Aktion.
+ const denied=guardOrDeny(req,{action:"app:manage",creatorOnly:true});if(denied)return denied;
+ try{
  const b=await req.json();
  if(b.action==="create")return NextResponse.json({app:createApp(b.value)},{status:201});
  if(b.action==="state")return NextResponse.json({app:setAppState(b.appId,b.state,b.progress,b.taskId)});

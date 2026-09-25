@@ -1,4 +1,7 @@
 import {NextResponse} from "next/server";import {advanceScenario,createScenario,listScenarios} from "../../../lib/simulation";
 export const runtime="nodejs";export const dynamic="force-dynamic";
-export async function GET(){return NextResponse.json({scenarios:listScenarios()},{headers:{"Cache-Control":"no-store"}})}
-export async function POST(request:Request){try{const b=await request.json();if(b.action==="create")return NextResponse.json(createScenario(b.scenario),{status:201});if(b.action==="advance")return NextResponse.json(advanceScenario(String(b.id),b.state,b.result));return NextResponse.json({error:"Unsupported simulation action"},{status:400})}catch(e){return NextResponse.json({error:e instanceof Error?e.message:"simulation error"},{status:400})}}
+import {guardOrDeny} from "../../../lib/api/api-gate";
+export async function GET(request:Request){const denied=guardOrDeny(request,{action:"simulation:read"});if(denied)return denied;return NextResponse.json({scenarios:listScenarios()},{headers:{"Cache-Control":"no-store"}})}
+export async function POST(request:Request){
+ const denied=guardOrDeny(request,{action:"simulation:manage",creatorOnly:true});if(denied)return denied;
+ try{const b=await request.json();if(b.action==="create")return NextResponse.json(createScenario(b.scenario),{status:201});if(b.action==="advance")return NextResponse.json(advanceScenario(String(b.id),b.state,b.result));return NextResponse.json({error:"Unsupported simulation action"},{status:400})}catch(e){return NextResponse.json({error:e instanceof Error?e.message:"simulation error"},{status:400})}}

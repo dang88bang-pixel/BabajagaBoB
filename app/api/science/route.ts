@@ -3,10 +3,17 @@ import {addEvidence,createDecision,createExperiment,createObjective,listScience,
 import {actionField,readJson,stringArray,stringField} from "@/lib/request-validation";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
-export async function GET(){return NextResponse.json(listScience(),{headers:{"Cache-Control":"no-store"}})}
+import {guardOrDeny} from "../../../lib/api/api-gate";
+export async function GET(request:Request){const denied=guardOrDeny(request,{action:"science:read"});if(denied)return denied;return NextResponse.json(listScience(),{headers:{"Cache-Control":"no-store"}})}
 export async function POST(req:Request){
  try{
   const b=await readJson(req); const action=actionField(b,["objective","experiment","experiment.update","experiment.run","experiment.validate","evidence","decision"]);
+  // Objektive, Experimente, Evidenz und Entscheidungen sind Creator-Aktionen;
+  // der eigentliche Experimentlauf ist autorisierte Ausfuehrung (Capability).
+  const denied=action==="experiment.run"
+    ? guardOrDeny(req,{action:"experiment:run",taskId:typeof b.taskId==="string"?b.taskId:undefined,sandboxId:typeof b.sandboxId==="string"?b.sandboxId:undefined})
+    : guardOrDeny(req,{action:"science:manage",creatorOnly:true});
+  if(denied)return denied;
   if(action==="objective"||action==="experiment"||action==="evidence"||action==="decision"){
    if(!b.value||typeof b.value!=="object"||Array.isArray(b.value))throw new Error("value required");
   }

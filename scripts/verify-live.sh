@@ -34,6 +34,10 @@ assert_json() { # assert_json <name> <jq-ausdruck>
   if is "$2"; then ok "$1"; else bad "$1" "$(body)"; fi
 }
 
+assert_contains() { # assert_contains <name> <muster> (fuer Klartext wie Prometheus)
+  if grep -qE "$2" "$BODY" 2>/dev/null; then ok "$1"; else bad "$1" "$(body)"; fi
+}
+
 step "1. Authentifizierung (fail closed)"
 INITIALIZED=$(jq -r '.initialized' "$BODY" 2>/dev/null || echo false)
 STATUS=$(anony "$BASE/api/auth")
@@ -166,9 +170,23 @@ assert_status "Sandbox aus Snapshot wiederherstellen" 200 "$(api -X POST -d "{\"
 assert_status "Sandbox pausieren" 200 "$(api -X POST -d "{\"action\":\"pause\",\"sandboxId\":\"$SB\"}" "$BASE/api/sandboxes")"
 assert_status "Sandbox zerstören" 200 "$(api -X POST -d "{\"action\":\"destroy\",\"sandboxId\":\"$SB\"}" "$BASE/api/sandboxes")"
 assert_status "Persistenzbericht lesbar" 200 "$(api "$BASE/api/persistence")"
-assert_json "Stores ohne Integritätsfehler" 'tostring | test("false") | not'
+assert_json "Stores ohne Integritätsfehler" '(.integrity.ok == true) and (.stores.ok == true) and (.events.ok == true) and ([.stores.stores[] | select(.ok == false)] | length == 0)'
 assert_status "Readiness lesbar" 200 "$(api "$BASE/api/readiness")"
 assert_status "Unbekannter Provider wird abgelehnt" 400 "$(api -X POST -d '{"action":"connect","id":"prov-gibt-es-nicht"}' "$BASE/api/providers")"
+
+step "9. Betrieb: Audit-Verifikation, Backup, Metriken, Routenvertrag"
+assert_status "Audit-Verifikation ueber POST" 200 "$(api -X POST -d '{"action":"verify"}' "$BASE/api/audit")"
+assert_json "Audit-Kette ist integer" '.chain.valid == true and (.chain.length > 0)'
+assert_status "Backup anlegen (Creator)" 201 "$(api -X POST -d '{"action":"backup"}' "$BASE/api/persistence")"
+assert_json "Backups sind digest-geprueft" '(.created | length) > 0 and (.verified == (.created | length))'
+assert_status "Persistenzbericht nach Backup lesbar" 200 "$(api "$BASE/api/persistence")"
+assert_json "Persistenzbericht listet verifizierte Backups" '(.backups.verified > 0) and (.backups.failed | length == 0)'
+assert_status "Metriken (Prometheus) lesbar" 200 "$(api "$BASE/api/metrics")"
+assert_contains "Metriken melden integer Stores" '^bob_store_integrity_ok 1$'
+assert_contains "Metriken melden die Audit-Kette als integer" '^bob_audit_chain_ok 1$'
+assert_contains "Metriken melden 11 Agenten" '^bob_agents 11$'
+assert_status "Metriken ohne Session verweigert" 401 "$(anony "$BASE/api/metrics")"
+assert_status "Unbekannte Store-Route bleibt geschlossen" 401 "$(anony "$BASE/api/tools")"
 
 printf "\n\033[1mErgebnis:\033[0m \033[32m%d bestanden\033[0m, \033[31m%d fehlgeschlagen\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -90,9 +90,21 @@ die konkrete Aktion:
 | `POST /api/knowledge` | `knowledge:write` | **Creator** (Wissensintegrität) |
 | `POST /api/agents/fabric` | `agent:heartbeat`; `agent:manage` | Session bzw. Creator |
 
-Alle übrigen Routen liegen hinter der Middleware-Grenze (`requireSession`) und
-sind damit ohne gültige Session und ohne Bootstrap **geschlossen**; für sie fehlt
-noch die aktionsspezifische Prüfung (siehe `docs/TODO.md`).
+| `GET /api/audit` | `audit:read` | Session; `POST {action:"verify"}` prüft die Kette (append-only, kein Löschen) |
+| `GET /api/metrics` | `metrics:read` | Session (fail closed); nur Zähler, keine Geheimnisse |
+| `GET /api/persistence` | `persistence:read` | Session |
+| `POST /api/persistence` | `persistence:backup` | **Creator**; `backup`/`restore` (Restore nur mit digest-geprüftem Backup) |
+| `GET /api/apps`, `POST /api/apps` | `app:read`, `app:manage` | Session bzw. Creator (ausführbare Module) |
+| `POST /api/science` | `science:manage` (Creator) bzw. `experiment:run` (Capability) | Modellierung/Evidenz sind Creator-Aktionen, der Experimentlauf ist autorisierte Ausführung |
+| `POST /api/dispatcher` | `task:dispatch` / `worker:cycle` | Session oder Capability |
+| `POST /api/queue`, `POST /api/reliability` | `queue:manage`, `reliability:manage` | Session oder Capability; `resolve`/`lock-regression` nur Creator |
+| `POST /api/tools`, `/api/skills`, `/api/runtimes`, `/api/simulation`, `/api/workshop` | `tool:register`, `skill:manage`, `runtime:registry:register`, `simulation:manage`, `workshop:manage` | Creator |
+| `GET /api/agents`, `/api/approvals`, `/api/events`, `/api/experiments`, `/api/gallery`, `/api/privacy`, `/api/timeline`, `/api/readiness` | jeweilige `:read`-Aktion | Session |
+
+**Vollständigkeit:** jede Route außer `/api/auth` prüft ihre Aktion; der
+strukturelle Regressionstest `tests/security/api-route-contract.test.ts`
+verhindert neue Routen ohne Aktionsprüfung. Ohne Session bleibt zusätzlich die
+Middleware-Grenze geschlossen (401/428).
 
 ## 6. Approval und Governance
 

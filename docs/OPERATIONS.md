@@ -33,15 +33,21 @@ Relevante Variablen (siehe `.env.example`):
   `StoreIntegrityError` und fail-closed-Verhalten statt stiller Weiterverwendung.
 - Layout: `<BOB_STORAGE_DIR>/<store>.json`, Sandbox-Workspaces unter
   `<BOB_STORAGE_DIR>/sandboxes/<sandboxId>` (0700), Snapshots mit Manifest.
-- `.bob-data` wird **nicht** versioniert; es gibt keinen zweiten, parallelen
-  Backup-Store (bewusst: ein Parallel-Restore würde einen abweichenden Zustand
-  erzeugen).
+- `.bob-data` wird **nicht** versioniert. Es gibt keinen zweiten *Live*-Store:
+  `POST /api/persistence {action:"backup"}` legt Kopien unter
+  `<BOB_STORAGE_DIR>/backups` an (0600), die vor Gebrauch gegen Version und Digest
+  geprüft werden. Ein manipuliertes Backup wird mit **409** abgelehnt – ein
+  Scheinerfolg ist damit ausgeschlossen.
+- `GET /api/persistence` listet Backups mit Prüfergebnis (`verified`, `failed[]`).
 
 ## 3. Betriebsrouten
 
 | Route | Aussage |
 |---|---|
 | `GET /api/readiness` | Bereitschaft für Wiederherstellung (Runtime, Snapshot, Regression, Store) |
+| `GET /api/metrics` | Betriebsmetriken im Prometheus-Textformat (Session-pflichtig, nur Zähler) |
+| `POST /api/persistence {action:"backup"}` | Creator-Aktion: digest-geprüfte Kopien aller Stores |
+| `POST /api/persistence {action:"restore"}` | Creator-Aktion: Restore nur nach Pfad-, Versions- und Digest-Prüfung |
 | `GET /api/persistence` | Integrität des Control-State, Events, Provenance-Zähler |
 | `GET /api/control` | Control-Plane-Zustand inkl. Kill Switches, Agents, Sandboxes |
 | `GET /api/audit` / `POST /api/audit {action:"verify"}` | Audit-Kette (HMAC) und Integritätsbericht |
@@ -62,6 +68,25 @@ Relevante Variablen (siehe `.env.example`):
 | Creator-Cookie verloren | Creator-Login mit Secret (`docs/BOOTSTRAP.md` §3a); nach 5 Fehlversuchen 15 min Sperre (423) |
 | Provider muss sofort aufhören | `revokeProvider` (deaktiviert Bindungen) und Bindungen prüfen |
 
+## 4a. Metriken und Alarme
+
+`GET /api/metrics` liefert Prometheus-Text (Session-pflichtig). Enthalten sind u. a.
+`bob_store_integrity_ok`, `bob_audit_chain_ok`, `bob_runs_by_state`, `bob_queue_jobs`,
+`bob_capability_tokens_active`, `bob_error_incidents_open`, `bob_recovery_rejected`,
+`bob_knowledge_negative`, `bob_providers_connected`, `bob_devices_authorized`,
+`bob_computers_authorized` und `bob_kill_switches_active`. Alle Werte stammen aus Stores
+oder Integritätsprüfungen; nicht lesbare Quellen werden nicht geschätzt.
+
+Empfohlene Alarmregeln (Betriebsseite, nicht im Code):
+
+| Alarm | Bedingung | Bedeutung |
+|---|---|---|
+| Integrität | `bob_store_integrity_ok == 0` oder `bob_audit_chain_ok == 0` | sofort stoppen, nicht weiterarbeiten |
+| Sperren | `bob_kill_switches_active{scope="SYSTEM"} == 1` | System ist fail closed gesperrt |
+| Fehler | `bob_error_incidents_critical_open > 0` | kritischer Incident offen |
+| Recovery | `bob_recovery_rejected > 0` | Wiederherstellung nicht nachgewiesen |
+| Autorisierung | `bob_capability_tokens_active` unerwartet hoch/niedrig | Token-Hygiene prüfen |
+
 ## 5. Beobachtbarkeit
 
 - `observe(...)` erzeugt Domain-Events; Audit-Einträge sind HMAC-verkettet
@@ -79,14 +104,14 @@ BOB_CREATOR_LOGIN_SECRET=<secret> BASE=http://localhost:3000 \
   bash scripts/verify-live.sh
 ```
 
-Ergebnis des letzten Laufs: **89 PASS / 0 FAIL** (Details in `docs/TESTING.md`
+Ergebnis des letzten Laufs: **101 PASS / 0 FAIL** (Details in `docs/TESTING.md`
 §4a). Der Lauf deckt Auth, Kette, Sandbox/Snapshot, autorisierte Ausführung,
 Angriffsblockaden, Fehlerkette bis `REGRESSION_LOCKED`, Governance/Lockdown,
 Privacy, Provider, Geräte, Restore und Persistenz ab.
 
 ## 7. Offen
 
-- Kein Metrik-/Alerting-Backend (kein Prometheus/OTel-Export); Beobachtung
-  erfolgt über Events, Audit und Statusrouten.
-- Keine Backup-/Restore-Automation für `BOB_STORAGE_DIR` (Dateisystem-Backup ist
-  Betriebsaufgabe); der Store selbst schreibt atomar.
+- Kein Metrik-Scraper/Alertmanager im Repository: der Export ist vorhanden
+  (`/api/metrics`), die Alarmregeln sind beschrieben, aber nicht automatisiert.
+- Backups müssen ausgelöst werden (`POST /api/persistence {action:"backup"}`);
+  es gibt keinen geplanten Job und keine Aufbewahrungsregel (Rotation).

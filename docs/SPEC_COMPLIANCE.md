@@ -346,6 +346,7 @@ Das Gesamtprojekt darf erst als spezifikationskonform bezeichnet werden, wenn:
 | 6. Recovery verifiziert | **PASS** – Restore + Regression + `fix.verify` bis `REGRESSION_LOCKED` |
 | 7. Audit/Provenance konsistent | **PASS** – `verifyAuditChain()` in Tests und Live-Lauf grün |
 | 8. UI-Systemzustände sichtbar | **PARTIAL** – Zustände werden angezeigt, aber ohne automatisierte Browser-E2E-Prüfung |
+| Zusatz: Betriebsnachweis | **PASS** – `/api/metrics` (nur Zahlen), Backup mit Digest-Prüfung (manipuliert → 409), Audit-Verifikation über POST, 101 Live-Prüfungen |
 | 9. Dokumentation = realer Zustand | **PASS** – 14 §44-Dokumente plus Abschlussbericht, gegen Code und Nachweise geprüft |
 
 Das Gesamtprojekt ist daher **nicht** als spezifikationskonform abgeschlossen zu

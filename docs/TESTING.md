@@ -2,15 +2,15 @@
 
 **Stand:** 2026-09-25
 **Testrunner:** Vitest 3 (`vitest.config.ts`, Node ≥ 22)
-**Letzter verifizierter Lauf:** `npx vitest run` → **17 Dateien, 88 Tests, alle grün**; `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler / 8 Warnungen; `npm run build` erfolgreich. Zusätzlich live gegen den Produktionsserver geprüft: `scripts/verify-live.sh` → **89 Prüfungen, 0 Fehler** (siehe §4a).
+**Letzter verifizierter Lauf:** `npx vitest run` → **19 Dateien, 98 Tests, alle grün**; `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler / 8 Warnungen; `npm run build` erfolgreich. Zusätzlich live gegen den Produktionsserver geprüft: `scripts/verify-live.sh` → **89 Prüfungen, 0 Fehler** (siehe §4a).
 
 ## 1. Suiten und Abdeckung
 
 | Suite | Dateien | Tests | Inhalt |
 |---|---|---|---|
 | `tests/unit` | 3 | 14 | Persistenz-Envelope (Digest, Manipulationserkennung, Versionsprüfung, Registry), Control Plane (Mission/Objective/Task, Risiko-/Approval-Regeln, Persistenz), Agent Fabric (11 Rollen, Autonomie-Grenzen, Heartbeat, Handoffs) |
-| `tests/security` | 7 | 42 | Authority-Invarianten (Selbstvergabe, Wildcards, TTL, Risk-Eskalation, Audit-DENY), API-Guard (428/401/403, CSRF-Origin, Session, Legacy-Token fail-closed), argv-Policy (Broker-DENY + Runtime-Defense-in-Depth), API-Gate (Bootstrap, Session, CSRF, Renew/Logout, keine Agent-/Legacy-Token an der Grenze), Creator-Login (Secret-Datei 0600, Konstantzeit, Audit, Sperre), Routen-Guards (Provenance/Knowledge/Runs: 428 vor Bootstrap, 401 ohne Authentifizierung, `CREATOR_ONLY` für Agenten-Schreibzugriff, `CAPABILITY_DENIED` ohne `run:manage`, CSRF-Origin, Audit-Integrität) |
-| `tests/integration` | 4 | 23 | Sandbox-Fabric mit `REAL_LOCAL` (Bindung, Prozessausführung, Snapshot + Digest, Verifikation, ALLOWLIST fail-closed), Provider-Fabric (Approval-Pflicht, Bindungen, Health, Datenvertrag), App-Module (Fabric-gebundene Sandboxes, Lifecycle), Computer Use (Registrieren ≠ Autorisieren, Allocation nur mit Freigabe) |
+| `tests/security` | 8 | 46 | Authority-Invarianten (Selbstvergabe, Wildcards, TTL, Risk-Eskalation, Audit-DENY), API-Guard (428/401/403, CSRF-Origin, Session, Legacy-Token fail-closed), argv-Policy (Broker-DENY + Runtime-Defense-in-Depth), API-Gate (Bootstrap, Session, CSRF, Renew/Logout, keine Agent-/Legacy-Token an der Grenze), Creator-Login (Secret-Datei 0600, Konstantzeit, Audit, Sperre), Routen-Guards (Provenance/Knowledge/Runs: 428 vor Bootstrap, 401 ohne Authentifizierung, `CREATOR_ONLY` für Agenten-Schreibzugriff, `CAPABILITY_DENIED` ohne `run:manage`, CSRF-Origin, Audit-Integrität) |
+| `tests/integration` | 5 | 29 | Sandbox-Fabric mit `REAL_LOCAL` (Bindung, Prozessausführung, Snapshot + Digest, Verifikation, ALLOWLIST fail-closed), Provider-Fabric (Approval-Pflicht, Bindungen, Health, Datenvertrag), App-Module (Fabric-gebundene Sandboxes, Lifecycle), Computer Use (Registrieren ≠ Autorisieren, Allocation nur mit Freigabe), Backup mit Digest-Prüfung (manipuliertes Backup → 409) und Betriebsmetriken (Prometheus-Text, nur Zahlen, keine Geheimnisse) |
 | `tests/regression` | 1 | 5 | Regression Engine: argv-Policy, Registrierung, PASS/FAIL, Suite fail-closed bei Fehlschlag, Persistenz |
 | `tests/e2e` | 2 | 4 | Kette Creator → Aufgabe → Autorisierung → Sandbox → Ausführung → Evidence → Knowledge sowie Fehlerkette DETECTED → DIAGNOSING → EXPERIMENTING → ROOT_CAUSE_FOUND → FIXING → VERIFYING → LEARNED → REGRESSION_LOCKED |
 
@@ -75,7 +75,7 @@ BOB_CREATOR_LOGIN_SECRET=<creator-secret> BASE=http://localhost:3000 \
 ```
 
 Das Skript bricht nie ab, sondern zählt PASS/FAIL und gibt die echte Serverantwort aus. Ergebnis des
-letzten Laufs (2026-09-25, Storage `/tmp/bob-live7`): **89 PASS / 0 FAIL**.
+letzten Laufs (2026-09-25, Storage `/tmp/bob-live9`): **101 PASS / 0 FAIL**.
 
 | Schritt | Geprüft | Ergebnis |
 |---|---|---|
@@ -87,6 +87,11 @@ letzten Laufs (2026-09-25, Storage `/tmp/bob-live7`): **89 PASS / 0 FAIL**.
 | 6. Fehlerkette | Incident → Diagnosesandbox (real gestartet) → Hypothese → Experiment → Evidenz → Root Cause → Recovery-Plan (Snapshot) → Restore → Regressionstest → Recovery `VERIFIED` → `fix.verify` `LEARNED` → Lernen → `REGRESSION_LOCKED` + negatives Wissen | PASS |
 | 7. Governance | Kill-Switch-Liste, Lockdown blockiert Ausführung (409 am Gate), Freigabe hebt Block auf, Privacy default `DENY`, Provider nur entdeckt + Verbindung verlangt Approval, Gerät nicht implizit autorisiert, **11 Agentenrollen ohne Selbstvergabe/Produktionszugriff**, **kein Computer vorautorisiert** | PASS |
 | 8. Betrieb | Restore aus Snapshot, Pause, Destroy, Persistenzbericht ohne Integritätsfehler, Readiness, unbekannter Provider 400 | PASS |
+| 9. Betrieb/Backup | Audit-Verifikation per POST, Backup mit Digest-Prüfung, Persistenzbericht mit verifizierten Backups, Prometheus-Metriken (Store-Integrität, Audit-Kette, 11 Agenten), Metriken ohne Session 401 | PASS |
+
+Struktureller Vertrag: `tests/security/api-route-contract.test.ts` prüft, dass **jede** Route außer
+`/api/auth` eine konkrete Aktion prüft, keine leere Aktionsbezeichnung nutzt und keine Route
+`publicAction` setzt. Eine neue Route ohne Prüfung lässt den Test fehlschlagen.
 
 ## 5. CI-Abbildung
 

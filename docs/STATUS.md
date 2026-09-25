@@ -25,7 +25,10 @@ Produktionsreife:
 | Bootstrap / Creator-Initialisierung | TESTED | einmaliger Bootstrap, Doppelaufruf verweigert |
 | Server-Session + API-Guard | TESTED | `tests/security/api-guard.test.ts`, `tests/security/api-gate.test.ts` |
 | Aktionsspezifische Routen-Guards | TESTED | `tests/security/route-guards.test.ts`: 428 vor Bootstrap, 401 ohne Auth, `CREATOR_ONLY` für Agenten-Schreibzugriff auf Provenance/Knowledge, `CAPABILITY_DENIED` für Runs ohne `run:manage`, CSRF-Origin |
-| Live-Nachweis über HTTP | VERIFIED | `scripts/verify-live.sh`: 89 Prüfungen / 0 Fehler gegen `npx next start` (Storage `/tmp/bob-live7`, 2026-09-25); alle drei §49-Abnahmen enthalten |
+| Live-Nachweis über HTTP | VERIFIED | `scripts/verify-live.sh`: 101 Prüfungen / 0 Fehler gegen `npx next start` (Storage `/tmp/bob-live9`, 2026-09-25); alle drei §49-Abnahmen enthalten |
+| Backup mit Digest-Prüfung | TESTED | `tests/integration/metrics-backup.test.ts`: Kopien unter `<BOB_STORAGE_DIR>/backups` (0600), manipuliertes Backup → 409, Restore nur nach Version-/Digest-Prüfung |
+| Betriebsmetriken (Prometheus-Text) | TESTED | `GET /api/metrics` (Session-pflichtig): Store-Integrität, Audit-Kette, Runs, Queue, Token, Incidents, Recovery, Wissen, Fabric, Kill Switches – nur Zahlen |
+| Routenvertrag (strukturell) | TESTED | `tests/security/api-route-contract.test.ts`: jede Route außer `/api/auth` prüft eine konkrete Aktion, kein `publicAction` |
 | API-Grenze (Middleware + Auth-Route) | TESTED | `middleware.ts`, `lib/api/api-gate.ts`, `app/api/auth/route.ts`; Creator-Login mit Sperre; live verifiziert (428/201/200/403) |
 | Governance / Kill Switches | IMPLEMENTED | Code + Persistenz vorhanden, kein eigener Test |
 | Agent Fabric (11 Rollen, Autonomie-Vertrag) | TESTED | `tests/unit/agent-fabric.test.ts`: 11 Rollen aus der Control Plane, keine Selbstvergabe/Produktion/Infrastruktur, Heartbeat und Handoffs |
@@ -68,7 +71,7 @@ Produktionsreife:
 | Provider Fabric | TESTED | Katalog/Bindungen/Telemetrie persistent, Approval-gebundene Verbindung (`tests/integration/provider-fabric.test.ts`) |
 | Device Fabric / Simulation / Computer Use | PARTIAL | persistent; Simulation und Computer Use ohne eigene Tests |
 | CI/CD (`ci.yml`) | TESTED | 5 Jobs (Lint/Typecheck, Unit/Integration/Regression, Security/E2E, Build, Promotion-Gate); grüne Läufe dokumentiert in `docs/CI_CD.md` |
-| Automatisierte Testsuiten | TESTED | 17 Dateien / 88 Tests grün, siehe `docs/TESTING.md` |
+| Automatisierte Testsuiten | TESTED | 19 Dateien / 98 Tests grün, siehe `docs/TESTING.md` |
 
 ## Aktuelle Sicherheitsgrenzen
 
