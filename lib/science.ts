@@ -355,6 +355,10 @@ export function validateCausalChain(experimentId: string): CausalValidation {
   if (replication.length > 0 && agreement < 1) reasons.push("replications disagree");
   if (experiment.confounders.length > 0 && experiment.alternativeExplanations.length === 0) reasons.push("confounders present but no alternative explanations documented");
   if (baseline.length && control.length && baseline[0].observedAt > control[0].observedAt) reasons.push("baseline must be observed before the control condition");
+  if (replication.length > 0 && replication.some(r => !r.accepted)) reasons.push("replication rejected");
+  if (replication.length > 0 && replication.some(r => r.message.trim().length === 0)) reasons.push("replication lacks observation message");
+  if (baseline.length > 0 && baseline.some(r => r.message.trim().length === 0)) reasons.push("baseline lacks observation message");
+  if (control.length > 0 && control.some(r => r.message.trim().length === 0)) reasons.push("control lacks observation message");
 
   const contradiction = runs.some(r => r.kind === "CONTROL" && !r.accepted) || experiment.knowledgeState === "CONTRADICTED";
   const valid = reasons.length === 0;
@@ -378,8 +382,8 @@ export function validateCausalChain(experimentId: string): CausalValidation {
   store.write(payload);
   try {
     updateExperimentRecord(experimentId, {knowledgeState: state, status: experiment.status, progress: experiment.progress});
-  } catch {
-    /* optional */
+  } catch (error) {
+    if (!(error instanceof Error) || !/not found/i.test(error.message)) throw error;
   }
   observe({
     type: "science.causal.validation",
