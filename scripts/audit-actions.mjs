@@ -120,7 +120,7 @@ function bodyFreeRoutes() {
  * Aktionen, die ohne Attribute gültig sind (2xx ist dort korrekt).
  * `logout` würde die laufende Sitzung beenden und wird nur am Ende geprüft.
  */
-const ATTRIBUTE_FREE_ACTIONS = new Set(["renew", "expire", "guardian", "verify", "reconcile", "logout", "is-killed", "worker.cycle", "backup", "repair", "backup.run", "backup.prune"]);
+const ATTRIBUTE_FREE_ACTIONS = new Set(["renew", "expire", "guardian", "verify", "reconcile", "logout", "is-killed", "worker.cycle", "backup", "repair", "backup.run", "backup.prune", "evaluate", "report"]);
 const DESTRUCTIVE_ACTIONS = new Set(["logout"]);
 
 /** Attribute, die in einer Route aus dem Body gelesen werden. */
@@ -510,6 +510,23 @@ async function chainAlertingBackupRecovery() {
   const status = await get("/api/persistence");
   expectField("Persistenz-Status zeigt die Backup-Automation", status, j => Number(j.backupAutomation?.policy?.keepPerStore) >= 1 && typeof j.backupAutomation?.due === "boolean", "policy.keepPerStore + due");
   expectField("Keine fehlgeschlagenen Sicherungen im Status", status, j => Array.isArray(j.backups?.failed) && j.backups.failed.length === 0, "backups.failed leer");
+
+  // Service-Level: Schwellen mit Zielwert, Warn- und kritischer Grenze. Ein
+  // fehlender Messwert ist UNKNOWN und darf **nicht** als gesund gelten.
+  const slo = await get("/api/slo");
+  expectStatus("Service-Level lesen", slo, 200);
+  expectField("Jede Messgröße hat Zielwert, Warn- und kritische Grenze", slo, j => Array.isArray(j.results) && j.results.length > 0 && j.results.every(r => typeof r.target === "number" && typeof r.warning === "number" && typeof r.critical === "number"), "results[].target/warning/critical");
+  expectField("Zustände sind dreistufig plus UNKNOWN", slo, j => Array.isArray(j.results) && j.results.every(r => ["HEALTHY", "WARNING", "BREACHED", "UNKNOWN"].includes(r.state)), "state ∈ {HEALTHY,WARNING,BREACHED,UNKNOWN}");
+  expectField("Jede Messgröße nennt Quelle und Runbook", slo, j => j.results.every(r => typeof r.source === "string" && r.source.length > 0 && String(r.runbook).startsWith("docs/")), "source + runbook");
+  expectField("Zusammenfassung passt zu den Einzelbewertungen", slo, j => {
+    const count = state => j.results.filter(r => r.state === state).length;
+    return j.summary.healthy === count("HEALTHY") && j.summary.breached === count("BREACHED") && j.summary.unknown === count("UNKNOWN");
+  }, "summary == counts");
+  const sloEvaluate = await post("/api/slo", {action: "evaluate"});
+  expectStatus("Service-Level bewerten (meldet Befunde, repariert nichts)", sloEvaluate, 200);
+  expectField("Bewertung ist beobachtbar", sloEvaluate, j => typeof j.evaluatedAt === "string" && Number(j.summary?.total) > 0, "evaluatedAt + summary.total");
+  expectStatus("Unbekannte SLO-Aktion wird verweigert", await post("/api/slo", {action: "gibtsnicht"}), 400);
+  expectStatus("SLO ohne Aktion wird verweigert", await post("/api/slo", {}), 400);
   return true;
 }
 

@@ -238,22 +238,22 @@ Backups, Readiness und Queue. Ergebnis wird als Anzahl `PASS`/`FAIL` ausgegeben.
 
 Ergänzend prüft `scripts/audit-api.sh` **alle Routen** über HTTP (GET-Bestand,
 POST mit unlesbarem/leerem Body, Zugriff ohne Session, unvollständige Nutzdaten,
-frühere Fehlerbilder und die autonome Fehlerkette) — letzter Lauf
-**184 Prüfungen / 0 Fehler**, Exit 0; Details in `docs/TESTING.md` §4b.
+frühere Fehlerbilder, die autonome Fehlerkette sowie Alarmierung/Sicherung) — letzter Lauf
+**204 Prüfungen / 0 Fehler**, Exit 0; Details in `docs/TESTING.md` §4b.
 
 `scripts/audit-actions.mjs` prüft zusätzlich **jede Aktion und jedes Attribut**
 der Matrix, die direkt aus dem Quellcode gelesen wird, und fährt 14
-Interaktionsketten mit echten Kennungen durch — letzter Lauf
-**440 Prüfungen / 0 Fehler**, Exit 0, zweimal auf derselben Instanz wiederholt;
+Interaktionsketten mit echten Kennungen durch (inkl. „Alarmierung/Backup“ mit Service-Level) —
+letzter Lauf **502 Prüfungen / 0 Fehler**, Exit 0;
 Details in `docs/TESTING.md` §4c.
 
 `scripts/audit-ui.mjs` prüft die Oberfläche in drei Stufen: Quellvertrag
-(38 Abschnitte, Renderpfade, Spalten, kein literales Markdown), Auslieferung
+(39 Abschnitte, Renderpfade, Spalten, kein literales Markdown), Auslieferung
 (Assets, Sprache, Cookie-Flags, **kein Geheimnis im HTML/JS**) und den
 Datenvertrag jedes Abschnitts gegen die echte Route — letzter Lauf
-**65 Prüfungen / 0 Fehler**, Exit 0; Details in `docs/TESTING.md` §4d.
+**88 Prüfungen / 0 Fehler**, Exit 0; Details in `docs/TESTING.md` §4d.
 
-Prüfumfang des Skripts (**169 Prüfungen** auf einer initialisierten Instanz, wiederholbar; der
+Prüfumfang des Skripts (**176 Prüfungen** auf einer initialisierten Instanz, wiederholbar; der
 Bootstrap-Zweig enthält zwei Prüfungen mehr, mit verpflichtendem zweitem Faktor zwei weitere, ohne
 delegierten cgroup-Unterbaum zwei weniger):
 Authentifizierung, Mission → Objective → Task → Sandbox → Capability, autorisierte Ausführung
@@ -299,6 +299,17 @@ Maschine, Session-gebundene Creator-Anmeldung):
 | A | 120 | 4 | 120 / 0 | 1,31 s | 2,33 s | 2,11 /s | Kette gültig (`FULL_CHAIN`), Integrität 1 |
 | B | 120 | 8 | 120 / 0 | 4,84 s | 6,66 s | 1,14 /s | Kette gültig (`FULL_CHAIN`), Integrität 1 |
 
+**Definierte Schwellen für den Lauf** (seit dieser Runde): `SOAK_SLO_P95_MS` (Vorgabe 5000 ms) und
+`SOAK_SLO_MIN_SUCCESS_RATIO` (Vorgabe 1,0). Der Lauf endet mit Exit 1, sobald p95 das Budget
+überschreitet oder Ausführungen fehlschlagen; der Bericht enthält den Abschnitt `slo`
+(`state: MEETS_BUDGET|BREACHED`). Negativnachweis: mit `SOAK_SLO_P95_MS=1` endet ein Lauf mit
+Exit 1 und `state: BREACHED` (p95 1,06 s) — die Schwelle ist wirksam, nicht dekorativ.
+
+| Lauf | Ausführungen | Nebenläufigkeit | Erfolg | p50 | p95 | Budget | Zustand |
+|---|---|---|---|---|---|---|---|
+| C (mit Schwellen) | 40 | 4 | 40 / 0 | 1,59 s | 2,22 s | 5,00 s | `MEETS_BUDGET` |
+| D (Negativnachweis) | 5 | 2 | 5 / 0 | — | 1,06 s | 0,001 s | `BREACHED`, Exit 1 |
+
 Beobachtung (kein SLO): Mehr Nebenläufigkeit **erhöht** die Latenz und senkt den Durchsatz. Ursache
 ist die serielle Persistenz- und Mount-Arbeit je Ausführung (Datei-Store-Schreibvorgänge mit
 tmp+rename und fsync sowie der Aufbau der Isolation: `unshare`, Binds, `chroot`), nicht die CPU.
@@ -306,6 +317,16 @@ Allein das Ausstellen eines Tokens kostet in diesem Betrieb p50 ≈ 0,41 s. Für
 ein anderer Persistenzpfad (gebündelte Schreibvorgänge) und ein vorbereiteter Rootfs-Mount nötig —
 beides ist hier `NOT_IMPLEMENTED`. Diese Zahlen sind eine Momentaufnahme eines begrenzten Laufs in
 dieser Umgebung: **keine** SLO-Zusage, **keine** Lastkurve, kein Dauerlauf.
+
+**Betriebsweite Service-Level (`lib/slo.ts`, `/api/slo`, Abschnitt „Service-Level“ im Control
+Center):** Zehn Messgrößen mit Zielwert, Warn- und kritischer Grenze werden gegen den **echten**
+Zustand bewertet (Warteschlange, Store-Integrität, Sicherungen, Readiness, Verweigerungen,
+Isolation, Audit-Kette, Agenten-Heartbeats). Ein fehlender Messwert ist `UNKNOWN` und wird **nicht**
+als gesund ausgegeben. `POST /api/slo {action:"evaluate"}` meldet Verletzungen als `BLOCK`, fehlende
+Messwerte als `ASK` in die Creator-Inbox — die Bewertung repariert nichts und schaltet nichts ab;
+`GET /api/slo` ist rein lesend. Messung auf der Frischinstanz (2026-09-25):
+9 gesund / 1 gewarnt / 0 verletzt / 0 ohne Messwert bei `coverageComplete: true` — gewarnt war
+`executions_denied` (10 belegte Verweigerungen aus den vorangegangenen Live-Prüfungen).
 
 **Runbook „Isolation fehlt":** Meldet `GET /api/runtime` `level: "FILESYSTEM_ONLY"` und laufen
 Ausführungen mit 409 auf, dann fehlt der Rootfs (Volume nicht gemountet, Pfad falsch) oder die

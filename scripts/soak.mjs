@@ -8,8 +8,18 @@
  * inklusive Latenz je Ausführung, Durchsatz, Fehlerquote und dem Zustand danach
  * (Audit-Kette, Store-Integrität, Isolationsstufe).
  *
- * Was ausdrücklich **nicht** gemessen wird: eine SLO-Zusage. Ein einzelner,
- * begrenzter Lauf in dieser Umgebung ist eine Momentaufnahme, keine Lastkurve.
+ * Was ausdrücklich **nicht** gemessen wird: eine SLO-Zusage für Dauerbetrieb.
+ * Ein einzelner, begrenzter Lauf in dieser Umgebung ist eine Momentaufnahme,
+ * keine Lastkurve. Damit die Momentaufnahme trotzdem **bewertbar** ist, gelten
+ * für den Lauf definierte Schwellen:
+ *
+ *   `SOAK_SLO_P95_MS`           Budget für die p95-Latenz (Vorgabe 5000 ms)
+ *   `SOAK_SLO_MIN_SUCCESS_RATIO` Mindestanteil erfolgreicher Ausführungen (Vorgabe 1.0)
+ *
+ * Der Lauf endet mit Exit 1, wenn eine dieser Schwellen verletzt ist — die
+ * Schwellen stehen im Bericht (`slo`), zusammen mit dem Zustand danach
+ * (Audit-Kette, Isolation, Store-Integrität). Die betriebsweite Bewertung des
+ * Zustands liegt in `lib/slo.ts` (Route `/api/slo`, Abschnitt „Service-Level“).
  *
  * Aufruf:
  *   BASE=http://localhost:3000 BOB_BOOTSTRAP_SECRET=… BOB_CREATOR_LOGIN_SECRET=… \
@@ -22,6 +32,8 @@ const COUNT = Number(process.env.SOAK_COUNT ?? 100);
 const CONCURRENCY = Math.max(1, Number(process.env.SOAK_CONCURRENCY ?? 4));
 const REPORT = process.env.SOAK_REPORT ?? "/tmp/bob-soak-report.json";
 const MARKER = "soak-ok";
+const SLO_P95_MS = Number(process.env.SOAK_SLO_P95_MS ?? 5000);
+const SLO_MIN_SUCCESS_RATIO = Number(process.env.SOAK_SLO_MIN_SUCCESS_RATIO ?? 1);
 
 let cookie = "";
 
@@ -164,6 +176,17 @@ async function main() {
   const metricText = metrics.text ?? "";
   const metric = name => new RegExp(`^${name} (\\S+)$`, "m").exec(metricText)?.[1];
 
+  const successRatio = COUNT === 0 ? 0 : Number((latencies.length / COUNT).toFixed(4));
+  const slo = {
+    p95BudgetMs: SLO_P95_MS,
+    p95Ms: percentile(sorted, 95),
+    p95Ok: percentile(sorted, 95) <= SLO_P95_MS,
+    minSuccessRatio: SLO_MIN_SUCCESS_RATIO,
+    successRatio,
+    successOk: successRatio >= SLO_MIN_SUCCESS_RATIO,
+    state: percentile(sorted, 95) <= SLO_P95_MS && successRatio >= SLO_MIN_SUCCESS_RATIO ? "MEETS_BUDGET" : "BREACHED"
+  };
+
   const report = {
     startedAt,
     finishedAt: new Date().toISOString(),
@@ -183,6 +206,7 @@ async function main() {
     issueLatencyMs: {p50: percentile([...issueLatencies].sort((a, b) => a - b), 50)},
     throughputPerSecond: Number((latencies.length / (wallMs / 1000)).toFixed(2)),
     wallMs,
+    slo,
     afterwards: {
       auditChainValid: audit.body?.chain?.valid === true,
       auditRetention: audit.body?.integrity?.retentionIntegrity ?? null,
@@ -194,7 +218,7 @@ async function main() {
   };
   fs.writeFileSync(REPORT, `${JSON.stringify(report, null, 2)}\n`);
   console.log(JSON.stringify(report, null, 2));
-  if (failures.length) process.exitCode = 1;
+  if (failures.length || slo.state !== "MEETS_BUDGET") process.exitCode = 1;
 }
 
 main().catch(error => {

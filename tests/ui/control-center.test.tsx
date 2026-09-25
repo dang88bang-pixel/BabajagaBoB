@@ -80,6 +80,17 @@ const payloads: Record<string, unknown> = {
     ],
     enrollment: {available: false}
   },
+  "/api/slo": {
+    thresholds: {warnRatio: 0.5, warnCount: 1},
+    evaluatedAt: "2026-01-01T00:00:00.000Z",
+    results: [
+      {id: "audit_chain", title: "Audit-Kette integer", state: "HEALTHY", value: 1, target: 1, warning: 1, critical: 1, source: "GET /api/metrics", runbook: "docs/SECURITY.md §8"},
+      {id: "agent_heartbeat", title: "Agenten mit überfälligem Heartbeat", state: "BREACHED", value: 6, target: 0, warning: 1, critical: 4, source: "lib/control-plane.ts", runbook: "docs/OPERATIONS.md §3"},
+      {id: "backup_coverage", title: "Verifizierte Sicherungen vorhanden", state: "UNKNOWN", value: null, target: 1, warning: 1, critical: 1, source: "GET /api/persistence", runbook: "docs/OPERATIONS.md §3b"}
+    ],
+    summary: {total: 3, healthy: 1, warning: 0, breached: 1, unknown: 1, coverageComplete: false, healthyRatio: 0.5},
+    breached: [{id: "agent_heartbeat", title: "Agenten mit überfälligem Heartbeat", state: "BREACHED", value: 6, critical: 4}]
+  },
   "/api/persistence": {
     provider: "local-json",
     root: "/tmp/bob",
@@ -176,10 +187,10 @@ describe("Control Center Oberfläche", () => {
     const labels = [...container.querySelectorAll("nav button")].map(button => button.textContent?.replace("›", "").trim());
     // Vollständige Navigationsliste (Abschnitt 34): jeder Eintrag ist an eine
     // echte Serverroute gebunden.
-    for (const label of ["Übersicht", "Missionen", "Objectives", "Aufgaben", "Agenten", "Warteschlange", "Runs", "Sandboxes", "Runtimes", "Evidenz", "Audit", "Provenance", "Timeline / Replay", "Wissen", "Experimente", "Wissenschaft", "Fehlerfälle", "Recovery", "Regression", "Creator-Inbox", "Freigaben", "Governance", "Sicherheit", "Datenschutz", "Provider", "Geräte", "Computer Use", "CI/CD-Pipeline", "Tests", "Betrieb/Persistenz", "Metriken", "Secrets", "Werkzeuge", "Skills", "Werkstatt", "Simulation", "Galerie", "Apps"]) {
+    for (const label of ["Übersicht", "Missionen", "Service-Level", "Objectives", "Aufgaben", "Agenten", "Warteschlange", "Runs", "Sandboxes", "Runtimes", "Evidenz", "Audit", "Provenance", "Timeline / Replay", "Wissen", "Experimente", "Wissenschaft", "Fehlerfälle", "Recovery", "Regression", "Creator-Inbox", "Freigaben", "Governance", "Sicherheit", "Datenschutz", "Provider", "Geräte", "Computer Use", "CI/CD-Pipeline", "Tests", "Betrieb/Persistenz", "Metriken", "Secrets", "Werkzeuge", "Skills", "Werkstatt", "Simulation", "Galerie", "Apps"]) {
       expect(labels).toContain(label);
     }
-    expect(labels.length).toBeGreaterThanOrEqual(38);
+    expect(labels.length).toBeGreaterThanOrEqual(39);
   });
 
   it("rendert echte Daten statt Platzhaltern", async () => {
@@ -226,6 +237,17 @@ describe("Control Center Oberfläche", () => {
     expect(container.textContent).toContain("Geplante Sicherung ausführen");
     expect(container.textContent).toContain("nie die neueste oder einzige eines Stores");
     expect(container.textContent).toContain("idempotent");
+  });
+
+  it("zeigt das Service-Level mit Verletzung und fehlendem Messwert", async () => {
+    await render();
+    await click("Service-Level");
+    expect(container.textContent).toContain("Service-Level");
+    expect(container.textContent).toContain("Agenten mit überfälligem Heartbeat");
+    expect(container.textContent).toContain("BREACHED");
+    // Ein fehlender Messwert darf nicht als gesund erscheinen.
+    expect(container.textContent).toContain("UNKNOWN");
+    expect(container.textContent).toContain("Bewertung auslösen");
   });
 
   it("zeigt die geprüften Alarmregeln im Metriken-Abschnitt", async () => {

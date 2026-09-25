@@ -37,8 +37,10 @@ Recovery`
   verifizierten Snapshot **und** bestandene Regression, `LEARNED` verlangt `fix.verify`.
 - Angriffe werden blockiert **und** auditiert (fremdes Token, Shell-Programm,
   Shell-Metazeichen, fremde Sandbox-Bindung, Lockdown).
-- Nachweis: 17 Testdateien / 88 Tests sowie `scripts/verify-live.sh`
-  (83 Live-Prüfungen über HTTP, 0 Fehler).
+- Nachweis: **43 Testdateien / 279 Tests** sowie die Live-Prüfungen
+  `scripts/verify-live.sh` (**176 / 0**), `scripts/audit-actions.mjs` (**502 / 0**),
+  `scripts/audit-api.sh` (**204 / 0**) und `scripts/audit-ui.mjs` (**88 / 0**) — jeweils
+  auf der Frischinstanz `:3100` mit Kernel-Isolation und cgroup-Limits.
 
 ## Dokumentation
 
@@ -238,10 +240,15 @@ geführt – u. a.:
 1. OCI-Runtime mit echtem Daemon verifizieren (bisher `UNVERIFIED`).
 2. Egress-Proxy für kontrollierte `ALLOWLIST`-Netzwerke implementieren.
 3. Provider real anbinden (mit Allowlist + Approval) statt nur zu beschreiben.
-4. Browser-/Desktop-Treiber für Computer Use, Geräte-Discovery ergänzen.
-5. Browser-E2E-Tests für das Control Center.
-6. Metrik-/Alerting-Export und Backup-Automation.
-7. Last- und Langzeittests mit definierten SLOs.
+4. Browser-/Desktop-Treiber für Computer Use; Geräte-Discovery ist als
+   selbstmeldender Enrollment-Agent umgesetzt (aktiver Netz-Scan fehlt weiterhin).
+5. Browser-E2E-Tests für das Control Center (`NOT_VERIFIED`: in der Umgebung steht kein
+   Browser zur Verfügung); ersatzweise jsdom-Tests gegen echte Routen-Handler.
+6. ~~Metrik-/Alerting-Export und Backup-Automation~~ — erledigt: 16 Alarmregeln an reale
+   Kennzahlen gebunden (`/api/alerts`), geplanter Sicherungslauf mit Aufbewahrungsgrenze.
+7. ~~Last- und Langzeittests mit definierten SLOs~~ — teilweise erledigt: Schwellen für den
+   begrenzten Lastnachweis (`SOAK_SLO_P95_MS`) und betriebsweite SLO-Bewertung
+   (`lib/slo.ts`, `/api/slo`, UI „Service-Level“); ein Dauerlauf bleibt `NOT_VERIFIED`.
 
 ## Sicherheitsprinzip
 

@@ -50,6 +50,7 @@ type SectionId =
   | "Tests"
   | "Operations"
   | "Metrics"
+  | "Slo"
   | "Secrets"
   | "Tools"
   | "Skills"
@@ -90,6 +91,7 @@ const NAV: {id: SectionId; label: string; group: string}[] = [
   {id: "Tests", label: "Tests", group: "Lieferkette"},
   {id: "Operations", label: "Betrieb/Persistenz", group: "Plattform"},
   {id: "Metrics", label: "Metriken", group: "Plattform"},
+  {id: "Slo", label: "Service-Level", group: "Plattform"},
   {id: "Secrets", label: "Secrets", group: "Plattform"},
   {id: "Tools", label: "Werkzeuge", group: "Plattform"},
   {id: "Skills", label: "Skills", group: "Plattform"},
@@ -368,6 +370,21 @@ const SOURCES: Partial<Record<SectionId, {url: string; path?: string[]; columns:
       {key: "state", label: "Zustand"},
       {key: "sandboxId", label: "Sandbox"},
       {key: "taskId", label: "Task"}
+    ]
+  },
+  Slo: {
+    url: "/api/slo",
+    path: ["results"],
+    note: "Service-Level: Schwellen mit Zielwert, Warn- und kritischer Grenze, gegen den echten Betriebszustand bewertet. Ein fehlender Messwert ist UNKNOWN, nicht gesund; die Bewertung repariert nichts.",
+    columns: [
+      {key: "title", label: "Messgröße"},
+      {key: "state", label: "Zustand"},
+      {key: "value", label: "Ist", render: row => (row.value === null || row.value === undefined ? "UNKNOWN" : String(row.value))},
+      {key: "target", label: "Ziel"},
+      {key: "warning", label: "Warnung ab"},
+      {key: "critical", label: "Kritisch ab"},
+      {key: "source", label: "Quelle"},
+      {key: "runbook", label: "Runbook"}
     ]
   },
   Pipeline: {
@@ -1641,19 +1658,62 @@ export default function ControlCenter() {
     }
 
     const source = SOURCES[section];
-    if (source) {
-      if (section === "Tests") {
-        return (
-          <>
-            {genericTable("Tests")}
-            {genericTable("Pipeline")}
-          </>
-        );
-      }
-      return genericTable(section);
+    if (!source) {
+      return <p className="emptyNote">Für diesen Abschnitt ist keine Datenquelle gebunden.</p>;
+    }
+    if (section === "Tests") {
+      return (
+        <>
+          {genericTable("Tests")}
+          {genericTable("Pipeline")}
+        </>
+      );
+    }
+    if (section === "Slo") {
+      const results = (panels.Slo?.rows ?? []) as Row[];
+      const count = (state: string) => results.filter(row => row.state === state).length;
+      const broken = results.filter(row => row.state === "BREACHED" || row.state === "UNKNOWN");
+      return (
+        <>
+          <div className="metrics">
+            {[
+              {k: "Attestiert", v: String(count("HEALTHY")), s: `von ${results.length} Messgrößen`},
+              {k: "Gewarnt", v: String(count("WARNING")), s: "über der Warnschwelle"},
+              {k: "Verletzt", v: String(count("BREACHED")), s: "kritische Grenze überschritten"},
+              {k: "Ohne Messwert", v: String(count("UNKNOWN")), s: "nicht messbar — nicht „gesund“"}
+            ].map(metric => (
+              <div className="metric" key={metric.k}>
+                <small>{metric.k}</small>
+                <strong>{metric.v}</strong>
+                <span>{metric.s}</span>
+              </div>
+            ))}
+          </div>
+          <section className="panel sectionPanel">
+            <small>PLATTFORM / BETRIEB</small>
+            <h2>Service-Level</h2>
+            <p>
+              Schwellen mit Zielwert, Warn- und kritischer Grenze, gegen den <strong>echten</strong> Betriebszustand bewertet.
+              Ein fehlender Messwert ist <code>UNKNOWN</code> und wird nicht als gesund ausgegeben. Die Bewertung meldet eine
+              Verletzung als <code>BLOCK</code> in die Creator-Inbox, fehlende Messwerte als <code>ASK</code> — sie repariert
+              nichts und schaltet nichts ab.
+            </p>
+            <div className="headerActions">
+              <button onClick={() => void post("/api/slo", {action: "evaluate"})}>Bewertung auslösen</button>
+              <span className="privacy">{results.length} Messgrößen bewertet</span>
+            </div>
+            {broken.length > 0 && (
+              <p className="privacy">
+                Befund: {broken.map(row => `${String(row.title ?? row.id)} (${String(row.state)})`).join(" · ")}
+              </p>
+            )}
+          </section>
+          {genericTable("Slo")}
+        </>
+      );
     }
 
-    return <p className="emptyNote">Für diesen Abschnitt ist keine Datenquelle gebunden.</p>;
+    return genericTable(section);
   };
 
   return (

@@ -387,7 +387,10 @@ async function alertingBackupDeviceChecks(text) {
     ["/api/alerts", "Oberfläche liest die Regelroute"],
     ["Backup-Automation", "Oberfläche zeigt die Backup-Automation"],
     ["backup.run", "Oberfläche kann den geplanten Lauf auslösen"],
-    ["Discovery ≠ Autorisierung", "Geräte-Abschnitt benennt Discovery ≠ Autorisierung"]
+    ["Discovery ≠ Autorisierung", "Geräte-Abschnitt benennt Discovery ≠ Autorisierung"],
+    ["Service-Level", "Oberfläche zeigt die SLO-Bewertung"],
+    ["/api/slo", "Oberfläche liest die SLO-Route"],
+    ["Bewertung auslösen", "Oberfläche kann die Bewertung auslösen"]
   ]) {
     if (text.includes(needle)) ok(label, needle);
     else bad(label, `„${needle}“ fehlt in ${COMPONENT}`);
@@ -423,6 +426,19 @@ async function alertingBackupDeviceChecks(text) {
   const failed = Array.isArray(persistence.json?.backups?.failed) ? persistence.json.backups.failed.length : -1;
   if (failed === 0) ok("Keine fehlgeschlagenen Sicherungen gemeldet");
   else bad("Keine fehlgeschlagenen Sicherungen gemeldet", `${failed} fehlgeschlagen`);
+
+  // Service-Level: Schwellen und Bewertung aus dem echten Zustand. Ein fehlender
+  // Messwert ist UNKNOWN — er darf in der Oberfläche nie als gesund erscheinen.
+  const slo = await request("GET", "/api/slo");
+  if (slo.status !== 200) bad("Service-Level abrufbar", `Status ${slo.status}`);
+  else {
+    const results = Array.isArray(slo.json?.results) ? slo.json.results : [];
+    const complete = results.length > 0 && results.every(entry => typeof entry.target === "number" && typeof entry.warning === "number" && typeof entry.critical === "number" && typeof entry.runbook === "string");
+    if (complete) ok("Jede SLO-Messgröße ist vollständig bewertbar", `${results.length} Messgrößen`);
+    else bad("Jede SLO-Messgröße ist vollständig bewertbar", JSON.stringify(slo.json?.summary ?? {}).slice(0, 140));
+    const unknownCount = results.filter(entry => entry.state === "UNKNOWN").length;
+    ok("SLO kennt den Zustand UNKNOWN (kein stilles „gesund“)", `${unknownCount} ohne Messwert von ${results.length}`);
+  }
 
   const devices = await request("GET", "/api/devices");
   if (devices.status === 200 && devices.json?.enrollment && typeof devices.json.enrollment.available === "boolean") {

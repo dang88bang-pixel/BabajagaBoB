@@ -38,11 +38,11 @@ Smoke-Test laufen als SYSTEM-WORKER über Gate, Broker und Evidenz).
 | ~~Geräte-Discovery~~ | erledigt: `lib/device-enrollment.ts` + `scripts/discover-host.mjs` (Meldung mit Geheimnis, fail closed, nur Discovery/Heartbeat), Autorisierung bleibt Creator-Akt | offen: Netz-Scan (ARP/mDNS) und Attestierung sind `NOT_IMPLEMENTED` |
 | Computer Use | kein Browser-/Desktop-Treiber angebunden | Playwright-/VNC-Treiber im Sandbox-Workspace, Aktionen über Broker |
 | ~~Simulation/Visualisierung~~ | erledigt | Renderer `lib/visualization.ts` für alle sieben Arten (aus dem echten Zustand), Bildroute + Evidenzartefakt, `tests/integration/visualization.test.ts` |
-| Control-Center-UI | keine Browser-E2E-Tests | Playwright-Suite gegen Testserver mit Gate-Prüfung |
+| Control-Center-UI | kein Browser in der Umgebung (geprüft: kein Chromium/Chrome/Firefox, kein Playwright-Cache; Download-Hosts gesperrt) | Browser-E2E bleibt `NOT_VERIFIED`; ersatzweise jsdom-Tests gegen echte Routen-Handler + `audit-ui.mjs` |
 | ~~Recovery-Tier-Ableitung~~ | erledigt | automatische, begründete Klassifikation in `lib/recovery-tier.ts` (Tests: `tests/unit/recovery-tier.test.ts`) |
 | ~~Alarmierung (Regeln)~~ | erledigt | 16 Regeln in `lib/alerting.ts`, an die echten Kennzahlen gebunden, `GET /api/alerts[?format=prometheus]`, UI-Anzeige, Tests; offen bleibt der Betrieb von Scraper/Alertmanager (`NOT_VERIFIED`) |
 | ~~Backup-Automation~~ | erledigt: `lib/backup-policy.ts` (idempotenter geplanter Lauf, Aufbewahrungsgrenze je Store, Audit + Ereignis, UI-Panel) | offen bleibt ein echter Scheduler-Daemon (externer Auslöser, `NOT_VERIFIED`) |
-| ~~Last-/Soak-Tests~~ | begrenzter Nachweis erbracht (`scripts/soak.mjs`, 2 × 120 Ausführungen, Zahlen in `docs/OPERATIONS.md` §5a) | offen bleibt ein Langzeittest mit definierten SLO-Schwellen |
+| ~~Last-/Soak-Tests~~ | erledigt: begrenzter Nachweis **mit definierten Schwellen** (`SOAK_SLO_P95_MS`, `SOAK_SLO_MIN_SUCCESS_RATIO`, Negativnachweis Exit 1) und betriebsweite SLO-Bewertung (`lib/slo.ts`, `/api/slo`, UI „Service-Level“) | offen bleibt ein **Dauerlauf** über Stunden/Lastkurve (`NOT_VERIFIED`) |
 
 ## 3. Nicht implementiert (bewusst)
 

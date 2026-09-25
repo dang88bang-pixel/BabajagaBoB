@@ -342,11 +342,11 @@ Das Gesamtprojekt darf erst als spezifikationskonform bezeichnet werden, wenn:
 | 2. Offene Punkte markiert | **PASS** – `docs/STATUS.md`, `docs/TODO.md`, `docs/ABSCHLUSSBERICHT.md` §D/§E/§F |
 | 3. Keine stille Sicherheitsreduktion | **PASS** – Netzwerk `DENY`, `ALLOWLIST` fail closed, Audit-/Provenance-Pflicht, Evidenz-/Verifikationspflicht unverändert |
 | 4. Kern-E2E-Flows | **PASS** – `tests/e2e/creator-flow.test.ts`, `tests/e2e/failure-recovery.test.ts`, Live-Schritte 2–6 |
-| 5. Security Regression Suite | **PASS** – 11 Security-Dateien / 64 Tests, Live-Angriffsblockaden (Schritt 5) samt Evidenz der Verweigerung (`kind=DENIAL`) |
+| 5. Security Regression Suite | **PASS** – 16 Security-Dateien / 103 Tests, Live-Angriffsblockaden (Schritt 5) samt Evidenz der Verweigerung (`kind=DENIAL`) |
 | 6. Recovery verifiziert | **PASS** – Restore + Regression + `fix.verify` bis `REGRESSION_LOCKED` |
 | 7. Audit/Provenance konsistent | **PASS** – `verifyAuditChain()` in Tests und Live-Lauf grün |
-| 8. UI-Systemzustände sichtbar | **PARTIAL** – 38 Abschnitte mit sichtbaren Zuständen, gegen echte Routen-Handler getestet (`tests/ui/control-center-api.test.tsx`), aber ohne automatisierte Browser-E2E-Prüfung |
-| Zusatz: Betriebsnachweis | **PASS** – `/api/metrics` (nur Zahlen), Backup mit Digest-Prüfung (manipuliert → 409) inkl. Migration älterer Sicherungen, Audit-Verifikation über POST und Aufbewahrungszustand, **130 Live-Prüfungen / 0 Fehler** (128 bei initialisierter Instanz) |
+| 8. UI-Systemzustände sichtbar | **PARTIAL** – 39 Abschnitte mit sichtbaren Zuständen, gegen echte Routen-Handler getestet (`tests/ui/control-center-api.test.tsx`), aber ohne automatisierte Browser-E2E-Prüfung |
+| Zusatz: Betriebsnachweis | **PASS** – `/api/metrics` (nur Zahlen), Backup mit Digest-Prüfung (manipuliert → 409) inkl. Migration älterer Sicherungen, Audit-Verifikation über POST und Aufbewahrungszustand, **176 / 204 / 502 / 88 Live-Prüfungen** (verify-live / audit-api / audit-actions / audit-ui, je 0 Fehler) (128 bei initialisierter Instanz) |
 | 9. Dokumentation = realer Zustand | **PASS** – 14 §44-Dokumente plus Abschlussbericht, gegen Code und Nachweise geprüft |
 
 Das Gesamtprojekt ist daher **nicht** als spezifikationskonform abgeschlossen zu
