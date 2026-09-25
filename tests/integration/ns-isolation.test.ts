@@ -1,8 +1,9 @@
 import {execFileSync} from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import {beforeAll, beforeEach, describe, expect, it, vi} from "vitest";
+import {beforeEach, describe, expect, it, vi} from "vitest";
 import {isolatedStorageRoot} from "../helpers/runtime";
+import {probeUserNamespaces} from "../../lib/ns-isolation";
 
 /**
  * Kernel-Isolation der Ausführung (Runtime-Isolation `NAMESPACES`).
@@ -38,11 +39,37 @@ const PROBE = [
   'console.log(JSON.stringify({capBnd:g("CapBnd"),capEff:g("CapEff"),noNewPrivs:g("NoNewPrivs"),procs,ro,rw}));'
 ].join("");
 
-beforeAll(() => {
-  execFileSync("bash", [path.join(repo, "scripts", "build-ns-rootfs.sh"), rootfs], {stdio: "pipe", timeout: 180_000});
-  expect(fs.existsSync(path.join(rootfs, "bin", "node"))).toBe(true);
-  process.env.BOB_NS_ROOTFS = rootfs;
-});
+/**
+ * Verfügbarkeit **vor** der Testregistrierung messen. Gehärtete Umgebungen
+ * (z. B. CI-Runner mit `apparmor_restrict_unprivileged_userns=1`) erlauben keine
+ * unprivilegierten User-Namespaces. Dann wird der Isolationsnachweis **sichtbar
+ * übersprungen** (Vitest meldet `skipped`) und der Grund protokolliert — statt
+ * stillschweigend zu bestehen. Die fail-closed-Zusagen werden weiterhin geprüft.
+ */
+const userns = probeUserNamespaces();
+const usernsReason = userns.reason ?? "unbekannter Grund";
+// Der Rootfs wird nur gebaut, wenn die Umgebung Namespaces überhaupt zulässt
+// (spart in CI 126 MB Kopierarbeit und macht den Grund sichtbar).
+const rootfsBuilt = userns.available
+  ? (() => {
+      try {
+        execFileSync("bash", [path.join(repo, "scripts", "build-ns-rootfs.sh"), rootfs], {stdio: "pipe", timeout: 180_000});
+        return fs.existsSync(path.join(rootfs, "bin", "node"));
+      } catch {
+        return false;
+      }
+    })()
+  : false;
+const isolationAvailable = userns.available && rootfsBuilt;
+const unavailableReason = userns.available
+  ? "Rootfs konnte nicht gebaut werden (bash scripts/build-ns-rootfs.sh)"
+  : usernsReason;
+if (!isolationAvailable) console.warn(`[ns-isolation] Kernel-Isolation in dieser Umgebung nicht nachweisbar: ${unavailableReason}`);
+
+process.env.BOB_NS_ROOTFS = rootfs;
+
+/** Nur in Umgebungen mit nachweisbarer Isolation; sonst als `skipped` gemeldet. */
+const isolationDescribe = isolationAvailable ? describe : describe.skip;
 
 beforeEach(async () => {
   process.env.BOB_NS_ROOTFS = rootfs;
@@ -51,16 +78,10 @@ beforeEach(async () => {
   ns = await import("../../lib/ns-isolation");
 });
 
-describe("Kernel-Isolation", () => {
+isolationDescribe("Kernel-Isolation (NAMESPACES)", () => {
   it("meldet aktive Isolation mit den erzwungenen Garantien", () => {
     const report = ns.isolationReport(true);
-    if (report.level !== "NAMESPACES") {
-      // Umgebungen ohne unprivilegierte User-Namespaces (z. B. gehärtete CI-Runner)
-      // dürfen hier nicht stillschweigend bestehen: der Bericht muss den Grund nennen.
-      expect(report.reason).toBeTruthy();
-      expect(report.detail).toContain("nicht aktiv");
-      return;
-    }
+    expect(report.level).toBe("NAMESPACES");
     expect(report.enforced).toContain("NETWORK_NAMESPACE");
     expect(report.enforced).toContain("PID_NAMESPACE");
     expect(report.enforced).toContain("READ_ONLY_ROOTFS");
@@ -70,7 +91,6 @@ describe("Kernel-Isolation", () => {
   });
 
   it("führt argv kernel-isoliert aus und belegt die Garantien im Prozess", async () => {
-    if (ns.isolationReport().level !== "NAMESPACES") return;
     const result = await ns.runIsolated(["node", "-e", PROBE], {workspace: path.join(root, "work"), timeoutMs: 20_000, sandboxId: "SB-NS-1"});
     expect(result.accepted, result.stderr).toBe(true);
     expect(result.isolation).toBe("NAMESPACES");
@@ -85,7 +105,6 @@ describe("Kernel-Isolation", () => {
   }, 60_000);
 
   it("hat kein Netzwerk im Sandbox-Namespace (kernel-seitig, nicht per Policy)", async () => {
-    if (ns.isolationReport().level !== "NAMESPACES") return;
     const probe = [
       'const net=require("net");',
       'const dev=Object.keys(require("fs").readFileSync("/proc/net/dev","utf8").split("\\n").slice(2).reduce((a,l)=>{const n=l.trim().split(":")[0];if(n)a[n]=1;return a;},{}));',
@@ -102,7 +121,6 @@ describe("Kernel-Isolation", () => {
   }, 60_000);
 
   it("interpretiert Agentenargumente nicht als Shell", async () => {
-    if (ns.isolationReport().level !== "NAMESPACES") return;
     const canary = path.join(root, "canary.txt");
     fs.writeFileSync(canary, "unversehrt");
     const evil = `x"; touch ${canary}.boese; echo "`;
@@ -118,7 +136,6 @@ describe("Kernel-Isolation", () => {
   }, 60_000);
 
   it("beendet Zeitüberschreitungen und lässt keine Prozesse zurück", async () => {
-    if (ns.isolationReport().level !== "NAMESPACES") return;
     const result = await ns.runIsolated(["node", "-e", "setTimeout(()=>{}, 60_000)"], {
       workspace: path.join(root, "work-timeout"),
       timeoutMs: 1_500,
@@ -147,6 +164,28 @@ describe("Kernel-Isolation", () => {
     }
     // Nach der Wiederherstellung ist die Isolation wieder aktiv (kein vergifteter Cache).
     expect(live.isolationReport(true).level).toBe("NAMESPACES");
+  }, 60_000);
+
+});
+
+describe("Kernel-Isolation: ehrlicher Bericht und fail closed", () => {
+  it("erkennt die Umgebung, wenn Kernel-Isolation nicht möglich ist", async () => {
+    // Immer ausgeführt: Entweder ist die Isolation real aktiv (dann hier nur die
+    // Bestätigung), oder die Umgebung erlaubt sie nicht — dann muss der Bericht
+    // den gemessenen Grund nennen und keine Garantien behaupten.
+    vi.resetModules();
+    const probeLib = await import("../../lib/ns-isolation");
+    process.env.BOB_NS_ISOLATION = "auto";
+    const report = probeLib.isolationReport(true);
+    if (isolationAvailable) {
+      expect(report.level).toBe("NAMESPACES");
+      expect(report.reason).toBeUndefined();
+    } else {
+      expect(report.level).toBe("FILESYSTEM_ONLY");
+      expect(report.enforced).toEqual([]);
+      expect(report.reason).toBeTruthy();
+      expect(report.detail).toContain("nicht aktiv");
+    }
   }, 60_000);
 
   it("führt bei erzwungener Isolation nichts unisoliert aus (fail closed)", async () => {

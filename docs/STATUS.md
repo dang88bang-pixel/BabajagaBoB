@@ -77,7 +77,7 @@ Produktionsreife:
 | Provider Fabric | TESTED | Katalog/Bindungen/Telemetrie persistent, Approval-gebundene Verbindung (`tests/integration/provider-fabric.test.ts`) |
 | Device Fabric / Simulation / Computer Use | PARTIAL | persistent; Computer Use in `tests/integration/computer-use.test.ts` (Registrieren ≠ Autorisieren), Simulation ohne eigenen Test |
 | CI/CD (`ci.yml`) | TESTED | 5 Jobs (Lint/Typecheck, Unit/Integration/Regression, Security/E2E, Build, Promotion-Gate); grüne Läufe dokumentiert in `docs/CI_CD.md` |
-| Automatisierte Testsuiten | TESTED | **32 Dateien / 178 Tests grün**, siehe `docs/TESTING.md` |
+| Automatisierte Testsuiten | TESTED | **32 Dateien / 179 Tests grün**, siehe `docs/TESTING.md` |
 
 ## Aktuelle Sicherheitsgrenzen
 

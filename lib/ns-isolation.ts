@@ -83,22 +83,32 @@ function missingPrerequisite(): string | null {
 
 let cachedUnshare: {available: boolean; reason?: string} | null = null;
 
-/** Teurer Teil der Probe: erlaubt die Umgebung unprivilegierte User-Namespaces? */
-function unshareUsable(): {available: boolean; reason?: string} {
-  if (cachedUnshare) return cachedUnshare;
-  const unshare = unshareBinary();
-  if (!unshare) {
-    cachedUnshare = {available: false, reason: "unshare(1) ist nicht verfügbar"};
-    return cachedUnshare;
+/**
+ * Erlaubt die Umgebung unprivilegierte User-Namespaces? Praktischer Test, kein
+ * Raten: ein echter `unshare`-Lauf. Gehärtete Umgebungen (z. B. CI-Runner mit
+ * `kernel.apparmor_restrict_unprivileged_userns=1`) melden hier den echten Grund.
+ *
+ * `BOB_NS_PROBE_FORCE_UNAVAILABLE=1` erzwingt die Meldung „nicht verfügbar" —
+ * ausschließlich für Diagnose und den Nachweis des Skip-Pfads in den Tests.
+ */
+export function probeUserNamespaces(): {available: boolean; reason?: string} {
+  if (process.env.BOB_NS_PROBE_FORCE_UNAVAILABLE === "1") {
+    return {available: false, reason: "User-Namespaces sind per BOB_NS_PROBE_FORCE_UNAVAILABLE=1 als nicht verfügbar gemeldet"};
   }
-  // Praktischer Test, kein Raten: ein echter unshare-Lauf.
+  const unshare = unshareBinary();
+  if (!unshare) return {available: false, reason: "unshare(1) ist nicht verfügbar"};
   const result = spawnSync(unshare, ["--user", "--map-root-user", "true"], {timeout: 5_000, encoding: "utf8"});
   if (result.status !== 0) {
     const detail = (result.stderr ?? "").toString().trim() || `exit ${result.status ?? "?"}`;
-    cachedUnshare = {available: false, reason: `User-Namespaces sind nicht erlaubt: ${detail}`};
-    return cachedUnshare;
+    return {available: false, reason: `User-Namespaces sind nicht erlaubt: ${detail}`};
   }
-  cachedUnshare = {available: true};
+  return {available: true};
+}
+
+/** Gecachte Variante für den Bericht (der Testlauf ist teuer). */
+function unshareUsable(): {available: boolean; reason?: string} {
+  if (cachedUnshare) return cachedUnshare;
+  cachedUnshare = probeUserNamespaces();
   return cachedUnshare;
 }
 

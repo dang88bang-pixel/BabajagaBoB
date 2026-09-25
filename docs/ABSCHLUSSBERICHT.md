@@ -71,7 +71,7 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 
 | Nachweis | Ergebnis |
 |---|---|
-| Automatisierte Tests | **32 Dateien / 178 Tests grün** (`npx vitest run`) |
+| Automatisierte Tests | **32 Dateien / 179 Tests grün** (`npx vitest run`) |
 | Statische Gates | `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler (10 Warnungen); `npm run build` erfolgreich (Exit-Code geprüft, nicht nur Ausgabe) |
 | Live über HTTP | `scripts/verify-live.sh` gegen `npx next start`: **149 PASS / 0 FAIL** (frisch initialisiert; 147 bei bereits initialisierter Instanz; mit verpflichtendem zweitem Faktor 155 / 153), jeweils mit aktiver Kernel-Isolation – Auth fail closed (428/401/403/201/200), Kette bis Knowledge, Sandbox + Snapshot + Capability, autorisierte Ausführung (`argv`, stdout `live-ok`), Angriffsblockaden mit Audit, Fehlerkette bis `REGRESSION_LOCKED`, Lockdown/Privacy/Provider/Geräte, Restore/Persistenz/Readiness, **Schritt 10: Agentenweg über Capability-Token ohne Browser-Session**, **Evidenz der blockierten Autorisierung** (`kind=DENIAL`, Digest erneut geprüft, ohne Klartext-Argumente), **Replay-Verweigerung** (zweiter Lauf mit demselben Token → 409 + Evidenz), **Schritt 11: kernel-gemessene Isolation** (`CapBnd`/`CapEff` = 0, `NoNewPrivs` = 1, `EROFS`, nur `lo`, leere Routingtabelle) und **Schritt 12: zweiter Faktor live** (Pflicht, Ablehnung ohne/mit falschem Code, Akzeptanz, Replay-Ablehnung) |
 | Kernel-Isolation der Ausführung | `NAMESPACES` (real gemessen): User-/Netzwerk-/PID-/IPC-/UTS-/Mount-Namespace, Rootfs `EROFS`, nur `/work` schreibbar, leeres Capability-Bounding-Set, `NoNewPrivs` = 1; `scripts/build-ns-rootfs.sh` (126 MB), `lib/ns-isolation.ts`, `scripts/ns-exec.sh`; `BOB_NS_ISOLATION=on` verweigert ohne Rootfs jede Ausführung (fail closed) |
@@ -151,7 +151,7 @@ Keine Erfolgsaussage stützt sich auf Mock-Verhalten; Simulationen
 - E2E (2 / 4): Erfolgskette Creator → Knowledge; Fehlerkette bis `REGRESSION_LOCKED`.
 - UI (2 / 6): Control Center unter jsdom mit vollständiger Navigation und echten Routen-Handlern.
 - Live: `scripts/verify-live.sh` (**149 Prüfungen, 0 Fehler** bei Erstinitialisierung, mit Kernel-Isolation).
-- Gesamt: **32 Dateien / 178 Tests grün**.
+- Gesamt: **32 Dateien / 179 Tests grün**.
 
 Details und Befehle: `docs/TESTING.md`.
 

@@ -71,6 +71,7 @@ Steuerung (Umgebungsvariablen):
 | --- | --- | --- |
 | `BOB_NS_ISOLATION` | `auto` (Standard), `on`, `off` | `on` erzwingt Kernel-Isolation: fehlen die Voraussetzungen, wird die Ausführung **verweigert** statt unisoliert zu laufen. `off` deaktiviert sie ausdrücklich (nur für Diagnose). |
 | `BOB_NS_ROOTFS` | Pfad | Wurzeldateisystem der Isolation; Standard `${BOB_STORAGE_DIR}/ns-rootfs`. |
+| `BOB_NS_PROBE_FORCE_UNAVAILABLE` | `1` | Nur Diagnose/Testnachweis: meldet User-Namespaces als nicht verfügbar und belegt damit den Skip-Pfad der Testsuite und das fail-closed-Verhalten. |
 
 Rootfs bauen (Node + Bibliotheken + BusyBox, ca. 126 MB, ohne Netzwerkzugriff auf
 Paketquellen — BusyBox kommt aus der devDependency `busybox-static`):

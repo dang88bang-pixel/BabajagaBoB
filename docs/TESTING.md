@@ -2,7 +2,7 @@
 
 **Stand:** 2026-09-25
 **Testrunner:** Vitest 3 (`vitest.config.ts`, Node ≥ 22)
-**Letzter verifizierter Lauf:** `npx vitest run` → **32 Dateien, 178 Tests, alle grün**; `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler / 10 Warnungen; `npm run build` erfolgreich. Zusätzlich live gegen den Produktionsserver geprüft (`BOB_NS_ISOLATION=on` mit gebautem Rootfs): `scripts/verify-live.sh` → **149 Prüfungen, 0 Fehler** bei Erstinitialisierung (**147**, wenn die Instanz bereits initialisiert war – der Bootstrap-Zweig enthält zwei Prüfungen mehr). Mit verpflichtendem zweitem Faktor (TOTP) sind es **155 / 153**; siehe §4a. Negativnachweis derselben Instanz ohne Rootfs: Isolation wird als `FILESYSTEM_ONLY` ausgewiesen und **jede** Ausführung mit 409 verweigert (`kernel isolation is enforced … but unavailable`); das Skript meldet dann erwartungsgemäß 125 PASS / 22 FAIL, weil alle ausführungsabhängigen Schritte bewusst scheitern.
+**Letzter verifizierter Lauf:** `npx vitest run` → **32 Dateien, 179 Tests, alle grün**; `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler / 10 Warnungen; `npm run build` erfolgreich. Zusätzlich live gegen den Produktionsserver geprüft (`BOB_NS_ISOLATION=on` mit gebautem Rootfs): `scripts/verify-live.sh` → **149 Prüfungen, 0 Fehler** bei Erstinitialisierung (**147**, wenn die Instanz bereits initialisiert war – der Bootstrap-Zweig enthält zwei Prüfungen mehr). Mit verpflichtendem zweitem Faktor (TOTP) sind es **155 / 153**; siehe §4a. Negativnachweis derselben Instanz ohne Rootfs: Isolation wird als `FILESYSTEM_ONLY` ausgewiesen und **jede** Ausführung mit 409 verweigert (`kernel isolation is enforced … but unavailable`); das Skript meldet dann erwartungsgemäß 125 PASS / 22 FAIL, weil alle ausführungsabhängigen Schritte bewusst scheitern.
 
 ## 1. Suiten und Abdeckung
 
@@ -152,5 +152,10 @@ Details: `docs/CI_CD.md`.
   (Ressourcenlimits bleiben zeitbasiert) und kein eigener Kernel. Sie ist als Stufe `NAMESPACES`
   ausgewiesen, nicht als `CONTAINER`; die Testsuite prüft die Garantien, die tatsächlich gelten.
 - `tests/integration/ns-isolation.test.ts` baut den Rootfs real (126 MB) und benötigt eine Umgebung,
-  die unprivilegierte User-Namespaces erlaubt; ist das nicht der Fall, wird die Suite mit Begründung
-  übersprungen statt als „grün" gezählt.
+  die unprivilegierte User-Namespaces erlaubt. Ist das nicht der Fall — GitHub-Runner beschränken
+  unprivilegierte User-Namespaces per AppArmor —, meldet die Suite die Isolationsnachweise als
+  `skipped` (mit dem gemessenen Grund auf der Konsole und ohne den Rootfs zu bauen); die zwei
+  umgebungsunabhängigen Tests laufen weiter: „erkennt die Umgebung, wenn Kernel-Isolation nicht
+  möglich ist" (Bericht darf keine Garantien behaupten) und „führt bei erzwungener Isolation nichts
+  unisoliert aus (fail closed)". Der Skip-Pfad ist verifiziert: mit
+  `BOB_NS_PROBE_FORCE_UNAVAILABLE=1` meldet der Lauf **2 bestanden, 6 übersprungen**.
