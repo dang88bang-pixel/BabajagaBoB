@@ -1,7 +1,10 @@
+import {requireControlPlaneAuth} from "@/lib/control-auth";
 import {listTools,registerTool} from "../../../lib/tool-registry";
 
 export async function GET(){return Response.json({tools:listTools()})}
 export async function POST(request:Request){
+ requireControlPlaneAuth(req);
+
  try{
   const body=await request.json();
   return Response.json({tool:registerTool(body)},{status:201});
