@@ -34,7 +34,8 @@ beforeAll(async () => {
     "/api/runtime": (await import("../../app/api/runtime/route")).GET,
     "/api/errors": (await import("../../app/api/errors/route")).GET,
     "/api/authority": (await import("../../app/api/authority/route")).GET,
-    "/api/governance": (await import("../../app/api/governance/route")).GET
+    "/api/governance": (await import("../../app/api/governance/route")).GET,
+    "/api/deployment": (await import("../../app/api/deployment/route")).GET
   };
   authRoute = await import("../../app/api/auth/route");
   expect(root).toContain("sec-direct-denial");

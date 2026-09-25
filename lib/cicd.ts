@@ -133,6 +133,11 @@ export function promote(pipelineId: string, next: PromotionStage) {
   return update(pipeline);
 }
 
+export function getPipeline(pipelineId: string): Pipeline | null {
+  const found = store.read().pipelines.find(entry => entry.id === pipelineId);
+  return found ? clone(found) : null;
+}
+
 export function listPipelines(): Pipeline[] {
   return store.read().pipelines.map(clone);
 }

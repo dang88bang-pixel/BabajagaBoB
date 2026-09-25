@@ -49,6 +49,7 @@ type SectionId =
   | "Devices"
   | "ComputerUse"
   | "Pipeline"
+  | "Deployment"
   | "Tests"
   | "Operations"
   | "Metrics"
@@ -91,6 +92,7 @@ const NAV: {id: SectionId; label: string; group: string}[] = [
   {id: "Devices", label: "Geräte", group: "Fabric"},
   {id: "ComputerUse", label: "Computer Use", group: "Fabric"},
   {id: "Pipeline", label: "CI/CD-Pipeline", group: "Lieferkette"},
+  {id: "Deployment", label: "Deployment", group: "Lieferkette"},
   {id: "Tests", label: "Tests", group: "Lieferkette"},
   {id: "Operations", label: "Betrieb/Persistenz", group: "Plattform"},
   {id: "Metrics", label: "Metriken", group: "Plattform"},
@@ -423,6 +425,19 @@ const SOURCES: Partial<Record<SectionId, {url: string; path?: string[]; columns:
       {key: "updatedAt", label: "Zuletzt"}
     ]
   },
+  Deployment: {
+    url: "/api/deployment",
+    path: ["releases"],
+    note:
+      "Release-Slots auf der Platte, der aktive Zeiger und die ausgelieferte Build-ID. „Aktiv“ heißt: der laufende Server meldet genau diese Build-ID — ein umgestellter Zeiger allein gilt nicht. Ohne bestandene Promotion-Gates und Creator-Freigabe wird nichts ausgerollt; ein Rückroll braucht einen unversehrten Vorgänger.",
+    columns: [
+      {key: "releaseId", label: "Release"},
+      {key: "buildId", label: "Build-ID"},
+      {key: "state", label: "Zustand"},
+      {key: "files", label: "Dateien"},
+      {key: "createdAt", label: "Erstellt"}
+    ]
+  },
   Tests: {
     url: "/api/cicd",
     path: ["pipelines"],
@@ -632,6 +647,7 @@ export default function ControlCenter() {
     return `${Math.round(ms / 1000)} s`;
   };
   const [readiness, setReadiness] = useState<Row | null>(null);
+  const [deployment, setDeployment] = useState<Row | null>(null);
   const [audit, setAudit] = useState<Row | null>(null);
   const [provenance, setProvenance] = useState<Row | null>(null);
   const [governance, setGovernance] = useState<Row | null>(null);
@@ -676,7 +692,7 @@ export default function ControlCenter() {
     setSnapshot(control.data);
     setError("");
 
-    const [tl, errRes, inboxRes, gov, caps, prov, auditRes, priv, persistenceRes, readinessRes, artifactsRes, runtimeRes] = await Promise.all([
+    const [tl, errRes, inboxRes, gov, caps, prov, auditRes, priv, persistenceRes, readinessRes, artifactsRes, runtimeRes, deploymentRes] = await Promise.all([
       fetchJson<{timeline: TimelineEntry[]}>("/api/timeline"),
       fetchJson<{incidents: ErrorIncident[]}>("/api/errors"),
       fetchJson<{items: InboxItem[]}>("/api/inbox"),
@@ -688,7 +704,8 @@ export default function ControlCenter() {
       fetchJson<Row>("/api/persistence"),
       fetchJson<Row>("/api/readiness"),
       fetchJson<{artifacts: Row[]}>("/api/artifacts"),
-      fetchJson<Row>("/api/runtime")
+      fetchJson<Row>("/api/runtime"),
+      fetchJson<Row>("/api/deployment")
     ]);
     setTimeline(tl.data?.timeline ?? null);
     setIncidents(errRes.data?.incidents ?? null);
@@ -700,6 +717,7 @@ export default function ControlCenter() {
     setPrivacy(priv.data);
     setPersistence(persistenceRes.data);
     setReadiness(readinessRes.data);
+    setDeployment(deploymentRes.data);
     setArtifacts(artifactsRes.data?.artifacts ?? null);
     setRuntime(runtimeRes.data);
 
@@ -952,6 +970,107 @@ export default function ControlCenter() {
         </section>
       </main>
     );
+
+  /**
+   * Deployment-Ansicht (Abschnitt 24): Slots, aktiver Zeiger und der Stand, den
+   * der laufende Server wirklich meldet. Die wichtigste Aussage ist die
+   * Differenz dazwischen — „Zeiger umgestellt" ist kein ausgerollter Stand.
+   */
+  const deploymentPanel = () => {
+    const state = rowsFor("Deployment");
+    const snapshot = deployment as {
+      current?: string | null;
+      runningBuildId?: string | null;
+      runningReleaseId?: string | null;
+      selfUrl?: string;
+      root?: string;
+      workingDirectory?: string;
+      runningReason?: string;
+      releases?: {manifest?: {releaseId?: string; buildId?: string}; state?: string}[];
+      deployments?: Row[];
+      store?: {ok?: boolean};
+    } | null;
+    const releases = snapshot?.releases ?? [];
+    const deployments = snapshot?.deployments ?? [];
+    const active = releases.find(entry => entry.manifest?.releaseId === snapshot?.current);
+    // „Ausgerollt“ verlangt beides: gleiche Build-ID **und** Start aus dem Slot.
+    // Ein zufällig gleicher Build aus dem Quellbaum zählt nicht (siehe lib/deployment.ts).
+    const runningMatches = Boolean(active && snapshot?.runningBuildId && active.manifest?.buildId === snapshot.runningBuildId && snapshot.runningReleaseId === snapshot.current);
+    const sameBuildOtherCwd = Boolean(active && snapshot?.runningBuildId && active.manifest?.buildId === snapshot.runningBuildId && snapshot.runningReleaseId !== snapshot.current);
+    return (
+      <>
+        <section className="panel sectionPanel">
+          <small>LIEFERKETTE / AUSROLLEN</small>
+          <h2>Deployment</h2>
+          <p>
+            Ausrollen erfolgt nur mit bestandenen Promotion-Gates <strong>und</strong> gewährter Creator-Freigabe. Ein Rückroll braucht einen
+            unversehrten Vorgänger. „Aktiv“ ist keine Behauptung: Es gilt erst, wenn der laufende Server die Build-ID des Slots meldet.
+          </p>
+          <div className="metrics">
+            {[
+              {k: "Slots", v: String(releases.length), s: `${releases.filter(entry => entry.state === "DEFECTIVE").length} mit Digest-Abweichung`},
+              {k: "Aktiver Zeiger", v: snapshot?.current ?? "—", s: snapshot?.current ? "current-Symlink" : "kein Release aktiv"},
+              {k: "Laufende Build-ID", v: snapshot?.runningBuildId ?? "unbekannt", s: snapshot?.runningReleaseId ? `aus ${snapshot.runningReleaseId}` : `aus ${snapshot?.workingDirectory ?? "unbekanntem Verzeichnis"}`},
+              {k: "Ausgerollt", v: runningMatches ? "JA" : "NEIN", s: runningMatches ? "läuft aus dem aktiven Slot" : sameBuildOtherCwd ? "gleiche Build-ID, aber nicht aus dem Slot gestartet" : "Neustart über scripts/release-supervisor.sh erforderlich"}
+            ].map(metric => (
+              <div className="metric" key={metric.k}>
+                <small>{metric.k}</small>
+                <strong>{metric.v}</strong>
+                <span>{metric.s}</span>
+              </div>
+            ))}
+          </div>
+          {snapshot && !runningMatches && (
+            <div className="integrity">
+              <strong>NICHT AUSGEROLLT</strong>
+              <span>
+                {sameBuildOtherCwd
+                  ? "Der laufende Prozess liefert dieselbe Build-ID, startet aber nicht aus dem Slot — das ist noch kein Ausrollen. "
+                  : "Der aktive Zeiger und der laufende Prozess stimmen nicht überein. "}
+                Der Wechsel samt Neustart und Rückroll bei fehlender Gesundheit erfolgt über{" "}
+                <code>bash scripts/release-supervisor.sh --release {snapshot.current ?? "REL-…"}</code> — die Plattform startet sich nicht selbst neu.
+              </span>
+            </div>
+          )}
+          <p className="emptyNote">
+            Ablage: {snapshot?.root ?? "—"} · Selbstprüfung: {snapshot?.selfUrl ?? "—"} · Store{" "}
+            {snapshot?.store?.ok === false ? "nicht integer" : "integer"}
+          </p>
+        </section>
+        {genericTable("Deployment")}
+        <section className="panel sectionPanel">
+          <small>LIEFERKETTE / VERLAUF</small>
+          <h2>Deployment-Vorgänge</h2>
+          <p>
+            Jeder Vorgang mit Health-Checks, Zielzustand und Gründen. Verweigerte Vorgänge bleiben sichtbar (<code>REJECTED</code>) — sie sind der
+            Nachweis, dass die Gates greifen. Nicht bestandene, aber ausdrücklich quittierte Prüfungen stehen als Lücke im Datensatz.
+          </p>
+          {deployments.length === 0 ? (
+            <p className="emptyNote">{state.rows === null ? emptyText(state) : "keine Ausrollvorgänge dokumentiert"}</p>
+          ) : (
+            <div className="dataTable">
+              <div className="dataRow head">
+                {["Vorgang", "Release", "Ziel", "Zustand", "Ausgerollt", "Lücken", "Zeit"].map(column => (
+                  <span key={column}>{column}</span>
+                ))}
+              </div>
+              {deployments.map(entry => (
+                <div className="dataRow" key={String(entry.deploymentId)}>
+                  <span>{String(entry.deploymentId)}</span>
+                  <span>{String(entry.releaseId)}</span>
+                  <span>{String(entry.target)}</span>
+                  <span className="state">{isKnownStatus(String(entry.state)) ? <StatusBadge status={entry.state as Status} /> : String(entry.state)}</span>
+                  <span>{entry.verifiedActive ? "ja" : entry.restartRequired ? "nein — Neustart nötig" : "nein"}</span>
+                  <span>{Array.isArray(entry.acknowledgedGaps) && (entry.acknowledgedGaps as string[]).length > 0 ? (entry.acknowledgedGaps as string[]).join(" · ") : "keine"}</span>
+                  <span>{String(entry.startedAt ?? "—")}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </>
+    );
+  };
 
   const genericTable = (id: SectionId) => {
     const source = SOURCES[id];
@@ -1818,9 +1937,11 @@ export default function ControlCenter() {
         <>
           {genericTable("Tests")}
           {genericTable("Pipeline")}
+          {genericTable("Deployment")}
         </>
       );
     }
+    if (section === "Deployment") return deploymentPanel();
     if (section === "Slo") {
       const results = (panels.Slo?.rows ?? []) as Row[];
       const count = (state: string) => results.filter(row => row.state === state).length;

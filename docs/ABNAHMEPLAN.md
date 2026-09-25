@@ -9,8 +9,11 @@ Abnahme-Selbsttests `tests/unit/acceptance-matrix.test.ts` (4/4) und
 `tests/e2e/acceptance-chain.test.ts` (4/4, 18 Stufen) laufen mit.
 **Live-Prüferlauf** gegen die Instanz `:3100` (cgroup-delegiert, `BOB_NS_ISOLATION=on`,
 `BOB_DEVICE_ENROLLMENT_SECRET` gesetzt):
-`node scripts/acceptance.mjs --live` → **82 bestanden / 0 fehlgeschlagen**, davon
-**66/66 Routen-Nachweise** mit Creator-Session. Zwei Nachweise waren zuerst falsch
+`node scripts/acceptance.mjs --live` → **83 bestanden / 0 fehlgeschlagen**, davon
+**67/67 Routen-Nachweise** mit Creator-Session. Der Prüfer erkennt jetzt beide
+Schreibweisen von `BOB_SESSION_COOKIE` (reiner Sitzungswert oder fertiger Cookie-Kopf) — zuvor
+sahen gültige Sitzungen wie `401`-Fehlschläge aus, was ein Prüferfehler war und nicht
+abgeschwächt, sondern behoben wurde. Zwei Nachweise waren zuerst falsch
 modelliert (GET auf `POST`-Routen → 405) und wurden in der Matrix korrigiert — der
 Prüfer wurde nicht abgeschwächt.
 **Stand der Umsetzung:** P0 vollständig (außer `OCI-001`, extern), **P1 abgeschlossen**
@@ -61,7 +64,7 @@ zuerst, keine Funktionalität „später füllen".
 | **P2** | Fabric: Runtime-Registry, Werkzeuge, Skills, Werkstatt, Provider, Geräte, Computer Use, Simulation, Offline, betriebliche Wiederherstellung | `RT-001`, `TOOL-001`, `SKILL-001`, `WS-001`, `PROVF-001/002`, `DEV-001/002`, `CU-001`, `SIM-001`, `OFF-001`, `OPR-001/002` | 9/13 PASS, Computer Use/Geräte `PARTIAL`, Provider live `NOT_VERIFIED`, Offline `NOT_IMPLEMENTED` |
 | **P3** | Control Center vollständig an echte Daten, Visualisierung, Status/Progress, Observability, Approvals, Security, Integrationen | `UI-001…003` | 2/3 PASS, Browser `NOT_VERIFIED` |
 | **P4** | Verifikation: Pyramide, Regression, Fehlerinjektion, Betriebs-/Lastnachweis, die vier §49-Abnahmen | `TEST-001…004`, `LIVE-001`, `LOAD-001`, `ACC-001…004`, `CH-01…CH-18` | PASS mit drei benannten Lücken (Fehlerinjektion, Sabotage-Automatisierung, Dauerlauf) |
-| **P5** | Produktion: Metriken/Alarme/SLO, Bereitschaft, Deployment mit Rollback, Betriebshärtung | `OPS-001…004` | 2/4 PASS, Deployment `PARTIAL`, Betriebshärtung `NOT_IMPLEMENTED` |
+| **P5** | Produktion: Metriken/Alarme/SLO, Bereitschaft, Deployment mit Rollback, Betriebshärtung | `OPS-001…004` | 3/4 PASS; Betriebshärtung `NOT_IMPLEMENTED` (Rate-Limits, Graceful Shutdown, Secret-Externalisierung) |
 
 ## 3. Was „fertig" konkret bedeutet (Definition of Done)
 
@@ -133,13 +136,26 @@ Streng in dieser Ordnung, jeweils mit Nachweis (Tests + Live-Lauf + Doku):
    `GET /api/observatory` (neun Felder je Aktivität, Lücken benannt), `GET /api/events/[id]/why`
    (Kausalkette + Zweck + Referenzen + Grenzen); Nachweise: `tests/unit/status-model.test.ts`,
    `tests/integration/observatory-why.test.ts`, `scripts/audit-api.sh` Abschnitt 8.
-2. **P5-Kern:** Deployment-Objekt (Ausrollen, Health-Check, Rollback, Kill-Switch-Bindung) mit
-   Route, UI und Tests — damit ist die Zielkette vollständig.
+2. ~~**P5-Kern:** Deployment-Objekt (Ausrollen, Health-Check, Rollback, Kill-Switch-Bindung) mit
+   Route, UI und Tests — damit ist die Zielkette vollständig.~~
+   **Abgeschlossen (2026-09-25):** `lib/release.ts` (Slots mit sha256-Digest, atomarer Zeiger,
+   Aufräumschutz für aktiven und Vorgänger-Slot), `lib/deployment.ts` (Plan mit Gates und
+   Kill-Switch-Bindung, sieben Health-Checks inklusive echter HTTP-Antworten, Ausrollen erst danach,
+   Rückroll nur mit unversehrtem Vorgänger und anschließender Neumessung), Route
+   `GET|POST /api/deployment` (Creator-Aktion), UI-Sektion **Deployment**, Prozessneustart über
+   `scripts/release-supervisor.sh` (Messung der ausgelieferten Build-ID, selbsttätiger Rückroll,
+   Bestätigung des Datensatzes). Nachweise: `tests/unit/release.test.ts` (6),
+   `tests/integration/deployment.test.ts` (7), `tests/e2e/deployment-release.test.ts` (3),
+   `tests/security/route-guards.test.ts` (+3: kein Selbst-Ausrollen durch Agenten), Live-Lauf auf
+   Port 3100 (Plan `STAGING` mit quittierten Lücken, `PRODUCTION` benannt blockiert, Vorgang
+   `STAGED` → Supervisor → Datensatz `ACTIVE`, `--live` 83/0, 67/67 Routen). `OPS-003` und `CH-15`
+   stehen damit auf `PASS`.
 3. **P4-Härtung:** Fehlerinjektion (Serverprozess-Abbruch, Netzwerkverlust, konkurrierende
    Schreibvorgänge) und automatisierte Sabotageproben in CI.
 4. **P2-Rest:** Computer-Use-Treiber, Geräte-Scheduling nach Ressourcen, Provider-Adapterlauf
    (sobald ein kontrollierter Egress existiert), Offline-Paketbestand.
-5. **P5-Rest:** Rate-Limits, Graceful Shutdown, Upgrade-/Rollback-Verfahren.
+5. **P5-Rest:** Rate-Limits und Graceful Shutdown. (Das Upgrade-/Rollback-Verfahren ist seit
+   Schritt 2 vorhanden.)
 6. **P0-Rest:** OCI-Runtime auf einem Host mit Daemon verifizieren.
 
 ## 6. Ausnahmen und ihre Behandlung

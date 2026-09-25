@@ -182,6 +182,29 @@ Provenance verkettet ist – damit ist eine blockierte Autorisierung nachweisbar
 personenbezogene Nutzdaten enthalten und Evidenz ist persistent – der Nachweis bleibt prüfbar und
 vergleichbar, ohne Geheimnisse zu kopieren. Getestet in `tests/integration/execution-evidence.test.ts`.
 
+## 6a. Deployment (`lib/release.ts`, `lib/deployment.ts`, `scripts/release-supervisor.sh`)
+
+- **Nur der Creator rollt aus.** `POST /api/deployment` verlangt `deployment:execute` **und**
+  `creatorOnly`. Ein Agenten-Token wird verweigert (`403`), auch wenn er die Capability besitzt —
+  das ist als Sicherheitstest festgehalten (`tests/security/route-guards.test.ts`).
+- **Kein Selbst-Ausrollen der Plattform.** Der Prozessneustart liegt außerhalb der Anwendung
+  (`scripts/release-supervisor.sh`). Das Skript beendet ausschließlich Prozesse, die auf dem
+  Zielport lauschen (`ss`-Abfrage) — kein `pkill`-Muster, das fremde Prozesse treffen könnte.
+- **Gates werden nicht abgeschwächt.** `PRODUCTION` verlangt alle Prüfungen `PASSED`; `STAGING`
+  erlaubt `BROWSER`/`EVALUATION` nur als `SKIPPED` **mit Begründung**, und die Lücke steht als
+  `acknowledgedGaps` im Datensatz. Ein fehlender Grund ist ein Gate-Fehler, kein Freibrief.
+- **Kill-Switch und Lockdown greifen vor dem Rollout** und sind im Plan begründet; ein
+  Deployment-Kill-Switch verhindert auch den Rückroll.
+- **Health-Checks sind echte Messungen**, keine Behauptungen: Digest des Slots, Store-Integrität,
+  Event-Kette, Audit-Kette, Isolation, `HTTP /api/auth` (JSON mit `initialized`), `HTTP /`
+  (HTML-Wurzel). Erst danach wird der Zeiger umgestellt; sonst bleibt er unverändert und die
+  Inbox erhält eine `BLOCK`-Meldung.
+- **Keine Geheimnisse in Antworten.** Das Betriebsbild enthält Pfade, Build-IDs und Zustände —
+  keine Token, Secrets oder Zugangsdaten (im Test als Negativprüfung `not.toMatch(/secret|token|password/i)`).
+- **Rückroll nur mit unversehrtem Vorgänger**: Der Digest wird vorher geprüft; ist der Vorgänger
+  beschädigt oder fehlt er, wird der Rückroll verweigert (`409`) und der Dienst bleibt bewusst
+  gestoppt statt „irgendetwas" zu starten.
+
 ## 7. Datenschutz und Grenzen
 
 - Privacy ist default `DENY`; Datenübertragung nach außen erfordert explizite Entscheidung
@@ -238,9 +261,9 @@ echtes HTTP), `tests/security/inbox-route.test.ts`,
 `tests/security/gate-bypass.test.ts`, `tests/security/token-read-projection.test.ts` (kein
 `secretHash` in Leseantworten), `tests/security/device-enrollment.test.ts` (Enrollment fail closed,
 kein Selbst-Grant, Geheimnis nie in Antworten), `tests/e2e/creator-flow.test.ts`,
-`tests/e2e/failure-recovery.test.ts` (**17 Dateien / 109 Tests** in der Security-Suite, 51 Dateien /
-314 Tests gesamt) und der Live-Nachweis `scripts/verify-live.sh` (**174 Prüfungen / 0 Fehler** auf der
-Instanz mit aktiver Kernel-Isolation) sowie `scripts/audit-ui.mjs` (**89 / 0**, u. a. „kein
+`tests/e2e/failure-recovery.test.ts` (**17 Dateien / 113 Tests** in der Security-Suite, 54 Dateien /
+336 Tests gesamt) und der Live-Nachweis `scripts/verify-live.sh` (**173 Prüfungen / 0 Fehler** auf der
+Instanz mit aktiver Kernel-Isolation) sowie `scripts/audit-ui.mjs` (**90 / 0**, u. a. „kein
 Geheimnisfeld in einer Antwort an den Browser", „kein Gerät ohne Creator-Freigabe autorisiert").
 Zusammenfassung: `docs/TESTING.md`. Offene, als `PARTIAL`/`UNVERIFIED` gekennzeichnete Punkte sind dort und in
 `docs/TODO.md` gelistet.

@@ -49,10 +49,29 @@ verweist über `rollbackArtifactId` auf das Rollback-Artefakt (Evidenz).
 
 - Die Pipeline-Ausführung selbst liegt bei GitHub Actions; die Control Plane
   **spiegelt** Prüfstände und entscheidet über Promotion. Es gibt keinen eigenen Runner.
-- Ein automatischer Rollback von Deployments ist `NOT_IMPLEMENTED` (Dokumentation in
-  `docs/OPERATIONS.md`); Rollback-Artefakte werden geführt, aber nicht angewendet.
-- Ein Deployment nach außen findet in dieser Umgebung nicht statt: `PRODUCTION`
-  bleibt ein Freigabezustand, kein realer Deploy (`NOT_VERIFIED`).
+- Der Rollback ist umgesetzt (`lib/deployment.ts`, `scripts/release-supervisor.sh`), aber
+  halbautomatisch: Zeigerwechsel in der Anwendung, Prozessneustart und Rückrollsicherung im
+  Supervisor-Skript — kein Daemon, kein Zero-Downtime.
+- Ein Deployment **nach außen** findet in dieser Umgebung nicht statt: Der Rollout läuft auf
+  denselben Host und Slot (`STAGING`); `PRODUCTION` bleibt gesperrt, solange `BROWSER` und
+  `EVALUATION` nicht real `PASSED` sind (`NOT_VERIFIED` für Produktion).
+
+## 4a. Von der Pipeline zum laufenden Stand
+
+Die Promotion entscheidet über **Freigabe**, das Deployment über **Auslieferung** — beides ist
+getrennt und beides wird geprüft:
+
+| Schritt | Prüfung | Verweigerung |
+|---|---|---|
+| `promote STAGING` | `LINT`…`BUILD` bestanden | Pipeline bleibt auf `VERIFY` |
+| `updateCheck BROWSER\|EVALUATION SKIPPED` | nur mit Begründung zulässig | `SKIPPED` ohne Grund → Gate-Fehler |
+| `promote SMOKE` / `SMOKE PASSED` | Smoke real bestanden | Staging-Gate verweigert |
+| `POST /api/deployment deploy` | Plan + Health-Checks (Digest, Store, Event-/Audit-Kette, Isolation, HTTP) | `409` mit Gründen, Datensatz `REJECTED`/`FAILED` |
+| `GET /api/deployment` | Build-ID **und** Startverzeichnis | `STAGED` + `restartRequired` statt „aktiv" |
+| `rollback` | Vorgänger-Digest unversehrt | `409`, Datensatz bleibt unverändert |
+
+Nach jedem Ausrollen wird die Pipeline auf `PRODUCTION` nur bei gemessenem `ACTIVE` gehoben;
+beim Rückroll geht sie auf `ROLLED_BACK`.
 
 ## 5. Tests und Nachweise
 

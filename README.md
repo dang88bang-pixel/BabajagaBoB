@@ -37,9 +37,9 @@ Recovery`
   verifizierten Snapshot **und** bestandene Regression, `LEARNED` verlangt `fix.verify`.
 - Angriffe werden blockiert **und** auditiert (fremdes Token, Shell-Programm,
   Shell-Metazeichen, fremde Sandbox-Bindung, Lockdown).
-- Nachweis: **51 Testdateien / 314 Tests** sowie die Live-Prüfungen
-  `scripts/verify-live.sh` (**174 / 0**), `scripts/audit-actions.mjs` (**503 / 0**),
-  `scripts/audit-api.sh` (**227 / 0**) und `scripts/audit-ui.mjs` (**89 / 0**) — jeweils
+- Nachweis: **54 Testdateien / 336 Tests** sowie die Live-Prüfungen
+  `scripts/verify-live.sh` (**173 / 0**), `scripts/audit-actions.mjs` (**517 / 0**),
+  `scripts/audit-api.sh` (**242 / 0**) und `scripts/audit-ui.mjs` (**90 / 0**) — jeweils
   auf der Instanz `:3100` mit Kernel-Isolation und cgroup-Limits; dazu der Abnahmeprüfer
   `node scripts/acceptance.mjs --live` (**82 / 0**, 66/66 Routennachweise).
 
@@ -99,6 +99,7 @@ Zusätzliche Fabrics:
 - **Provenance Fabric:** Task, Run, Sandbox, Capability und daraus abgeleitete Beziehungen.
 - **Governance Fabric:** Delegation, Capability Scope, Approval, Kill Switch.
 - **Provider Fabric:** kontrollierte Integrationspunkte für externe Runtime-/Workflow-/Deployment-Anbieter.
+- **Delivery Fabric:** Release-Slots mit Digest, Promotion-Gates, Health-Checks, Ausrollen und Rückroll (`lib/release.ts`, `lib/deployment.ts`, `scripts/release-supervisor.sh`). „Ausgerollt“ gilt erst nach gemessener Build-ID aus dem Slot.
 - **Device Fabric:** autorisierte Computer-/Geräte-Ressourcen.
 - **Visualization / Simulation Fabric:** Modelle, Szenarien und Replay.
 - **Privacy Fabric:** lokal-first, externe Verarbeitung/Übertragung standardmäßig deaktiviert.

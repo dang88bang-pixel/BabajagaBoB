@@ -253,8 +253,8 @@ Details in `docs/TESTING.md` §4c.
 Datenvertrag jedes Abschnitts gegen die echte Route — letzter Lauf
 **88 Prüfungen / 0 Fehler**, Exit 0; Details in `docs/TESTING.md` §4d.
 
-Prüfumfang des Skripts (**174 Prüfungen** auf einer bereits initialisierten Instanz, wiederholbar;
-der Bootstrap-Zweig enthält zwei Prüfungen mehr — dann 176, mit verpflichtendem zweitem Faktor zwei weitere, ohne
+Prüfumfang des Skripts (**173 Prüfungen** beim ersten Lauf, wiederholbar;
+nach dem Bootstrap enthält der erste Lauf zwei Prüfungen mehr — eine bereits initialisierte Instanz zählt 171, mit verpflichtendem zweitem Faktor zwei weitere, ohne
 delegierten cgroup-Unterbaum zwei weniger):
 Authentifizierung, Mission → Objective → Task → Sandbox → Capability, autorisierte Ausführung
 mit Evidenzprüfung, Angriffsblockaden, **Evidenz einer blockierten Autorisierung
@@ -354,6 +354,60 @@ werden der vollständige Enrollment-Pfad und die „autorisiert erst nach Creato
 (502 / 88 Prüfungen). Das Enrollment-Geheimnis autorisiert **nie** ein Gerät, es erlaubt nur
 Discovery und Lebenszeichen.
 
+## 5b. Deployment, Ausrollen und Rückroll (`lib/release.ts`, `lib/deployment.ts`)
+
+**Begriffe.** Ein *Release* ist ein Slot unter `<storage>/releases/REL-…` (oder
+`BOB_RELEASE_DIR`). Er enthält die Laufzeitdateien (`.next`, `public`, `scripts`, `package.json`,
+`next.config.*`) und `release.json` mit Build-ID, Dateizahl und **sha256-Digest** über alle Pfade,
+Inhalte und Symlink-Ziele. `node_modules` wird als Symlink gezeigt (`LINKED`), damit der Slot
+nicht dupliziert wird. Der aktive Stand ist der atomar umgestellte Symlink `releases/current`.
+
+**Ablauf eines Ausrollens** (alles Creator-Aktionen, `POST /api/deployment`):
+
+1. `prepare` — Slot anlegen (`source`, `label`); bricht bei wechselndem Quellbaum ab
+   (`UNSTABLE_SOURCE`), statt einen halbfertigen Stand zu versionieren.
+2. `plan` — Gates prüfen, **ohne** etwas zu verändern. `target: STAGING` (Standard) verlangt
+   `LINT`, `TYPECHECK`, `UNIT`, `INTEGRATION`, `SECURITY`, `BUILD` bestanden; `BROWSER` und
+   `EVALUATION` dürfen `SKIPPED` sein, aber nur **mit Begründung** — die Lücke erscheint als
+   `acknowledgedGaps` im Datensatz. `target: PRODUCTION` verlangt weiterhin **alle** Prüfungen
+   `PASSED`; in dieser Umgebung ist das nicht erreichbar und der Produktions-Rollout bleibt
+   deshalb gesperrt (die Antwort benennt die blockierenden Prüfungen).
+3. `deploy` — Health-Checks gegen den laufenden Dienst: Release-Digest, Store-Integrität,
+   Event-Kette, Audit-Kette, Isolation, `HTTP /api/auth`, `HTTP /`. Erst danach wird der Zeiger
+   umgestellt. Schlägt ein Check fehl, bleibt der Zeiger unverändert, der Vorgang wird `FAILED`
+   und die Inbox bekommt eine `BLOCK`-Meldung.
+4. **Ausgerollt gilt erst nach Messung.** `ACTIVE` verlangt, dass der laufende Prozess
+   (a) die Build-ID des Slots ausliefert **und** (b) aus diesem Slot gestartet wurde
+   (`runningReleaseId`). Eine zufällig gleiche Build-ID aus dem Quellbaum zählt nicht — dieser
+   Fall ist als Regressionstest festgehalten. Sonst lautet der Zustand `STAGED` mit
+   `restartRequired: true` und dem genauen Befehl als `supervisorHint`.
+5. `rollback` — nur mit unversehrtem Vorgänger (Digest geprüft). Danach werden die Health-Checks
+   **erneut** gemessen; die Pipeline geht auf `ROLLED_BACK`.
+
+**Prozessneustart (`scripts/release-supervisor.sh`).** Die Plattform startet sich nicht selbst
+neu. Das Skript prüft den Slot, stellt den Zeiger atomar um, beendet **nur** den Prozess auf dem
+Zielport (per `ss`, kein `pkill`-Muster), startet den Server aus dem Slot — innerhalb der
+delegierten cgroup, sofern vorhanden —, misst die ausgelieferte Build-ID über eine echte Session
+(`GET /api/readiness`) und bestätigt den Deployment-Datensatz über `POST /api/deployment`
+(`verify`). Bei Abweichung rollt es selbsttätig auf den Vorgänger zurück und endet mit Exit-Code 1.
+Storage und Release-Wurzel werden dem neuen Prozess **absolut** mitgegeben, damit er nicht
+versehentlich mit einem anderen Datenbestand startet.
+
+```bash
+# Trockenlauf (ändert nichts)
+bash scripts/release-supervisor.sh --release REL-… --port 3100 --dry-run
+# Wechsel mit Neustart, Messung und Rückroll-Sicherung
+BOB_CREATOR_LOGIN_SECRET=… bash scripts/release-supervisor.sh --release REL-… --port 3100
+```
+
+**Aufräumen.** `prune` behält mindestens `keep` Slots und schützt den aktiven und den vorherigen
+Slot — der Rückrollpfad kann nicht weggeputzt werden.
+
+**Beobachtung.** Die UI-Sektion **Deployment** zeigt Slots, Zeiger, laufende Build-ID und je
+Vorgang Ziel, Zustand, `acknowledgedGaps` und Zeitpunkt. Jeder Vorgang erzeugt Events
+(`deployment.{rejected,failed,active,staged,rolled_back,verified}`), ein Artefakt vom Typ
+`DEPLOYMENT` und einen Provenance-Knoten.
+
 ## 6. Betriebsregeln
 
 - Kein öffentlicher Probe-Endpunkt: auch `/api/readiness` und `/api/metrics` verlangen eine Session.
@@ -367,7 +421,13 @@ Discovery und Lebenszeichen.
 
 ## 7. Grenzen
 
-- Ein automatischer Rollback von Deployments existiert nicht (`NOT_IMPLEMENTED`).
+- Der Rollback ist umgesetzt, aber **halbautomatisch**: Den Zeiger stellt die Plattform um, den
+  Prozessneustart und die Rückrollsicherung führt `scripts/release-supervisor.sh` aus. Es gibt
+  keinen Supervisor-Daemon und keinen Watchdog, der einen abgestürzten Prozess bemerkt; ohne
+  Vorgänger-Slot bleibt der Dienst nach einem Fehlversuch bewusst gestoppt (kein stiller Erfolg).
+- Kein Zero-Downtime: Der Wechsel ist ein Neustart, es gibt kein Blau/Grün und keine Replikate.
+- `PRODUCTION` bleibt in dieser Umgebung gesperrt, weil `BROWSER`/`EVALUATION` hier nicht real
+  bestanden werden können (`NOT_VERIFIED` für den Produktions-Rollout).
 - Es gibt keine externen Alarmierungskanäle; Alarmregeln sind als Schwellen in
   `docs/SECURITY.md`/`docs/OPERATIONS.md` dokumentiert, müssen aber im Betrieb an ein
   Monitoring angebunden werden (`NOT_VERIFIED`).

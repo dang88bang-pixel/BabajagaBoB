@@ -2072,33 +2072,55 @@
    "phase": "P5",
    "requirement": "Deployment-Ausführung mit Rollback und Upgrade-Pfad.",
    "implementation": [
+    "lib/release.ts",
+    "lib/deployment.ts",
     "lib/cicd.ts",
-    "lib/promotion.ts"
+    "lib/promotion.ts",
+    "app/api/deployment/route.ts",
+    "scripts/release-supervisor.sh"
    ],
    "tests": [
     {
-     "file": "tests/security/api-route-contract.test.ts",
-     "min": 5
+     "file": "tests/integration/deployment.test.ts",
+     "min": 7
+    },
+    {
+     "file": "tests/e2e/deployment-release.test.ts",
+     "min": 3
+    },
+    {
+     "file": "tests/unit/release.test.ts",
+     "min": 6
+    },
+    {
+     "file": "tests/security/route-guards.test.ts",
+     "min": 12
     }
    ],
    "ui": [
-    "Pipeline"
+    "Deployment"
    ],
    "evidence": [
     {
      "kind": "route",
      "method": "GET",
-     "path": "/api/cicd",
+     "path": "/api/deployment",
      "expect": [
       200
      ]
+    },
+    {
+     "kind": "script",
+     "script": "scripts/release-supervisor.sh"
     }
    ],
    "docs": [
+    "docs/OPERATIONS.md",
+    "docs/ARCHITECTURE.md",
     "docs/CI_CD.md"
    ],
-   "status": "PARTIAL",
-   "note": "Promotion-Stufen (BUILD → TEST → SECURITY → STAGING → SMOKE) mit Gates sind umgesetzt; ein echter Deploy-Vorgang (Ausrollen, Health-Check, Rollback) existiert nicht."
+   "status": "PASS",
+   "note": "Ausrollen ist real ausgeführt und gemessen: Release-Slots mit sha256-Digest, Gates (Staging mit quittierten Lücken, PRODUCTION weiter gesperrt), Health-Checks vor dem Zeigerwechsel, Build-ID-Messung gegen den laufenden Prozess; Rückroll nur mit unversehrtem Vorgänger und anschließender Neumessung. Live belegt: Vorgang STAGED → Supervisor startet aus dem Slot → Datensatz ACTIVE. Grenzen bleiben offen: kein Supervisor-Daemon/Watchdog, kein Zero-Downtime-Blau/Grün, und der Produktions-Rollout bleibt blockiert, solange BROWSER/EVALUATION nicht real bestanden sind."
   },
   {
    "id": "OPS-004",
@@ -2113,7 +2135,7 @@
     "docs/OPERATIONS.md"
    ],
    "status": "NOT_IMPLEMENTED",
-   "note": "Keine Rate-Limits, kein Graceful-Shutdown-Handler, kein Upgrade-/Rollback-Verfahren; Sitzungsgeheimnisse liegen dateibasiert im Storage-Root."
+   "note": "Offen: Rate-Limits, Graceful Shutdown und Externalisierung der Sitzungsgeheimnisse. Der Upgrade-/Rollback-Pfad ist seit der P5-Runde vorhanden (lib/release.ts, lib/deployment.ts, scripts/release-supervisor.sh) und unter OPS-003 belegt."
   },
   {
    "id": "ACC-001",
@@ -2733,16 +2755,24 @@
    "requirement": "Deployment: Promotion über Stufen mit Gates (Ausrollen/Rollback fehlt)",
    "implementation": [
     "lib/promotion.ts",
-    "lib/cicd.ts"
+    "lib/cicd.ts",
+    "lib/release.ts",
+    "lib/deployment.ts",
+    "app/api/deployment/route.ts"
    ],
    "tests": [
     {
-     "file": "tests/security/api-route-contract.test.ts",
-     "min": 5
+     "file": "tests/e2e/deployment-release.test.ts",
+     "min": 3
+    },
+    {
+     "file": "tests/integration/deployment.test.ts",
+     "min": 7
     }
    ],
    "ui": [
-    "Pipeline"
+    "Pipeline",
+    "Deployment"
    ],
    "evidence": [
     {
@@ -2755,13 +2785,25 @@
       403,
       404
      ]
+    },
+    {
+     "kind": "route",
+     "method": "POST",
+     "path": "/api/deployment",
+     "expect": [
+      400,
+      401,
+      403,
+      409
+     ]
     }
    ],
    "docs": [
-    "docs/ABNAHMEPLAN.md"
+    "docs/ABNAHMEPLAN.md",
+    "docs/OPERATIONS.md"
    ],
-   "status": "PARTIAL",
-   "note": "Promotion-Gates sind umgesetzt; ein echtes Ausrollen mit Health-Check und Rollback existiert nicht."
+   "status": "PASS",
+   "note": "Der im Anforderungstext genannte fehlende Teil ist umgesetzt: Ausrollen und Rückroll laufen über die Promotion-Gates (Staging verlangt LINT/TYPECHECK/UNIT/INTEGRATION/SECURITY/BUILD bestanden und verlangt für BROWSER/EVALUATION eine ausdrückliche Quittung mit Begründung; PRODUCTION verlangt weiterhin alle Prüfungen PASSED und bleibt hier deshalb blockiert). Ausgerollt gilt erst nach gemessener Build-ID aus dem Slot."
   },
   {
    "id": "CH-16",

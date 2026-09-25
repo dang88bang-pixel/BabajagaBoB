@@ -40,7 +40,16 @@ const MATRIX = (process.argv.find(argument => argument.startsWith("--matrix=")) 
 const COMPONENT = "components/control-center.tsx";
 const REPORT = "docs/ACCEPTANCE.md";
 const BASE = process.env.BASE ?? "http://127.0.0.1:3000";
-const COOKIE = process.env.BOB_SESSION_COOKIE ?? "";
+/**
+ * Sitzung für die Live-Prüfungen. Akzeptiert beide Schreibweisen: den reinen
+ * Sitzungswert (`SES-….<secret>`) oder den fertigen Cookie-Kopf
+ * (`bob_session=SES-….…`). Ein nackter Wert ohne Cookie-Namen führte früher zu
+ * `401`-Fehlschlägen, obwohl die Sitzung gültig war — ein Prüferfehler, der
+ * wie ein Sicherheitsproblem aussah.
+ */
+const SESSION_COOKIE_NAME = "bob_session";
+const COOKIE_INPUT = (process.env.BOB_SESSION_COOKIE ?? "").trim();
+const COOKIE = COOKIE_INPUT.length === 0 ? "" : COOKIE_INPUT.includes("=") ? COOKIE_INPUT : `${SESSION_COOKIE_NAME}=${COOKIE_INPUT}`;
 
 const args = new Set(process.argv.slice(2));
 const LIVE = args.has("--live");

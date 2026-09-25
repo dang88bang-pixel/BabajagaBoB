@@ -76,7 +76,14 @@ export async function POST(request: Request) {
     if (granted.action === "discover") return NextResponse.json({device: discoverDevice(objectField(granted, "device") as never)}, {status: 201});
     if (granted.action === "authorize") return NextResponse.json({device: authorizeDevice(String(granted.id), Boolean(granted.authorized))});
     if (granted.action === "allocate") return NextResponse.json({device: allocateDevice(String(granted.id), String(granted.taskId))});
-    if (granted.action === "allocate-best") return NextResponse.json({device: (await import("../../../lib/devices")).scheduleDevice(String(granted.taskId), {cpu: granted.cpu === undefined ? undefined : Number(granted.cpu), ramMb: granted.ramMb === undefined ? undefined : Number(granted.ramMb), gpu: granted.gpu === undefined ? undefined : String(granted.gpu), os: granted.os === undefined ? undefined : String(granted.os), arch: granted.arch === undefined ? undefined : String(granted.arch), capabilities: Array.isArray(granted.capabilities) ? granted.capabilities.map(String) : undefined, network: granted.network === undefined ? undefined : String(granted.network) as never})});
+    if (granted.action === "allocate-best") {
+      // Ohne Task ist das kein Auftrag: Eine Zuweisung an "undefined" wäre ein
+      // stiller Erfolg, der im Betrieb wie eine echte Reservierung aussieht.
+      if (typeof granted.taskId !== "string" || granted.taskId.trim().length === 0) {
+        return NextResponse.json({error: "taskId required"}, {status: 400});
+      }
+      return NextResponse.json({device: (await import("../../../lib/devices")).scheduleDevice(String(granted.taskId), {cpu: granted.cpu === undefined ? undefined : Number(granted.cpu), ramMb: granted.ramMb === undefined ? undefined : Number(granted.ramMb), gpu: granted.gpu === undefined ? undefined : String(granted.gpu), os: granted.os === undefined ? undefined : String(granted.os), arch: granted.arch === undefined ? undefined : String(granted.arch), capabilities: Array.isArray(granted.capabilities) ? granted.capabilities.map(String) : undefined, network: granted.network === undefined ? undefined : String(granted.network) as never})});
+    }
     if (granted.action === "release") return NextResponse.json({device: releaseDevice(String(granted.id))});
     return NextResponse.json({error: "Unsupported device action", supported: ["discover", "authorize", "allocate", "allocate-best", "release", "enroll", "heartbeat"]}, {status: 400});
   } catch (error) {

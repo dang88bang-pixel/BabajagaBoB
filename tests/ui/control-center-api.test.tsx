@@ -125,6 +125,7 @@ beforeAll(async () => {
     "/api/experiments": (await import("../../app/api/experiments/route")).GET as Handler,
     "/api/provenance": (await import("../../app/api/provenance/route")).GET as Handler,
     "/api/observatory": (await import("../../app/api/observatory/route")).GET as Handler,
+    "/api/deployment": (await import("../../app/api/deployment/route")).GET as Handler,
     "/api/metrics": (await import("../../app/api/metrics/route")).GET as Handler,
     "/api/alerts": (await import("../../app/api/alerts/route")).GET as Handler
   };
@@ -176,7 +177,7 @@ describe("Control Center gegen echte Routen", () => {
     await renderUi(true);
     expect(container.textContent).toContain("Creator");
 
-    for (const section of ["Fehlerfälle", "Agenten", "Missionen", "Objectives", "Aufgaben", "Warteschlange", "Runs", "Sandboxes", "Runtimes", "Evidenz", "Audit", "Provenance", "Timeline / Replay", "Observatory", "Wissen", "Experimente", "Wissenschaft", "Recovery", "Regression", "Creator-Inbox", "Freigaben", "Governance", "Sicherheit", "Datenschutz", "Provider", "Geräte", "Computer Use", "CI/CD-Pipeline", "Tests", "Betrieb/Persistenz", "Werkzeuge", "Skills", "Werkstatt", "Simulation", "Galerie", "Apps"]) {
+    for (const section of ["Fehlerfälle", "Agenten", "Missionen", "Objectives", "Aufgaben", "Warteschlange", "Runs", "Sandboxes", "Runtimes", "Evidenz", "Audit", "Provenance", "Timeline / Replay", "Observatory", "Wissen", "Deployment", "Experimente", "Wissenschaft", "Recovery", "Regression", "Creator-Inbox", "Freigaben", "Governance", "Sicherheit", "Datenschutz", "Provider", "Geräte", "Computer Use", "CI/CD-Pipeline", "Tests", "Betrieb/Persistenz", "Werkzeuge", "Skills", "Werkstatt", "Simulation", "Galerie", "Apps"]) {
       await click(section);
       expect(container.textContent, `Abschnitt ${section} meldet einen Ausfall`).not.toContain("nicht verfügbar");
     }

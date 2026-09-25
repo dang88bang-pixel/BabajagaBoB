@@ -235,3 +235,85 @@ describe("Nachgezogene Aktionsprüfungen (verschachtelte Routen)", () => {
     expect(audit.verifyAuditChain().valid).toBe(true);
   });
 });
+
+/**
+ * Deployment (Abschnitt 24): Ausrollen ist eine Creator-Aktion.
+ *
+ * Ein Agent darf sich niemals selbst ausrollen — weder direkt noch über einen
+ * Capability-Token. Geprüft wird zusätzlich, dass die Route auch mit gültiger
+ * Session die Gates prüft (kein direkter Pfad am Promotion-Gate vorbei) und
+ * unbekannte Aktionen abweist.
+ */
+describe("Deployment-Route (Creator-Aktion)", () => {
+  it("verweigert ohne Session (401) und vor dem Bootstrap fail closed", async () => {
+    const deployments = await import("../../app/api/deployment/route");
+    expect((await deployments.GET(request("/api/deployment"))).status).toBe(401);
+    const deploy = await deployments.POST(jsonRequest("/api/deployment", {action: "deploy", releaseId: "REL-20260101000000-abcd"}));
+    expect(deploy.status).toBe(401);
+  });
+
+  it("verweigert einem Agenten-Token den Rollout (403 CREATOR_ONLY)", async () => {
+    const deployments = await import("../../app/api/deployment/route");
+    const issued = authority.issueCapabilityToken({
+      subject: AGENT,
+      taskId,
+      sandboxId,
+      capabilities: ["deployment:execute", "deployment:read", "task:execute"],
+      risk: "LOW",
+      issuedBy: "CREATOR",
+      issuedByKind: "CREATOR",
+      environment: "development",
+      expiresAt: new Date(Date.now() + 5 * 60_000).toISOString()
+    });
+    const agentHeader = {"authorization": `Bobcap ${issued.token.id}.${issued.secret}`};
+    const denied = await deployments.POST(jsonRequest("/api/deployment", {action: "deploy", releaseId: "REL-20260101000000-abcd"}, agentHeader));
+    expect(denied.status).toBe(403);
+    const body = (await denied.json()) as {error: string};
+    expect(["CREATOR_ONLY", "AGENT_FORBIDDEN", "CAPABILITY_DENIED"]).toContain(body.error);
+    expect(audit.verifyAuditChain().valid).toBe(true);
+  });
+
+  it("weist destruktive Aktionen ohne Attribute ab (kein stiller Erfolg)", async () => {
+    // Gefunden vom Betriebsaudit `scripts/audit-actions.mjs`: „prune" räumte mit
+    // Vorgabewert Slots weg und „allocate-best" reservierte ein Gerät für die
+    // Task „undefined" — beides sah für den Aufrufer wie ein echter Erfolg aus.
+    const deployments = await import("../../app/api/deployment/route");
+    const devices = await import("../../app/api/devices/route");
+    const cookie = {cookie: sessionCookie};
+
+    const prune = await deployments.POST(jsonRequest("/api/deployment", {action: "prune"}, cookie));
+    expect(prune.status).toBe(400);
+    expect(((await prune.json()) as {error: string}).error).toBe("keep required");
+
+    const allocate = await devices.POST(
+      new Request(`${BASE}/api/devices`, {method: "POST", headers: {"content-type": "application/json", host: "localhost:3000", ...cookie}, body: JSON.stringify({action: "allocate-best"})})
+    );
+    expect(allocate.status).toBe(400);
+    expect(((await allocate.json()) as {error: string}).error).toBe("taskId required");
+    expect(audit.verifyAuditChain().valid).toBe(true);
+  });
+
+  it("prüft mit Creator-Session die Gates und weist unbekannte Aktionen ab", async () => {
+    const deployments = await import("../../app/api/deployment/route");
+    const cookie = {cookie: sessionCookie};
+    // Unbekannte Aktion: 400, kein stiller Erfolg.
+    const unknown = await deployments.POST(jsonRequest("/api/deployment", {action: "gibtsnicht"}, cookie));
+    expect(unknown.status).toBe(400);
+    // Unbekanntes Release: 400 mit Grund, kein Rollout.
+    const missing = await deployments.POST(jsonRequest("/api/deployment", {action: "plan", releaseId: "REL-20260101000000-abcd"}, cookie));
+    expect(missing.status).toBe(200);
+    const plan = (await missing.json()) as {allowed: boolean; reasons: string[]};
+    expect(plan.allowed).toBe(false);
+    expect(plan.reasons.join(" ")).toMatch(/not found|pipeline required/);
+    // Unbekannte Vorgänge sind 404 (nicht 409): „gibt es nicht" und
+    // „wurde verweigert" dürfen nicht dieselbe Antwort bekommen.
+    expect((await deployments.POST(jsonRequest("/api/deployment", {action: "rollback", deploymentId: "DEP-GIBTS-NICHT", reason: "Test"}, cookie))).status).toBe(404);
+    expect((await deployments.POST(jsonRequest("/api/deployment", {action: "verify", deploymentId: "DEP-GIBTS-NICHT"}, cookie))).status).toBe(404);
+
+    // Betriebsbild ist lesbar, verrät aber keine Geheimnisse.
+    const snapshot = await deployments.GET(request("/api/deployment", {headers: cookie}));
+    expect(snapshot.status).toBe(200);
+    const text = await snapshot.text();
+    expect(text).not.toMatch(/secret|token|password/i);
+  });
+});

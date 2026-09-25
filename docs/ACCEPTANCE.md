@@ -11,8 +11,8 @@ Eingefroren: 2026-09-25. Quellen: GESAMTAUFTRAG (53 Punkte); docs/MASTER_COMPLET
 
 | Status | Anzahl | Bedeutung |
 |---|---|---|
-| ✅ PASS | 73 | Implementierung + Test + Nachweis vorhanden |
-| 🟡 PARTIAL | 7 | Teilweise umgesetzt, Lücke benannt |
+| ✅ PASS | 75 | Implementierung + Test + Nachweis vorhanden |
+| 🟡 PARTIAL | 5 | Teilweise umgesetzt, Lücke benannt |
 | ❌ FAIL | 0 | Umgesetzt, aber Nachweis fehlgeschlagen |
 | ⚪ NOT_IMPLEMENTED | 2 | Bewusst nicht gebaut (Begründung) |
 | 🔵 NOT_VERIFIED | 3 | Vorhanden, aber Umgebung erlaubt keinen Nachweis |
@@ -81,7 +81,7 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 | WS-001 | Werkstatt | Werkstatt-Objekte durchlaufen Discovery → Spezifikation → Umsetzung → Validierung → Registrierung. | `lib/workshop.ts`<br>`lib/workshop-execution.ts` | `tests/security/api-route-contract.test.ts` (5) | `GET /api/workshop` | Workshop | ✅ |
 | PROVF-001 | Provider Fabric | Provider haben Lifecycle, Health, Bindungen und Credential-Referenzen; Verbindung nur mit Freigabe. | `lib/provider-fabric.ts` | `tests/integration/provider-fabric.test.ts` (8) | `GET /api/providers` | Providers | ✅ |
 | PROVF-002 | Provider Fabric | Echte externe Verbindung eines Providers (live) inklusive Telemetrie.<br><small>Netzwerk ist per Vorgabe DENY und die Umgebung erlaubt keine externen Dienstverbindungen; ein Adapterlauf ist damit nicht belegbar.</small> | `lib/provider-fabric.ts` | — | — | — | 🔵 |
-| DEV-001 | Device Fabric | Geräte-Lebenszyklus mit Discovery ≠ Autorisierung, Allokation nur mit Creator-Freigabe.<br><small>Zustandsmodell, Autorisierung, Allokation und capability-aware Scheduling sind umgesetzt und getestet.</small> | `lib/devices.ts`<br>`app/api/devices/route.ts` | `tests/integration/computer-use.test.ts` (4) | `GET /api/devices` | Devices | ✅ |
+| DEV-001 | Device Fabric | Geräte-Lebenszyklus mit Discovery ≠ Autorisierung, Allokation nur mit Creator-Freigabe. | `lib/devices.ts`<br>`app/api/devices/route.ts` | `tests/integration/computer-use.test.ts` (6) | `GET /api/devices` | Devices | ✅ |
 | DEV-002 | Device Fabric | Selbstmeldende Geräte-Registrierung (Enrollment) ist minimal berechtigt, fail closed und ohne Selbst-Grant. | `lib/device-enrollment.ts`<br>`scripts/discover-host.mjs` | `tests/security/device-enrollment.test.ts` (8) | `GET /api/devices` | Devices | ✅ |
 | CU-001 | Computer Use | Browser-, Desktop- und CLI-Instanzen sind registriert, erzwungen unautorisiert und nur über Gate/Broker nutzbar.<br><small>Registrierung, Autorisierung und Belegungsgrenze sind umgesetzt; echte Treiber (Browser-Automation, Desktop-Eingabe, Screenshots) fehlen, deshalb kein Ausführungsnachweis.</small> | `lib/computer-use.ts` | `tests/integration/computer-use.test.ts` (4) | `GET /api/computer-use` | ComputerUse | 🟡 |
 | SIM-001 | Simulation/Visualisierung | Visualisierung erzeugt aus dem echten Zustand passive Artefakte (7 Arten) mit Digest und Szenario-Bezug. | `lib/visualization.ts` | `tests/integration/visualization.test.ts` (11) | `GET /api/simulation`<br>`GET /api/simulation/render` | Simulation, Gallery | ✅ |
@@ -97,7 +97,7 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 | UI-002 | Control Center | Die Oberfläche enthält keine Geheimnisse; Auslieferung, Quell- und Datenvertrag sind automatisiert geprüft. | `components/control-center.tsx`<br>`scripts/audit-ui.mjs` | `tests/regression/ui-contract.test.ts` (5) | `scripts/audit-ui.mjs` | — | ✅ |
 | UI-003 | Control Center | Verifikation in einem echten Browser (Rendering, Interaktion, Screenshots als Evidenz).<br><small>In der Umgebung existiert kein Browser und kein Playwright-Cache; die Hosts für Browser-Downloads sind gesperrt. Ersatzweise jsdom + HTTP-Audit.</small> | — | `tests/ui/control-center-api.test.tsx` (2) | — | — | 🔵 |
 
-## P4 (23/28 PASS)
+## P4 (24/28 PASS)
 
 | ID | Bereich | Anforderung | Implementierung | Test | Nachweis | UI | Status |
 |---|---|---|---|---|---|---|---|
@@ -125,19 +125,19 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 | CH-12 | Zielkette | Artefakt: Ausgabeartefakte (u. a. Visualisierung) digest-geprüft und abrufbar | `lib/artifacts.ts`<br>`lib/visualization.ts` | `tests/integration/visualization.test.ts` (11) | `GET /api/gallery` | Gallery | ✅ |
 | CH-13 | Zielkette | Test: Regressionstest je Fehlerfall, blockierend für die Promotion | `lib/regression.ts` | `tests/regression/regression-engine.test.ts` (5) | `GET /api/cicd` | Regression | ✅ |
 | CH-14 | Zielkette | Approval: Freigabe mit Was/Warum/Risiko/Rollback vor kritischer Wirkung | `lib/approvals.ts` | `tests/security/api-route-contract.test.ts` (5) | `GET /api/approvals/center` | Approvals | ✅ |
-| CH-15 | Zielkette | Deployment: Promotion über Stufen mit Gates (Ausrollen/Rollback fehlt)<br><small>Promotion-Gates sind umgesetzt; ein echtes Ausrollen mit Health-Check und Rollback existiert nicht.</small> | `lib/promotion.ts`<br>`lib/cicd.ts` | `tests/security/api-route-contract.test.ts` (5) | `POST /api/promotion-gate` | Pipeline | 🟡 |
+| CH-15 | Zielkette | Deployment: Promotion über Stufen mit Gates (Ausrollen/Rollback fehlt)<br><small>Der im Anforderungstext genannte fehlende Teil ist umgesetzt: Ausrollen und Rückroll laufen über die Promotion-Gates (Staging verlangt LINT/TYPECHECK/UNIT/INTEGRATION/SECURITY/BUILD bestanden und verlangt für BROWSER/EVALUATION eine ausdrückliche Quittung mit Begründung; PRODUCTION verlangt weiterhin alle Prüfungen PASSED und bleibt hier deshalb blockiert). Ausgerollt gilt erst nach gemessener Build-ID aus dem Slot.</small> | `lib/promotion.ts`<br>`lib/cicd.ts`<br>`lib/release.ts`<br>`lib/deployment.ts`<br>`app/api/deployment/route.ts` | `tests/e2e/deployment-release.test.ts` (3)<br>`tests/integration/deployment.test.ts` (7) | `POST /api/promotion-gate`<br>`POST /api/deployment` | Pipeline, Deployment | ✅ |
 | CH-16 | Zielkette | Monitoring: Metriken, Alarmregeln, Service-Level und Bereitschaft | `lib/metrics.ts`<br>`lib/alerting.ts`<br>`lib/slo.ts` | `tests/integration/alerting.test.ts` (8)<br>`tests/unit/slo.test.ts` (9) | `GET /api/metrics` | Metrics, Slo | ✅ |
 | CH-17 | Zielkette | Recovery: Recovery mit Checkpoint, Tier und Verifikation; Restore verifiziert | `lib/recovery-orchestrator.ts`<br>`lib/reliability.ts` | `tests/unit/recovery-tier.test.ts` (6) | `GET /api/reliability` | Recovery | ✅ |
 | CH-18 | Zielkette | Lernen: Negatives Wissen („Never Again“) aus verifiziertem Fix | `lib/knowledge.ts` | `tests/e2e/failure-recovery.test.ts` (2) | `GET /api/knowledge` | Knowledge | ✅ |
 
-## P5 (2/4 PASS)
+## P5 (3/4 PASS)
 
 | ID | Bereich | Anforderung | Implementierung | Test | Nachweis | UI | Status |
 |---|---|---|---|---|---|---|---|
 | OPS-001 | Betrieb | Metriken, Alarmregeln (an reale Kennzahlen gebunden) und Service-Level-Bewertung sind verfügbar. | `lib/metrics.ts`<br>`lib/alerting.ts`<br>`lib/slo.ts` | `tests/integration/alerting.test.ts` (8)<br>`tests/unit/slo.test.ts` (9) | `GET /api/metrics`<br>`GET /api/alerts`<br>`GET /api/slo` | Metrics, Slo | ✅ |
 | OPS-002 | Betrieb | Bereitschaft und Lockdown sind maschinell abfragbar; blockierte Aufgaben sind sichtbar. | `lib/recovery-orchestrator.ts` | `tests/security/api-route-contract.test.ts` (5) | `GET /api/readiness` | Overview | ✅ |
-| OPS-003 | Betrieb | Deployment-Ausführung mit Rollback und Upgrade-Pfad.<br><small>Promotion-Stufen (BUILD → TEST → SECURITY → STAGING → SMOKE) mit Gates sind umgesetzt; ein echter Deploy-Vorgang (Ausrollen, Health-Check, Rollback) existiert nicht.</small> | `lib/cicd.ts`<br>`lib/promotion.ts` | `tests/security/api-route-contract.test.ts` (5) | `GET /api/cicd` | Pipeline | 🟡 |
-| OPS-004 | Betrieb | Produktionshärtung: Rate Limits, Graceful Shutdown, Upgrade-/Rollback-Pfad, Externalisierung der Sitzungsgeheimnisse.<br><small>Keine Rate-Limits, kein Graceful-Shutdown-Handler, kein Upgrade-/Rollback-Verfahren; Sitzungsgeheimnisse liegen dateibasiert im Storage-Root.</small> | — | — | — | — | ⚪ |
+| OPS-003 | Betrieb | Deployment-Ausführung mit Rollback und Upgrade-Pfad.<br><small>Ausrollen ist real ausgeführt und gemessen: Release-Slots mit sha256-Digest, Gates (Staging mit quittierten Lücken, PRODUCTION weiter gesperrt), Health-Checks vor dem Zeigerwechsel, Build-ID-Messung gegen den laufenden Prozess; Rückroll nur mit unversehrtem Vorgänger und anschließender Neumessung. Live belegt: Vorgang STAGED → Supervisor startet aus dem Slot → Datensatz ACTIVE. Grenzen bleiben offen: kein Supervisor-Daemon/Watchdog, kein Zero-Downtime-Blau/Grün, und der Produktions-Rollout bleibt blockiert, solange BROWSER/EVALUATION nicht real bestanden sind.</small> | `lib/release.ts`<br>`lib/deployment.ts`<br>`lib/cicd.ts`<br>`lib/promotion.ts`<br>`app/api/deployment/route.ts`<br>`scripts/release-supervisor.sh` | `tests/integration/deployment.test.ts` (7)<br>`tests/e2e/deployment-release.test.ts` (3)<br>`tests/unit/release.test.ts` (6)<br>`tests/security/route-guards.test.ts` (12) | `GET /api/deployment`<br>`scripts/release-supervisor.sh` | Deployment | ✅ |
+| OPS-004 | Betrieb | Produktionshärtung: Rate Limits, Graceful Shutdown, Upgrade-/Rollback-Pfad, Externalisierung der Sitzungsgeheimnisse.<br><small>Offen: Rate-Limits, Graceful Shutdown und Externalisierung der Sitzungsgeheimnisse. Der Upgrade-/Rollback-Pfad ist seit der P5-Runde vorhanden (lib/release.ts, lib/deployment.ts, scripts/release-supervisor.sh) und unter OPS-003 belegt.</small> | — | — | — | — | ⚪ |
 
 ## Prüfer
 

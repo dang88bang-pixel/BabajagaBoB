@@ -115,6 +115,35 @@ Recovery besteht aus:
 
 Der Mock Runtime kann Checkpoints simulieren. OCI Restore benötigt noch Image-/Volume-Infrastruktur.
 
+## 8a. Deployment (Auslieferung)
+
+Die Zielkette endet nicht bei „Tests grün", sondern bei einem nachweislich laufenden Stand:
+
+```
+Pipeline-Gates → Creator-Freigabe → Release-Slot (Digest) → Health-Checks
+              → Zeigerwechsel → Prozessneustart (Supervisor) → Build-ID-Messung → ACTIVE
+```
+
+- **Release** (`lib/release.ts`): Slot mit `release.json`, sha256-Digest über Pfade, Inhalte und
+  Symlink-Ziele; `current` als atomarer Symlink; `node_modules` symlinkt (`LINKED`).
+  Der Digest macht einen Slot später nachprüfbar (`verifyRelease`) — ein verändertes Verzeichnis
+  ist `DEFECTIVE`, nicht „ungefähr gleich".
+- **Deployment** (`lib/deployment.ts`): `planDeployment` prüft Kill-Switch, Lockdown,
+  Pipeline-Gates und Creator-Freigabe; `STAGING` fordert für `BROWSER`/`EVALUATION` eine
+  ausdrückliche Quittung mit Begründung (`acknowledgedGaps`), `PRODUCTION` fordert weiterhin
+  alle Prüfungen `PASSED`. `runHealthChecks` misst sieben Prüfungen, darunter **echte**
+  HTTP-Antworten. `deployRelease` schaltet erst nach grünen Health-Checks um.
+- **Ehrliche „aktiv"-Definition:** `ACTIVE` nur, wenn der laufende Prozess die Build-ID des Slots
+  ausliefert **und** aus dem Slot gestartet wurde. Sonst `STAGED` mit `restartRequired` und dem
+  konkreten Befehl. Ein umgestellter Zeiger allein ist kein Ausrollen.
+- **Rollback:** nur mit unversehrtem Vorgänger, danach Neumessung; `ROLLED_BACK` ist ein eigener
+  Zustand (Status-Modell §11), kein umbenanntes „fertig".
+- **Nachweise:** Artefakt (`kind=DEPLOYMENT`), Provenance-Knoten, Events
+  `deployment.{rejected,failed,active,staged,rolled_back,verified}`, Audit über die Route.
+- **Grenze:** Der Prozessneustart liegt bei `scripts/release-supervisor.sh` — bewusst außerhalb
+  der Anwendung, damit sich die Plattform nicht selbst neu startet. Kein Daemon, kein
+  Zero-Downtime, kein Multi-Knoten (siehe `docs/OPERATIONS.md` §7).
+
 ## 9. Privacy
 
 Default:

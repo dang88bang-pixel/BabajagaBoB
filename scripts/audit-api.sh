@@ -219,6 +219,25 @@ assert_status "Warum-Record lehnt ungültige ID ab" 400 "$(api "$BASE/api/events
 code=$(raw "$BASE/api/events/$EVENT_ID/why")
 case "$code" in 401|403|428) ok "Warum-Record ohne Session → $code";; *) bad "Warum-Record ohne Session: erwartet 401/403/428, erhalten $code" "$(body)";; esac
 
+step "9. Deployment: Gates, ehrlicher Zustand und keine Geheimnisse (Abschnitt 24)"
+assert_status "Deployment-Betriebsbild lesen" 200 "$(api "$BASE/api/deployment")"
+assert_json "Betriebsbild nennt Zeiger, laufende Build-ID und Slots" 'has("current") and has("runningBuildId") and has("workingDirectory") and ((.releases | type) == "array") and ((.deployments | type) == "array")'
+# Ein Rollout ohne Pipeline und Freigabe muss verweigert werden — und zwar mit Grund.
+assert_status "Plan für unbekanntes Release (kein Rollout, aber begründet)" 200 "$(api -X POST -d '{"action":"plan","releaseId":"REL-00000000000000-0000"}' "$BASE/api/deployment")"
+assert_json "Plan verweigert und nennt den Grund" '.allowed == false and ((.reasons | length) >= 1)'
+assert_status "Rollout ohne Gates wird verweigert" 409 "$(api -X POST -d '{"action":"deploy","releaseId":"REL-00000000000000-0000"}' "$BASE/api/deployment")"
+assert_status "Unbekannte Aktion wird abgewiesen" 400 "$(api -X POST -d '{"action":"gibtsnicht"}' "$BASE/api/deployment")"
+assert_status "Ungültiges Ziel wird abgewiesen" 400 "$(api -X POST -d '{"action":"plan","releaseId":"REL-00000000000000-0000","target":"IRGENDWO"}' "$BASE/api/deployment")"
+assert_status "Rückroll auf unbekannten Vorgang" 404 "$(api -X POST -d '{"action":"rollback","deploymentId":"DEP-GIBTS-NICHT","reason":"Audit"}' "$BASE/api/deployment")"
+assert_status "Prüfung eines unbekannten Vorgangs" 404 "$(api -X POST -d '{"action":"verify","deploymentId":"DEP-GIBTS-NICHT"}' "$BASE/api/deployment")"
+code=$(raw "$BASE/api/deployment")
+case "$code" in 401|403|428) ok "Deployment-Betriebsbild ohne Session → $code";; *) bad "Deployment ohne Session: erwartet 401/403/428, erhalten $code" "$(body)";; esac
+code=$(raw -X POST -d '{"action":"deploy","releaseId":"REL-00000000000000-0000"}' "$BASE/api/deployment")
+case "$code" in 401|403|428) ok "Rollout ohne Session → $code";; *) bad "Rollout ohne Session: erwartet 401/403/428, erhalten $code" "$(body)";; esac
+# Kein Geheimnis im Betriebsbild (Pfade und Build-IDs sind Betriebsdaten, keine Geheimnisse).
+api "$BASE/api/deployment" >/dev/null
+if grep -Eiq 'secret|token|password|passwort' "$BODY"; then bad "Deployment-Antwort enthält ein Geheimnisfeld" "$(head -c 200 "$BODY")"; else ok "Deployment-Antwort ohne Geheimnisfelder"; fi
+
 step "Ergebnis"
 printf "Ergebnis: \033[32m%d bestanden\033[0m, \033[31m%d fehlgeschlagen\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
