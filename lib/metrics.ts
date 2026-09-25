@@ -1,4 +1,6 @@
 import {auditIntegrity, verifyAuditChain} from "./audit";
+// Registriert alle Stores, damit die Kennzahlen die vollständige Landschaft zeigen.
+import "./persistence/all-stores";
 import {storeIntegrityReport} from "./persistence/store";
 import {eventStoreIntegrity} from "./event-store";
 import {getControlState} from "./control-plane";
@@ -52,7 +54,7 @@ export function collectMetrics(): Metric[] {
   const push = (metric: Metric) => metrics.push(metric);
 
   // --- Persistenz und Integrität -------------------------------------------
-  const stores = safe(() => storeIntegrityReport(), {root: "", stores: [], ok: false});
+  const stores = safe(() => storeIntegrityReport(), {root: "", stores: [], ok: false, unregistered: [], registered: 0});
   push({name: "bob_stores_total", help: "Anzahl registrierter Stores", type: "gauge", value: stores.stores.length});
   push({
     name: "bob_stores_healthy",

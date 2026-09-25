@@ -181,6 +181,12 @@ assert_status "Backup anlegen (Creator)" 201 "$(api -X POST -d '{"action":"backu
 assert_json "Backups sind digest-geprueft" '(.created | length) > 0 and (.verified == (.created | length))'
 assert_status "Persistenzbericht nach Backup lesbar" 200 "$(api "$BASE/api/persistence")"
 assert_json "Persistenzbericht listet verifizierte Backups" '(.backups.verified > 0) and (.backups.failed | length == 0)'
+assert_status "Store-Reparatur (Creator)" 200 "$(api -X POST -d '{"action":"repair"}' "$BASE/api/persistence")"
+assert_json "Keine Reparaturfehler und nichts Inhaltsloses bleibt offen" '([.results[] | select(.action | test("repair failed"))] | length == 0) and ([.results[] | select((.action | test("empty payload")) and (.repaired == false))] | length == 0)'
+assert_status "Persistenzbericht nach Reparatur" 200 "$(api "$BASE/api/persistence")"
+assert_json "Kein Store meldet noch einen inhaltslosen Envelope" '([.stores.stores[] | select(.error != null and (.error | test("empty payload")))] | length == 0)'
+assert_status "Creator Inbox lesbar" 200 "$(api "$BASE/api/inbox")"
+assert_status "Approvals lesbar" 200 "$(api "$BASE/api/approvals")"
 assert_status "Metriken (Prometheus) lesbar" 200 "$(api "$BASE/api/metrics")"
 assert_contains "Metriken melden integer Stores" '^bob_store_integrity_ok 1$'
 assert_contains "Metriken melden die Audit-Kette als integer" '^bob_audit_chain_ok 1$'

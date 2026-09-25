@@ -98,7 +98,14 @@ export function getArtifact(id: string): Artifact | null {
 
 /** Prüft einen Datensatz gegen seinen Digest (Unversehrtheit des Speichers). */
 export function verifyArtifact(id: string): {ok: boolean; artifactId: string; expected?: string; actual?: string; error?: string} {
-  const artifact = getArtifact(id);
+  let artifact: ReturnType<typeof getArtifact>;
+  try {
+    artifact = getArtifact(id);
+  } catch (error) {
+    // Ein beschädigter Store ist selbst ein Befund: die Prüfung meldet ihn als
+    // Fehler (fail closed) statt den Aufrufer mit einer Ausnahme abzubrechen.
+    return {ok: false, artifactId: id, error: error instanceof Error ? error.message : "store unreadable"};
+  }
   if (!artifact) return {ok: false, artifactId: id, error: "artifact not found"};
   const actual = contentDigest(artifact.content);
   return {ok: actual === artifact.digest, artifactId: id, expected: artifact.digest, actual};

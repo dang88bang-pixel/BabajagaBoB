@@ -2,9 +2,10 @@ import {NextResponse} from "next/server";
 import {auditGovernance,createDelegation,isKilled,listDelegations,listKillSwitches,revokeDelegation,setKillSwitch,validateDelegation,delegationIntegrity,governanceStoreIntegrity} from "@/lib/governance";
 import {actionField,readJson,stringArray,stringField} from "@/lib/request-validation";
 import {guardRequest} from "@/lib/api/guard";
+import {guardOrDeny} from "@/lib/api/api-gate";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
-export async function GET(){return NextResponse.json({killSwitches:listKillSwitches(),delegations:listDelegations(),integrity:{...delegationIntegrity(),store:governanceStoreIntegrity()}},{headers:{"Cache-Control":"no-store"}})}
+export async function GET(request:Request){const denied=guardOrDeny(request,{action:"governance:read"});if(denied)return denied;return NextResponse.json({killSwitches:listKillSwitches(),delegations:listDelegations(),integrity:{...delegationIntegrity(),store:governanceStoreIntegrity()}},{headers:{"Cache-Control":"no-store"}})}
 export async function POST(req:Request){
  try{
   const b=await readJson(req); const action=actionField(b,["kill","release","is-killed","delegate","revoke","validate"]);

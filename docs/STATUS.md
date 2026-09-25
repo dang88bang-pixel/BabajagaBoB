@@ -25,7 +25,7 @@ Produktionsreife:
 | Bootstrap / Creator-Initialisierung | TESTED | einmaliger Bootstrap, Doppelaufruf verweigert |
 | Server-Session + API-Guard | TESTED | `tests/security/api-guard.test.ts`, `tests/security/api-gate.test.ts` |
 | Aktionsspezifische Routen-Guards | TESTED | `tests/security/route-guards.test.ts`: 428 vor Bootstrap, 401 ohne Auth, `CREATOR_ONLY` für Agenten-Schreibzugriff auf Provenance/Knowledge, `CAPABILITY_DENIED` für Runs ohne `run:manage`, CSRF-Origin |
-| Live-Nachweis über HTTP | VERIFIED | `scripts/verify-live.sh`: **114 Prüfungen / 0 Fehler** gegen `npx next start` (Storage `/tmp/bob-live9`, 2026-09-25); alle drei §49-Abnahmen plus Agentenweg über Capability-Token ohne Browser-Session |
+| Live-Nachweis über HTTP | VERIFIED | `scripts/verify-live.sh`: **120 Prüfungen / 0 Fehler** gegen `npx next start` (Storage `/tmp/bob-live9`, 2026-09-25); alle drei §49-Abnahmen plus Agentenweg über Capability-Token ohne Browser-Session |
 | Backup mit Digest-Prüfung | TESTED | `tests/integration/metrics-backup.test.ts`: Kopien unter `<BOB_STORAGE_DIR>/backups` (0600), manipuliertes Backup → 409, Restore nur nach Version-/Digest-Prüfung |
 | Betriebsmetriken (Prometheus-Text) | TESTED | `GET /api/metrics` (Session-pflichtig): Store-Integrität, Audit-Kette, Runs, Queue, Token, Incidents, Recovery, Wissen, Fabric, Kill Switches – nur Zahlen |
 | Routenvertrag (strukturell) | TESTED | `tests/security/api-route-contract.test.ts`: jede Route außer `/api/auth` prüft eine konkrete Aktion, kein `publicAction` |
@@ -71,7 +71,7 @@ Produktionsreife:
 | Provider Fabric | TESTED | Katalog/Bindungen/Telemetrie persistent, Approval-gebundene Verbindung (`tests/integration/provider-fabric.test.ts`) |
 | Device Fabric / Simulation / Computer Use | PARTIAL | persistent; Simulation und Computer Use ohne eigene Tests |
 | CI/CD (`ci.yml`) | TESTED | 5 Jobs (Lint/Typecheck, Unit/Integration/Regression, Security/E2E, Build, Promotion-Gate); grüne Läufe dokumentiert in `docs/CI_CD.md` |
-| Automatisierte Testsuiten | TESTED | **25 Dateien / 135 Tests grün**, siehe `docs/TESTING.md` |
+| Automatisierte Testsuiten | TESTED | **26 Dateien / 145 Tests grün**, siehe `docs/TESTING.md` |
 
 ## Aktuelle Sicherheitsgrenzen
 

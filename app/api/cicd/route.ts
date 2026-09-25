@@ -1,6 +1,7 @@
 import {NextResponse} from "next/server";
 import {createPipeline,listPipelines,promote,updateCheck} from "@/lib/cicd";
-export async function GET(){return NextResponse.json({pipelines:listPipelines()},{headers:{"Cache-Control":"no-store"}})}
+import {guardOrDeny} from "@/lib/api/api-gate";
+export async function GET(request:Request){const denied=guardOrDeny(request,{action:"cicd:read"});if(denied)return denied;return NextResponse.json({pipelines:listPipelines()},{headers:{"Cache-Control":"no-store"}})}
 export async function POST(req:Request){
  const denied = (await import("@/lib/api/api-gate")).guardOrDeny(req, {action:"cicd:manage", creatorOnly:true});
  if (denied) return denied;

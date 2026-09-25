@@ -1,6 +1,7 @@
 import {NextResponse} from "next/server";import {allocateDevice,authorizeDevice,discoverDevice,listDevices,releaseDevice} from "../../../lib/devices";
+import {guardOrDeny} from "@/lib/api/api-gate";
 export const runtime="nodejs";export const dynamic="force-dynamic";
-export async function GET(){return NextResponse.json({devices:listDevices()},{headers:{"Cache-Control":"no-store"}})}
+export async function GET(request:Request){const denied=guardOrDeny(request,{action:"device:read"});if(denied)return denied;return NextResponse.json({devices:listDevices()},{headers:{"Cache-Control":"no-store"}})}
 export async function POST(request:Request){
  const gate = await import("@/lib/api/api-gate");
  const body = (await request.clone().json().catch(() => ({}))) as {action?:string};

@@ -58,6 +58,23 @@ describe("API-Grenze (struktureller Vertrag)", () => {
     expect(problems).toEqual([]);
   });
 
+  it("prüft jede exportierte Methode einzeln (kein ungeschützter Methodenzweig)", () => {
+    const problems: string[] = [];
+    for (const file of routeFiles()) {
+      const route = path.basename(path.dirname(file));
+      const text = source(file);
+      const blocks = text.split(/export async function (GET|POST|PATCH|PUT|DELETE)/);
+      for (let index = 1; index < blocks.length; index += 2) {
+        const method = blocks[index];
+        const body = blocks[index + 1].split(/export (?:async )?function/)[0];
+        const isAuthRoute = route === "auth" && method === "POST";
+        if (isAuthRoute) continue;
+        if (!/guard(Request|OrDeny)\(/.test(body)) problems.push(`${route}.${method}`);
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+
   it("verbietet öffentliche Aktionen ohne ausdrückliche Kennzeichnung", () => {
     const offenders = routeFiles()
       .filter(file => path.basename(path.dirname(file)) !== "auth")

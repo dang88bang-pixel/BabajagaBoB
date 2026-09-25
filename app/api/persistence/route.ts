@@ -1,5 +1,9 @@
 import {NextResponse} from "next/server";
-import {backupAllStores, listStoreBackups, restoreStoreBackup, storageRoot, storeIntegrityReport} from "../../../lib/persistence/store";
+// Lädt alle Module mit persistentem Store: sonst prüft der Bericht nur die
+// Stores, die zufällig über den Import-Graph dieser Route erreichbar sind.
+import "../../../lib/persistence/all-stores";
+import {backupAllStores, listStoreBackups, repairStorePayloads, restoreStoreBackup, storageRoot, storeIntegrityReport} from "../../../lib/persistence/store";
+import {recordAudit} from "../../../lib/audit";
 import {eventStoreIntegrity} from "../../../lib/event-store";
 import {controlStateReport} from "../../../lib/control-plane";
 import {listProvenance} from "../../../lib/provenance";
@@ -52,6 +56,8 @@ export async function GET(request: Request) {
  *  - `backup`  legt digest-geprüfte Kopien aller Stores an.
  *  - `restore` stellt einen Store aus einem **geprüften** Backup wieder her
  *              (Pfadbindung → Version → Digest → Schreiben).
+ *  - `repair`  setzt Stores mit inhaltslosem Envelope (`payload: null`) auf den
+ *              Initialzustand zurück (journalliert + auditiert).
  */
 export async function POST(request: Request) {
   const denied = guardOrDeny(request, {action: "persistence:backup", creatorOnly: true});
@@ -80,5 +86,15 @@ export async function POST(request: Request) {
       );
     }
   }
-  return NextResponse.json({error: "unsupported persistence action", supported: ["backup", "restore"]}, {status: 400});
+  if (body.action === "repair") {
+    // Repariert inhaltslose Envelopes (`payload: null`) — sie enthalten keine
+    // Information, brechen aber jeden Lesezugriff. Jede Reparatur wird auditiert.
+    const results = repairStorePayloads();
+    const repaired = results.filter(result => result.repaired).map(result => result.store);
+    if (repaired.length > 0) {
+      recordAudit({actor: "CREATOR", action: "persistence.repair", resource: repaired.join(","), decision: "ALLOW"}, {repaired});
+    }
+    return NextResponse.json({repaired, results}, {headers: {"Cache-Control": "no-store"}});
+  }
+  return NextResponse.json({error: "unsupported persistence action", supported: ["backup", "restore", "repair"]}, {status: 400});
 }

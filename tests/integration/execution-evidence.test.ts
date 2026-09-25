@@ -159,8 +159,18 @@ describe("Ausführungs-Evidenz", () => {
     const envelope = JSON.parse(fs.readFileSync(file, "utf8"));
     const entry = envelope.payload.artifacts.find((a: {id: string}) => a.id === artifact.id);
     entry.content = "gefälscht";
-    envelope.digest = createHash("sha256").update(JSON.stringify({version: envelope.version, payload: envelope.payload})).digest("hex");
+    // Angreifer rechnet den Envelope-Digest korrekt neu — der Inhalt bleibt
+    // trotzdem nachweisbar falsch, weil der Datensatz-Digest den Inhalt bindet.
+    envelope.digest = createHash("sha256")
+      .update(JSON.stringify({store: envelope.store, version: envelope.version, payload: envelope.payload}))
+      .digest("hex");
     fs.writeFileSync(file, JSON.stringify(envelope));
     expect(artifacts.verifyArtifact(artifact.id).ok).toBe(false);
+
+    // Und ein leerer/inhaltsloser Envelope wird als Befund gemeldet, nicht als Absturz.
+    fs.writeFileSync(file, JSON.stringify({store: "artifacts", version: envelope.version, writtenAt: new Date().toISOString(), payload: null, digest: createHash("sha256").update(JSON.stringify({store: "artifacts", version: envelope.version, payload: null})).digest("hex")}));
+    const broken = artifacts.verifyArtifact(artifact.id);
+    expect(broken.ok).toBe(false);
+    expect(broken.error).toBeTruthy();
   });
 });

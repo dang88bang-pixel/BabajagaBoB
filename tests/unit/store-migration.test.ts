@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import {afterEach, beforeEach, describe, expect, it} from "vitest";
-import {DurableStore, StoreIntegrityError, createStore, readMigrationJournal, restoreStoreBackup, verifyStoreBackup} from "../../lib/persistence/store";
+import {DurableStore, StoreIntegrityError, createStore, readMigrationJournal, listStoreBackups, repairStorePayloads, restoreStoreBackup, storeIntegrityReport, verifyStoreBackup} from "../../lib/persistence/store";
 
 /**
  * Store-Migration (Abschnitt 39): Schema-Wechsel dürfen eine Installation nicht
@@ -13,6 +13,10 @@ import {DurableStore, StoreIntegrityError, createStore, readMigrationJournal, re
  */
 
 let root: string;
+
+function boundDigest(store: string, version: number, payload: unknown): string {
+  return crypto.createHash("sha256").update(JSON.stringify({store, version, payload})).digest("hex");
+}
 
 function digest(version: number, payload: unknown): string {
   return crypto.createHash("sha256").update(JSON.stringify({version, payload})).digest("hex");
@@ -47,7 +51,7 @@ describe("Store-Migration", () => {
 
     const onDisk = JSON.parse(fs.readFileSync(file, "utf8"));
     expect(onDisk.version).toBe(2);
-    expect(onDisk.digest).toBe(digest(2, onDisk.payload));
+    expect(onDisk.digest).toBe(boundDigest("creator-auth", 2, onDisk.payload));
     expect(onDisk.payload.totpUsedSteps).toEqual([]);
 
     const safety = `${file}.pre-v1.bak`;
@@ -174,5 +178,138 @@ describe("Backups über Schemagrenzen", () => {
     const report = verifyStoreBackup("creator-auth", backupFile);
     expect(report.ok).toBe(false);
     expect(report.error).toMatch(/newer than the code expects/);
+  });
+});
+
+describe("Schutz vor inhaltslosen Envelopes (Vergiftungsfehler)", () => {
+  it("verweigert das Schreiben eines null-Payloads", () => {
+    const store = new DurableStore<unknown>("leer", 1, () => ({items: []}));
+    expect(() => store.write(null)).toThrow(/refusing to persist a null payload/);
+    expect(fs.existsSync(path.join(root, "leer.json"))).toBe(false);
+  });
+
+  it("erkennt einen vorhandenen null-Payload und initialisiert den Store neu", () => {
+    const file = path.join(root, "leer.json");
+    writeEnvelope(file, 1, null);
+    const store = new DurableStore<{items: string[]}>("leer", 1, () => ({items: []}));
+    expect(store.read()).toEqual({items: []});
+    const onDisk = JSON.parse(fs.readFileSync(file, "utf8"));
+    expect(onDisk.payload).toEqual({items: []});
+    expect(readMigrationJournal().some(entry => entry.backup === `${file}.null-payload`)).toBe(true);
+  });
+
+  it("meldet den Zustand im Integritätsbericht, ohne den Betrieb zu blockieren", () => {
+    const file = path.join(root, "leer.json");
+    writeEnvelope(file, 1, null);
+    const store = new DurableStore<{items: string[]}>("leer", 1, () => ({items: []}));
+    const report = store.integrity();
+    expect(report.ok).toBe(true);
+    expect(report.error).toMatch(/empty payload detected/);
+    expect(store.read()).toEqual({items: []});
+  });
+
+  it("schreibt beim Backup leerer Stores deren echten Initialzustand", () => {
+    const file = path.join(root, "frisch.json");
+    const store = createStore("frisch", 1, () => ({items: ["initial"]}));
+    const backupFile = store.backup();
+    const backup = JSON.parse(fs.readFileSync(backupFile, "utf8"));
+    expect(backup.payload).toEqual({items: ["initial"]});
+    expect(backup.payload).not.toBeNull();
+    // Der Live-Store ist durch das Backup nutzbar geblieben.
+    expect(store.read()).toEqual({items: ["initial"]});
+    expect(fs.existsSync(file)).toBe(true);
+  });
+});
+
+describe("Reparaturweg über den Store-Registry", () => {
+  it("repariert inhaltslose Envelopes aller registrierten Stores", () => {
+    createStore("reparatur", 1, () => ({items: ["initial"]}));
+    const file = path.join(root, "reparatur.json");
+    writeEnvelope(file, 1, null);
+
+    const results = repairStorePayloads();
+    const entry = results.find(result => result.store === "reparatur");
+    expect(entry?.repaired).toBe(true);
+    expect(entry?.action).toMatch(/empty payload/);
+    expect(JSON.parse(fs.readFileSync(file, "utf8")).payload).toEqual({items: ["initial"]});
+
+    // Zweiter Lauf ist idempotent: nichts mehr zu reparieren.
+    expect(repairStorePayloads().find(result => result.store === "reparatur")?.repaired).toBe(false);
+  });
+});
+
+describe("Vollständigkeit der Store-Registry", () => {
+  it("meldet auch Stores, die nur von einzelnen Modulen registriert werden", async () => {
+    await import("../../lib/persistence/all-stores");
+    const report = storeIntegrityReport();
+    const names = report.stores.map(entry => entry.store);
+    expect(report.registered).toBeGreaterThanOrEqual(30);
+    // Diese Stores fehlten im Bericht, weil die Persistenz-Route ihre Module
+    // nicht importiert hatte (Teilabdeckung → beschädigte Datei unbemerkt).
+    for (const store of ["cicd", "simulation", "skills", "workshop"]) {
+      expect(names).toContain(store);
+    }
+    expect(report.unregistered).toEqual([]);
+  });
+});
+
+describe("Bindung an den Store-Namen", () => {
+  it("schreibt den Store-Namen in den Envelope und bindet ihn in den Digest", () => {
+    const store = createStore<{items: string[]}>("gebunden", 1, () => ({items: []}));
+    store.write({items: ["a"]});
+    const envelope = JSON.parse(fs.readFileSync(path.join(root, "gebunden.json"), "utf8"));
+    expect(envelope.store).toBe("gebunden");
+    expect(envelope.digest).toBe(crypto.createHash("sha256").update(JSON.stringify({store: "gebunden", version: 1, payload: {items: ["a"]}})).digest("hex"));
+  });
+
+  it("verweigert eine Datei, die unter fremdem Namen abgelegt wurde", () => {
+    const store = createStore<{items: string[]}>("gebunden", 1, () => ({items: []}));
+    store.write({items: ["a"]});
+    fs.copyFileSync(path.join(root, "gebunden.json"), path.join(root, "umgeleitet.json"));
+    const foreign = createStore<{items: string[]}>("umgeleitet", 1, () => ({items: []}));
+    expect(() => foreign.read()).toThrow(/belongs to "gebunden"/);
+  });
+
+  it("liest ältere Envelopes ohne Store-Namen weiter (Bestandsinstallation)", () => {
+    writeEnvelope(path.join(root, "legacy.json"), 1, {items: ["alt"]});
+    const store = createStore<{items: string[]}>("legacy", 1, () => ({items: []}));
+    expect(store.read()).toEqual({items: ["alt"]});
+    // Nach dem nächsten Schreiben trägt der Envelope den Namen.
+    store.write({items: ["neu"]});
+    expect(JSON.parse(fs.readFileSync(path.join(root, "legacy.json"), "utf8")).store).toBe("legacy");
+  });
+});
+
+describe("Reparatur hinterlässt eine echte Sicherungskopie", () => {
+  it("legt die Datei mit leerem Inhalt ablegbar und verweist im Journal darauf", () => {
+    const file = path.join(root, "verseucht.json");
+    writeEnvelope(file, 1, null);
+    const store = createStore("verseucht", 1, () => ({items: ["initial"]}));
+    expect(store.read()).toEqual({items: ["initial"]});
+
+    const copy = `${file}.null-payload`;
+    expect(fs.existsSync(copy)).toBe(true);
+    expect(JSON.parse(fs.readFileSync(copy, "utf8")).payload).toBeNull();
+    const journal = readMigrationJournal().find(entry => entry.store === "verseucht");
+    expect(journal?.backup).toBe(copy);
+  });
+});
+
+describe("Backup-Zuordnung bei ähnlichen Store-Namen", () => {
+  it("verwechselt workshop nicht mit workshop-executions", () => {
+    const workshop = createStore("workshop", 1, () => ({items: []}));
+    const executions = createStore("workshop-executions", 1, () => ({runs: []}));
+    const workshopBackup = workshop.backup();
+    const executionBackup = executions.backup();
+
+    const reports = listStoreBackups();
+    const workshopReports = reports.filter(report => report.store === "workshop");
+    expect(workshopReports.map(report => report.file)).toEqual([workshopBackup]);
+
+    // Ein fremdes Backup wird nicht als eigenes anerkannt und nicht eingespielt.
+    const foreign = verifyStoreBackup("workshop", executionBackup);
+    expect(foreign.ok).toBe(false);
+    expect(foreign.error).toMatch(/workshop-executions/);
+    expect(() => restoreStoreBackup("workshop", executionBackup)).toThrow(/cannot be restored here|workshop-executions/i);
   });
 });

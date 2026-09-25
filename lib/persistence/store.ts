@@ -33,7 +33,7 @@ export class StoreIntegrityError extends Error {
   }
 }
 
-export type StoreEnvelope<T> = {version: number; writtenAt: string; payload: T; digest: string};
+export type StoreEnvelope<T> = {store?: string; version: number; writtenAt: string; payload: T; digest: string};
 
 /** Ein Migrationsschritt hebt genau eine Version an (`from` → `from + 1`). */
 export type StoreMigration = (payload: unknown) => unknown;
@@ -49,8 +49,22 @@ export function domainDigest(value: unknown): string {
   return crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
-function envelopeDigest(version: number, payload: unknown): string {
-  return domainDigest({version, payload});
+/**
+ * Digest über Version und Inhalt. Neuere Envelopes binden zusätzlich den
+ * Store-Namen: eine an einen anderen Store-Namen kopierte Datei fällt damit auf,
+ * statt als „gültiges" Backup des falschen Stores durchzugehen. Ältere Envelopes
+ * ohne Namen bleiben lesbar (Legacy-Pfad).
+ */
+function envelopeDigest(version: number, payload: unknown, store?: string): string {
+  return store ? domainDigest({store, version, payload}) : domainDigest({version, payload});
+}
+
+function envelopeMatchesStore(envelope: {store?: string}, name: string): boolean {
+  return envelope.store === undefined || envelope.store === name;
+}
+
+function envelopeDigestValid(envelope: {store?: string; version: number; payload: unknown; digest: string}): boolean {
+  return envelope.digest === envelopeDigest(envelope.version, envelope.payload, envelope.store);
 }
 
 function ensureRoot(): string {
@@ -118,7 +132,13 @@ export class DurableStore<T> {
         `unsupported store version ${envelope.version} (expected ${this.version}) and no migration chain is registered`
       );
     }
-    if (envelope.digest !== envelopeDigest(envelope.version, envelope.payload)) {
+    if (!envelopeMatchesStore(envelope, this.name)) {
+      throw new StoreIntegrityError(
+        this.name,
+        `store envelope belongs to "${envelope.store}" and was placed under "${this.name}"`
+      );
+    }
+    if (!envelopeDigestValid(envelope)) {
       throw new StoreIntegrityError(this.name, "integrity digest mismatch (corruption or manipulation)");
     }
     if (envelope.version < this.version) return this.migrate(envelope);
@@ -167,7 +187,37 @@ export class DurableStore<T> {
   /** Liest den Store. Fehlt die Datei, wird der Initialzustand erzeugt und geschrieben. */
   read(): T {
     const envelope = this.readRaw();
-    if (envelope) return structuredClone(envelope.payload);
+    if (envelope && envelope.payload !== null) return structuredClone(envelope.payload);
+    if (envelope) {
+      // Ältere Fassungen konnten über den Diagnose-/Backup-Pfad einen Envelope mit
+      // `payload: null` schreiben. Solche Datensätze enthalten keine Information:
+      // sie werden erkannt, im Journal vermerkt und mit dem Initialzustand neu
+      // angelegt — der Zugriff schlägt damit nicht mehr fehl.
+      const safetyCopy = `${this.file}.null-payload`;
+      // Erst die Sicherungskopie, dann überschreiben: der Nachweis im Journal
+      // verweist damit auf eine Datei, die es wirklich gibt (und die Reparatur
+      // ist notfalls nachvollziehbar). Schlägt die Kopie fehl, wird nicht
+      // geschrieben — fail closed statt stiller Datenverlust.
+      try {
+        fs.copyFileSync(this.file, safetyCopy);
+        fs.chmodSync(safetyCopy, 0o600);
+      } catch (error) {
+        throw new StoreIntegrityError(
+          this.name,
+          `empty payload detected but safety copy failed: ${error instanceof Error ? error.message : "unknown"}`
+        );
+      }
+      this.appendMigrationRecord({
+        store: this.name,
+        fromVersion: envelope.version,
+        toVersion: this.version,
+        at: new Date().toISOString(),
+        backup: safetyCopy
+      });
+      const repaired = this.create();
+      this.write(repaired);
+      return structuredClone(repaired);
+    }
     const initial = this.create();
     this.write(initial);
     return structuredClone(initial);
@@ -183,12 +233,19 @@ export class DurableStore<T> {
   }
 
   write(payload: T): T {
+    if (payload === null || payload === undefined) {
+      // Ein "leerer" Envelope mit gültigem Digest ist die gefährlichste Form der
+      // Beschädigung: er sieht integer aus, bricht aber jeden Lesezugriff.
+      // Deshalb wird er hier gar nicht erst geschrieben (fail closed).
+      throw new StoreIntegrityError(this.name, "refusing to persist a null payload");
+    }
     const root = ensureRoot();
     const envelope: StoreEnvelope<T> = {
+      store: this.name,
       version: this.version,
       writtenAt: new Date().toISOString(),
       payload: structuredClone(payload),
-      digest: envelopeDigest(this.version, payload)
+      digest: envelopeDigest(this.version, payload, this.name)
     };
     const tmp = path.join(root, `.${this.name}.${process.pid}.${Date.now()}.${crypto.randomBytes(4).toString("hex")}.tmp`);
     fs.writeFileSync(tmp, JSON.stringify(envelope, null, 2), {encoding: "utf8", mode: 0o600});
@@ -213,6 +270,9 @@ export class DurableStore<T> {
     try {
       const envelope = this.readRaw();
       if (!envelope) return {...base, ok: true, error: "store not created yet"};
+      if (envelope.payload === null) {
+        return {...base, ok: true, version: envelope.version, writtenAt: envelope.writtenAt, bytes: fs.statSync(this.file).size, error: "empty payload detected; store is re-initialized on next read"};
+      }
       return {
         ...base,
         ok: true,
@@ -252,7 +312,10 @@ export class DurableStore<T> {
     if (candidate.version < this.version && !this.canMigrate(candidate.version)) {
       throw new StoreIntegrityError(this.name, "backup version mismatch and no migration chain is registered");
     }
-    if (candidate.digest !== envelopeDigest(candidate.version, candidate.payload)) {
+    if (!envelopeMatchesStore(candidate, this.name)) {
+      throw new StoreIntegrityError(this.name, `backup belongs to "${candidate.store}" and cannot be restored here`);
+    }
+    if (!envelopeDigestValid(candidate)) {
       throw new StoreIntegrityError(this.name, "backup integrity check failed");
     }
     if (candidate.version === this.version) {
@@ -284,11 +347,35 @@ export function storeRegistry(): {store: string; version: number; file: string}[
   return registry.slice().sort((a, b) => a.store.localeCompare(b.store));
 }
 
-const registry: {store: string; version: number; file: string; migrations: Record<number, StoreMigration>}[] = [];
+const registry: {store: string; version: number; file: string; migrations: Record<number, StoreMigration>; create: () => unknown}[] = [];
 
+/**
+ * Registriert einen Store. Doppelte Registrierungen sind ein Fehlerquelle für
+ * Diagnose, Backup und Reparatur (derselbe Store taucht dann mehrfach auf):
+ * Gleicher Name und gleiche Version liefern deshalb dieselbe Instanz zurück,
+ * abweichende Versionen werden verweigert (fail closed).
+ */
 export function createStore<T>(name: string, version: number, create: () => T, options: StoreOptions = {}): DurableStore<T> {
+  const existing = registry.find(entry => entry.store === name);
+  if (existing && existing.version !== version) {
+    throw new StoreIntegrityError(
+      name,
+      `store is already registered with version ${existing.version}; refusing duplicate registration with version ${version}`
+    );
+  }
+  // Keine Instanz zwischengespeichert: der Dateipfad hängt am Speicherverzeichnis
+  // und kann sich (Tests, andere Umgebung) ändern. Registriert wird nur die
+  // Definition — genau einmal pro Store-Name.
   const store = new DurableStore<T>(name, version, create, options);
-  registry.push({store: name, version, file: store.file, migrations: options.migrations ?? {}});
+  if (!existing) {
+    registry.push({
+      store: name,
+      version,
+      file: store.file,
+      migrations: options.migrations ?? {},
+      create: create as () => unknown
+    });
+  }
   return store;
 }
 
@@ -308,13 +395,78 @@ export function readMigrationJournal(): MigrationRecord[] {
  * registrierten Migrationsketten kennen: sonst gilt eine ältere Sicherung als
  * "nicht migrierbar" und wird fälschlich als Fehler gemeldet.
  */
-function durableFor(entry: {store: string; version: number; migrations: Record<number, StoreMigration>}) {
-  return new DurableStore(entry.store, entry.version, () => null, {migrations: entry.migrations});
+function durableFor(entry: {store: string; version: number; migrations: Record<number, StoreMigration>; create?: () => unknown}) {
+  // WICHTIG: dieselbe Initialisierungsfunktion wie der echte Store. Ein `() => null`
+  // hätte beim Backup leerer Stores einen Envelope ohne Inhalt geschrieben.
+  const create = (entry.create ?? (() => ({}))) as () => never;
+  return new DurableStore(entry.store, entry.version, create, {migrations: entry.migrations});
 }
 
-export function storeIntegrityReport(): {root: string; stores: StoreIntegrityReport[]; ok: boolean} {
+/**
+ * Repariert inhaltslose Envelopes (`payload: null`) in **allen** registrierten
+ * Stores. Solche Datensätze enthalten keine Information, brechen aber jeden
+ * Lesezugriff (500). Die Reparatur setzt den Initialzustand des jeweiligen
+ * Moduls und wird im Migrationsjournal vermerkt — sie ist damit nachvollziehbar
+ * und kein stiller Eingriff in Daten.
+ */
+/**
+ * Findet Store-Dateien im Speicherverzeichnis, deren Envelope keinen Inhalt hat
+ * (`payload: null`) und für die **kein** Modul registriert ist. Solche Dateien
+ * können nicht automatisch repariert werden, weil der Initialzustand nur dem
+ * Modul bekannt ist — sie werden deshalb gemeldet (fail closed, sichtbar) statt
+ * stillschweigend ignoriert.
+ */
+export function unregisteredNullPayloadFiles(): string[] {
+  const root = storageRoot();
+  if (!fs.existsSync(root)) return [];
+  const registered = new Set(registry.map(entry => path.basename(entry.file)));
+  return fs
+    .readdirSync(root)
+    .filter(name => name.endsWith(".json") && !registered.has(name))
+    .filter(name => {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(path.join(root, name), "utf8")) as {payload?: unknown};
+        return parsed !== null && typeof parsed === "object" && parsed.payload === null;
+      } catch {
+        return false;
+      }
+    })
+    .sort();
+}
+
+export function repairStorePayloads(): {store: string; repaired: boolean; action: string}[] {
+  const results = registry.map(entry => {
+    const durable = durableFor(entry);
+    const before = durable.integrity();
+    if (!before.ok) return {store: entry.store, repaired: false, action: `error: ${before.error ?? "unreadable"}`};
+    if (!before.exists) return {store: entry.store, repaired: false, action: "not created"};
+    if (before.error?.includes("empty payload")) {
+      try {
+        durable.read();
+        return {store: entry.store, repaired: true, action: "re-initialized (empty payload)"};
+      } catch (error) {
+        return {store: entry.store, repaired: false, action: `repair failed: ${error instanceof Error ? error.message : "unknown"}`};
+      }
+    }
+    return {store: entry.store, repaired: false, action: "ok"};
+  });
+  // Dateien ohne registriertes Modul werden nicht stillschweigend übergangen.
+  for (const file of unregisteredNullPayloadFiles()) {
+    results.push({store: file.replace(/\.json$/, ""), repaired: false, action: "unregistered module: repair requires the owning module"});
+  }
+  return results;
+}
+
+export function storeIntegrityReport(): {
+  root: string;
+  stores: StoreIntegrityReport[];
+  ok: boolean;
+  unregistered: string[];
+  registered: number;
+} {
   const stores = registry.map(entry => durableFor(entry).integrity());
-  return {root: storageRoot(), stores, ok: stores.every(s => s.ok)};
+  const unregistered = unregisteredNullPayloadFiles();
+  return {root: storageRoot(), stores, ok: stores.every(s => s.ok) && unregistered.length === 0, unregistered, registered: stores.length};
 }
 
 export function backupAllStores(): string[] {
@@ -342,9 +494,17 @@ function backupDir(): string {
 function backupFilesFor(storeName: string): string[] {
   const dir = backupDir();
   if (!fs.existsSync(dir)) return [];
+  // Präfix-Kollision vermeiden: `workshop-executions-…` ist ein Backup von
+  // `workshop-executions`, nicht von `workshop`. Es gewinnt der längste
+  // registrierte Store-Name, auf den der Dateiname passt.
+  const owner = (fileName: string): string | undefined =>
+    registry
+      .map(entry => entry.store)
+      .filter(name => fileName.startsWith(`${name}-`))
+      .sort((a, b) => b.length - a.length)[0];
   return fs
     .readdirSync(dir)
-    .filter(name => name.startsWith(`${storeName}-`) && name.endsWith(".json"))
+    .filter(name => name.endsWith(".json") && owner(name) === storeName)
     .map(name => path.join(dir, name))
     .sort();
 }
@@ -363,7 +523,7 @@ export function verifyStoreBackup(storeName: string, file: string): BackupFileRe
   try {
     const raw = fs.readFileSync(resolved, "utf8");
     const envelope = JSON.parse(raw) as StoreEnvelope<unknown>;
-    const digestOk = envelope.digest === envelopeDigest(envelope.version, envelope.payload);
+    const digestOk = envelopeDigestValid(envelope);
     const report: BackupFileReport = {
       ...base,
       bytes: Buffer.byteLength(raw),
@@ -371,6 +531,9 @@ export function verifyStoreBackup(storeName: string, file: string): BackupFileRe
       version: envelope.version,
       digestOk
     };
+    if (!envelopeMatchesStore(envelope, entry.store)) {
+      return {...report, error: `backup belongs to "${envelope.store}" and not to "${entry.store}"`};
+    }
     if (envelope.version > entry.version) {
       return {...report, error: `backup version ${envelope.version} is newer than the code expects (${entry.version})`};
     }

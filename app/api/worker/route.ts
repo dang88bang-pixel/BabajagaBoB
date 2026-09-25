@@ -1,9 +1,11 @@
 import {runWorkerCycle,workerSnapshot} from "@/lib/worker";
+import {guardOrDeny} from "@/lib/api/api-gate";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 
-export async function GET(){
+export async function GET(request:Request){
+ const denied=guardOrDeny(request,{action:"worker:read"});if(denied)return denied;
  return Response.json(workerSnapshot(),{headers:{"Cache-Control":"no-store"}});
 }
 

@@ -28,6 +28,19 @@ Routen `app/api/persistence/route.ts`, `app/api/metrics/route.ts`,
 `workshop-executions`, `agent-handoffs` (32 Stores, Stand dieser Dokumentation;
 `GET /api/persistence` nennt die aktuelle Liste).
 
+Ein **inhaltsloser Envelope** (`payload: null`) ist der gefährlichste Zustand einer
+Store-Datei: Der Digest passt, der Store meldet sich also als integer, jeder Lesezugriff
+bricht aber ab. Deshalb gilt:
+
+- `write(null|undefined)` wird verweigert (fail closed) — der Zustand kann nicht mehr entstehen.
+- Beim Lesen wird ein solcher Datensatz erkannt, im Journal vermerkt
+  (`<store>.json.null-payload`) und mit dem Initialzustand des Moduls neu angelegt.
+- `POST /api/persistence {action:"repair"}` (Creator) prüft **alle** Stores und repariert
+  sie in einem Durchgang; jede Reparatur wird auditiert (`persistence.repair`).
+- Diagnose- und Backup-Instanzen verwenden dieselbe Initialisierungsfunktion wie der
+  echte Store. Zuvor schrieb der Backup-Pfad für noch nie beschriebene Stores einen
+  Envelope ohne Inhalt — genau daraus entstand der beschriebene Fehler.
+
 `GET /api/persistence` liefert den Integritätsbericht (je Store Version, Digest-Status,
 Größe, Existenz) und die Liste der Backups. `POST {action:"backup"}` (Creator) erzeugt
 digest-geprüfte Sicherungen unter `<BOB_STORAGE_DIR>/backups`.
@@ -66,6 +79,12 @@ Abweichung ab (`set -euo pipefail`). Umfang: Bootstrap-/Login-Zustand, Session-P
 Ausführung mit Capability-Token, Verweigerungen (fremde Bindung, Shell-Programm,
 widerrufenes Token, Lockdown), Evidence/Provenance/Audit-Kette, Metriken, Persistenz,
 Backups, Readiness und Queue. Ergebnis wird als Anzahl `PASS`/`FAIL` ausgegeben.
+
+Prüfumfang des Skripts (120 Prüfungen): Authentifizierung, Mission → Objective → Task →
+Sandbox → Capability, autorisierte Ausführung mit Evidenzprüfung, Angriffsblockaden,
+Fehlerkette bis `REGRESSION_LOCKED`, Governance/Privacy/Provider/Geräte/Computer Use,
+Restore, Persistenz inkl. Backup und **Store-Reparatur**, Metriken, Readiness sowie der
+Agentenweg ohne Browser-Session.
 
 Beispiel:
 

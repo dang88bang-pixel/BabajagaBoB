@@ -1,8 +1,9 @@
 import {NextResponse} from "next/server";
 import {bindProvider,connectProvider,disconnectProvider,heartbeatProvider,providerSnapshot,revokeProvider,setProviderState} from "@/lib/provider-fabric";
+import {guardOrDeny} from "@/lib/api/api-gate";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
-export async function GET(){return NextResponse.json(providerSnapshot(),{headers:{"Cache-Control":"no-store"}})}
+export async function GET(request:Request){const denied=guardOrDeny(request,{action:"provider:read"});if(denied)return denied;return NextResponse.json(providerSnapshot(),{headers:{"Cache-Control":"no-store"}})}
 export async function POST(req:Request){
  const gate = await import("@/lib/api/api-gate");
  const body = (await req.clone().json().catch(() => ({}))) as {action?:string};

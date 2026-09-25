@@ -39,6 +39,8 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 | API-Grenze | jede `/api/*`-Route außer `/api/auth` verlangt Session; agentenspezifischer Sonderweg nur `POST /api/runtime`; CSRF-Origin-Prüfung; Legacy-Token fail closed | `middleware.ts`, `lib/api/api-gate.ts`, `tests/security/api-guard.test.ts`, `tests/security/api-gate.test.ts` |
 | Aktionsprüfung pro Route | **jede** Route außer `/api/auth` prüft ihre konkrete Aktion (Creator-Pflicht für Kern-/Schreibpfade, `sandbox:run`, `task:execute`, `run:manage`; Provenance-/Knowledge-Schreiben nur Creator); strukturell im Test erzwungen | `lib/api/guard.ts`, `app/api/*/route.ts`, `tests/security/route-guards.test.ts`, `tests/security/api-route-contract.test.ts` |
 | Betriebsmetriken | Prometheus-Text unter `GET /api/metrics` (Session-pflichtig), aus Stores/Integritätsprüfungen, nur Zahlen | `lib/metrics.ts`, `tests/integration/metrics-backup.test.ts` |
+| Datenintegrität (aus Live-Prüfung) | **gefundener Fehler behoben:** der Backup-Pfad legte für noch nie beschriebene Stores einen Envelope mit `payload: null` und gültigem Digest an; `/api/inbox` lieferte dadurch 500. Jetzt: Schreiben von `null` wird verweigert, Lesen erkennt und repariert den Zustand (journalliert), `POST /api/persistence {action:"repair"}` saniert alle Stores (auditiert) | `lib/persistence/store.ts`, `app/api/persistence/route.ts`, `tests/unit/store-migration.test.ts` |
+| Creator Inbox | `POST {action:"resolve"}` war unerreichbar (stand hinter einem `return`): jede Anfrage legte einen neuen Eintrag an. Jetzt eigener Zweig, Creator-Pflicht, Validierung, Ablehnung doppelter Beantwortung | `app/api/inbox/route.ts`, `tests/security/inbox-route.test.ts` |
 | Ausführungs-Evidenz | jede autorisierte Ausführung erzeugt einen **digestgebundenen, persistenten** Evidenzdatensatz (`ART-…`, SHA-256 über den gespeicherten Inhalt), verknüpft in Provenance (Knoten `EVIDENCE` + Kante) und Audit (`evidence.record` mit Digest); `GET /api/artifacts?verify=…` prüft erneut; Inhalte > 8 KiB werden sichtbar gekürzt (`truncated`) | `lib/artifacts.ts`, `lib/execution-broker.ts`, `tests/integration/execution-evidence.test.ts` |
 | Schema-Migration | registrierte Migration je Store: Digest-Prüfung → Sicherungskopie `*.pre-v{N}.bak` (0600) → Migration → Journal `migrations.jsonl`; fehlende Kette oder neuere Datei → fail closed; ältere Sicherungen werden als migrierbar erkannt und migrierend wiederhergestellt | `lib/persistence/store.ts`, `lib/creator-auth.ts`, `tests/unit/store-migration.test.ts` |
 | Zweiter Faktor | TOTP (RFC 6238) über `BOB_CREATOR_TOTP_SECRET`: gesetzt ⇒ **verpflichtend** (403 `TOTP_REQUIRED`), Fenster ±1 × 30 s, Replay-Schutz über `totpUsedSteps`, Lockout unverändert 423, Status über `GET /api/auth` (`secondFactor`) | `lib/totp.ts`, `lib/creator-auth.ts`, `app/api/auth/route.ts`, `tests/security/creator-totp.test.ts` |
@@ -67,12 +69,13 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 
 | Nachweis | Ergebnis |
 |---|---|
-| Automatisierte Tests | **25 Dateien / 135 Tests grün** (`npx vitest run`) |
+| Automatisierte Tests | **26 Dateien / 145 Tests grün** (`npx vitest run`) |
 | Statische Gates | `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler (10 Warnungen); `npm run build` erfolgreich (Exit-Code geprüft, nicht nur Ausgabe) |
-| Live über HTTP | `scripts/verify-live.sh` gegen `npx next start`: **114 PASS / 0 FAIL** – Auth fail closed (428/401/403/201/200), Kette bis Knowledge, Sandbox + Snapshot + Capability, autorisierte Ausführung (`argv`, stdout `live-ok`), vier Angriffsblockaden mit Audit, Fehlerkette bis `REGRESSION_LOCKED`, Lockdown/Privacy/Provider/Geräte, Restore/Persistenz/Readiness sowie **Schritt 10: Agentenweg über Capability-Token ohne Browser-Session** (evidenzgebundene Ausführung; Verweigerungen bei Shell-Programm, Subjekt-Spoofing, Widerruf und Lockdown) |
+| Live über HTTP | `scripts/verify-live.sh` gegen `npx next start`: **120 PASS / 0 FAIL** – Auth fail closed (428/401/403/201/200), Kette bis Knowledge, Sandbox + Snapshot + Capability, autorisierte Ausführung (`argv`, stdout `live-ok`), vier Angriffsblockaden mit Audit, Fehlerkette bis `REGRESSION_LOCKED`, Lockdown/Privacy/Provider/Geräte, Restore/Persistenz/Readiness sowie **Schritt 10: Agentenweg über Capability-Token ohne Browser-Session** (evidenzgebundene Ausführung; Verweigerungen bei Shell-Programm, Subjekt-Spoofing, Widerruf und Lockdown) |
 | §49-Abnahme 1 (Erfolgspfad) | `tests/e2e/creator-flow.test.ts` + Live-Schritte 2–4 |
 | §49-Abnahme 2 (bewusster Fehler) | `tests/e2e/failure-recovery.test.ts` (Exit-Code 7) + Live-Schritt 6 |
 | §49-Abnahme 3 (blockierter Angriff) | fremder Sandbox-Bindungsversuch 409, unbekanntes Token 409, Shell-Programm/-Metazeichen 409, Audit-DENY + Evidenz; `tests/e2e/creator-flow.test.ts` Test 2, Live-Schritt 5 |
+| Gefundene und behobene Fehler | Upgrade-Blocker (Schemaerhöhung sperrte die Anmeldung aus, 500 → 201 nach Migration), Store-Vergiftung (`payload: null`), unerreichbarer Inbox-`resolve`-Zweig, fehlende Umgebungsbindung des Agentenwegs (`/api/runtime` erzwang `development`), ungeschützte GET-Methoden in sechs Routen — jeder Fix mit Regressionstest |
 | CI | Läufe `36090732676`, `36090186817`, `36086611264`, `36091730579` – alle grün |
 
 ## D. Teilimplementiert (PARTIAL)
@@ -139,7 +142,7 @@ Keine Erfolgsaussage stützt sich auf Mock-Verhalten; Simulationen
 - Security: Authority-Invarianten, API-Guard, API-Gate, Routen-Guards, argv-Policy, Creator-Login und Lockout.
 - Regression: Regression Engine (argv-Policy, leere Suite = Fehlschlag).
 - E2E: Erfolgskette Creator → Knowledge; Fehlerkette bis `REGRESSION_LOCKED`.
-- Live: `scripts/verify-live.sh` (114 Prüfungen, 0 Fehler).
+- Live: `scripts/verify-live.sh` (120 Prüfungen, 0 Fehler).
 
 Details und Befehle: `docs/TESTING.md`.
 
