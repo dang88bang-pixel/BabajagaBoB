@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import {createStore} from "./persistence/store";
 import {observe} from "./observability";
 import type {KnowledgeState} from "./types";
-import {indexKnowledgeNode, removeKnowledgeNode} from "./knowledge-vector";
+import {indexKnowledgeNode} from "./knowledge-vector";
 
 /**
  * Knowledge Graph (Abschnitt 19/20).
