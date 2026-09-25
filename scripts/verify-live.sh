@@ -34,6 +34,55 @@ assert_json() { # assert_json <name> <jq-ausdruck>
   if is "$2"; then ok "$1"; else bad "$1" "$(body)"; fi
 }
 
+# TOTP-Code (RFC 6238) fuer den Live-Nachweis des zweiten Faktors. Der Code wird
+# lokal aus dem selben Secret berechnet, das der Server kennt - das Secret selbst
+# verlaesst den Server nicht.
+totp_code() {
+  BOB_TOTP_SECRET="${BOB_CREATOR_TOTP_SECRET:-}" node -e '
+    const c = require("node:crypto");
+    const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    const s = (process.env.BOB_TOTP_SECRET || "").replace(/[\s-]/g, "").toUpperCase().replace(/=+$/, "");
+    let bits = 0, value = 0; const out = [];
+    for (const ch of s) { value = (value << 5) | A.indexOf(ch); bits += 5; if (bits >= 8) { out.push((value >>> (bits - 8)) & 255); bits -= 8; } }
+    const buf = Buffer.alloc(8); buf.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 1000 / 30)));
+    const digest = c.createHmac("sha1", Buffer.from(out)).update(buf).digest();
+    const offset = digest[digest.length - 1] & 15;
+    const binary = ((digest[offset] & 127) << 24) | ((digest[offset + 1] & 255) << 16) | ((digest[offset + 2] & 255) << 8) | (digest[offset + 3] & 255);
+    process.stdout.write(String(binary % 1000000).padStart(6, "0"));
+  ' 2>/dev/null
+}
+
+# Ein akzeptierter TOTP-Code ist verbraucht (Replay-Schutz). Fuer eine zweite
+# gueltige Anmeldung muss daher ein neues Zeitfenster abgewartet werden.
+wait_next_totp_step() {
+  local now remain
+  now=$(date +%s)
+  remain=$((30 - now % 30))
+  sleep $((remain + 1))
+}
+
+# Anmeldung mit optionalem zweitem Faktor. Ist TOTP verpflichtend und der
+# aktuelle Code bereits verbraucht (Replay-Schutz), wird genau einmal auf das
+# naechste Zeitfenster gewartet - ein zweiter Lauf innerhalb desselben Fensters
+# ist damit kein Fehlschlag.
+TOTP_LAST_CODE=""
+login_with_optional_totp() { # login_with_optional_totp <jar> <secret>
+  if [ -z "${BOB_CREATOR_TOTP_SECRET:-}" ]; then
+    anony -c "$1" -X POST -d "{\"action\":\"login\",\"secret\":\"$2\"}" "$BASE/api/auth"
+    return
+  fi
+  local status code
+  code="$(totp_code)"
+  status="$(anony -c "$1" -X POST -d "{\"action\":\"login\",\"secret\":\"$2\",\"totpCode\":\"$code\"}" "$BASE/api/auth")"
+  if [ "$status" != "201" ]; then
+    wait_next_totp_step
+    code="$(totp_code)"
+    status="$(anony -c "$1" -X POST -d "{\"action\":\"login\",\"secret\":\"$2\",\"totpCode\":\"$code\"}" "$BASE/api/auth")"
+  fi
+  TOTP_LAST_CODE="$code"
+  printf '%s' "$status"
+}
+
 assert_contains() { # assert_contains <name> <muster> (fuer Klartext wie Prometheus)
   if grep -qE "$2" "$BODY" 2>/dev/null; then ok "$1"; else bad "$1" "$(body)"; fi
 }
@@ -56,11 +105,11 @@ if [ "$INITIALIZED" != "true" ]; then
   SECRET="${BOB_CREATOR_LOGIN_SECRET:-}"
   if [ -z "$SECRET" ] && [ -f "${BOB_STORAGE_DIR:-./.bob-data}/creator-token" ]; then SECRET="$(tr -d '\n' < "${BOB_STORAGE_DIR}/creator-token")"; fi
   rm -f "$JAR"
-  assert_status "Login mit Creator-Secret (Re-Authentifizierung)" 201 "$(anony -c "$JAR" -X POST -d "{\"action\":\"login\",\"secret\":\"$SECRET\"}" "$BASE/api/auth")"
+  assert_status "Login mit Creator-Secret (Re-Authentifizierung)" 201 "$(login_with_optional_totp "$JAR" "$SECRET")"
 else
   SECRET="${BOB_CREATOR_LOGIN_SECRET:-}"
   if [ -z "$SECRET" ] && [ -f "${BOB_STORAGE_DIR:-./.bob-data}/creator-token" ]; then SECRET="$(tr -d '\n' < "${BOB_STORAGE_DIR}/creator-token")"; fi
-  assert_status "Login mit Creator-Secret" 201 "$(anony -c "$JAR" -X POST -d "{\"action\":\"login\",\"secret\":\"$SECRET\"}" "$BASE/api/auth")"
+  assert_status "Login mit Creator-Secret" 201 "$(login_with_optional_totp "$JAR" "$SECRET")"
 fi
 assert_status "GET /api/control mit Session" 200 "$(api "$BASE/api/control")"
 assert_status "Login mit falschem Secret (nach Initialisierung)" 403 "$(anony -X POST -d '{"action":"login","secret":"definitiv-falsch"}' "$BASE/api/auth")"
@@ -238,6 +287,24 @@ assert_json "Audit-Kette bleibt integer" '.chain.valid == true'
 assert_status "Audit-Aufzeichnungen lesbar" 200 "$(api "$BASE/api/audit")"
 assert_json "Verweigerungen sind auditiert (DENY)" '[.records[] | select(.decision == "DENY" and .action == "sandbox.execute")] | length >= 1'
 assert_json "Audit weist den Aufbewahrungszustand aus" '(.integrity.valid == true) and ((.integrity.retentionIntegrity // "") | length > 0)'
+
+if [ -n "${BOB_CREATOR_TOTP_SECRET:-}" ]; then
+  step "11. Zweiter Faktor (TOTP) ueber HTTP"
+  SECRET="${BOB_CREATOR_LOGIN_SECRET:-}"
+  if [ -z "$SECRET" ] && [ -f "${BOB_STORAGE_DIR:-./.bob-data}/creator-token" ]; then SECRET="$(tr -d '\n' < "${BOB_STORAGE_DIR}/creator-token")"; fi
+  assert_status "Auth-Status nennt den zweiten Faktor" 200 "$(anony "$BASE/api/auth")"
+  assert_json "Zweiter Faktor ist verpflichtend" '.secondFactor == "TOTP"'
+  assert_status "Login ohne zweiten Faktor abgelehnt" 403 "$(anony -X POST -d "{\"action\":\"login\",\"secret\":\"$SECRET\"}" "$BASE/api/auth")"
+  CODE_WRONG="$(totp_code | sed 's/.$/0/')"
+  if [ "$CODE_WRONG" = "$(totp_code)" ]; then CODE_WRONG="$(totp_code | sed 's/.$/1/')"; fi
+  assert_status "Falscher zweiter Faktor abgelehnt" 403 "$(anony -X POST -d "{\"action\":\"login\",\"secret\":\"$SECRET\",\"totpCode\":\"$CODE_WRONG\"}" "$BASE/api/auth")"
+  # Der Code aus Schritt 1 ist verbraucht; auf das naechste Zeitfenster warten.
+  wait_next_totp_step
+  TJAR="$(mktemp -t bob-totp-XXXXXX)"
+  assert_status "Gueltiger zweiter Faktor akzeptiert" 201 "$(login_with_optional_totp "$TJAR" "$SECRET")"
+  assert_status "Wiederverwendung des Codes abgelehnt (Replay)" 403 "$(anony -X POST -d "{\"action\":\"login\",\"secret\":\"$SECRET\",\"totpCode\":\"$TOTP_LAST_CODE\"}" "$BASE/api/auth")"
+  rm -f "$TJAR"
+fi
 
 printf "\n\033[1mErgebnis:\033[0m \033[32m%d bestanden\033[0m, \033[31m%d fehlgeschlagen\033[0m\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

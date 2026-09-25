@@ -103,13 +103,19 @@ widerrufenes Token, Lockdown), Evidence/Provenance/Audit-Kette, Metriken, Persis
 Backups, Readiness und Queue. Ergebnis wird als Anzahl `PASS`/`FAIL` ausgegeben.
 
 Prüfumfang des Skripts (**130 Prüfungen** bei Erstinitialisierung, **128** wenn die Instanz
-bereits initialisiert ist — der Bootstrap-Zweig enthält zwei Prüfungen mehr):
+bereits initialisiert ist — der Bootstrap-Zweig enthält zwei Prüfungen mehr; mit verpflichtendem
+zweitem Faktor **136 / 134**):
 Authentifizierung, Mission → Objective → Task → Sandbox → Capability, autorisierte Ausführung
 mit Evidenzprüfung, Angriffsblockaden, **Evidenz einer blockierten Autorisierung
 (`kind=DENIAL`, Digest erneut geprüft, keine Klartext-Argumente)**, Fehlerkette bis
 `REGRESSION_LOCKED`, Governance/Privacy/Provider/Geräte/Computer Use, Restore, Persistenz
 inkl. Backup und **Store-Reparatur**, Metriken, Readiness, Audit-DENY-Nachweis und
 Aufbewahrungszustand sowie der Agentenweg ohne Browser-Session.
+
+Mit gesetztem `BOB_CREATOR_TOTP_SECRET` prüft Schritt 11 zusätzlich den zweiten Faktor über HTTP
+(Status, Ablehnung ohne/mit falschem Code, Akzeptanz, Replay-Ablehnung). Das Skript berechnet den
+Code lokal aus dem Secret; ein verbrauchter Code ist Teil des Replay-Schutzes, deshalb wartet es für
+eine zweite gültige Anmeldung auf das nächste Zeitfenster.
 
 Der Live-Lauf ist der Nachweis gegen die **echte HTTP-Oberfläche**; er ist ausdrücklich keine
 Aussage über Produktionslast (keine Lastkurve, keine SLO-Messung).

@@ -159,7 +159,9 @@ vergleichbar, ohne Geheimnisse zu kopieren. Getestet in `tests/integration/execu
 Nachweisende Tests: `tests/security/authority.test.ts`, `tests/security/api-guard.test.ts`,
 `tests/security/api-gate.test.ts`, `tests/security/route-guards.test.ts`, `tests/security/argv-policy.test.ts`,
 `tests/security/creator-login.test.ts`, `tests/security/creator-login-lockout.test.ts`,
-`tests/security/creator-totp.test.ts`, `tests/security/inbox-route.test.ts`,
+`tests/security/creator-totp.test.ts` (zusätzlich live: `scripts/verify-live.sh` Schritt 11 prüft
+Pflicht, Ablehnung ohne/mit falschem Code, Akzeptanz und Replay-Ablehnung des zweiten Faktors über
+echtes HTTP), `tests/security/inbox-route.test.ts`,
 `tests/security/api-route-contract.test.ts`, `tests/security/direct-route-denial.test.ts`,
 `tests/e2e/creator-flow.test.ts`, `tests/e2e/failure-recovery.test.ts`
 (**11 Dateien / 64 Tests** in der Security-Suite, 30 Dateien / 166 Tests gesamt) und der Live-Nachweis

@@ -2,7 +2,7 @@
 
 **Stand:** 2026-09-25
 **Testrunner:** Vitest 3 (`vitest.config.ts`, Node ≥ 22)
-**Letzter verifizierter Lauf:** `npx vitest run` → **30 Dateien, 166 Tests, alle grün**; `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler / 10 Warnungen; `npm run build` erfolgreich. Zusätzlich live gegen den Produktionsserver geprüft: `scripts/verify-live.sh` → **130 Prüfungen, 0 Fehler** bei Erstinitialisierung (**128**, wenn die Instanz bereits initialisiert war – der Bootstrap-Zweig enthält zwei Prüfungen mehr); siehe §4a.
+**Letzter verifizierter Lauf:** `npx vitest run` → **30 Dateien, 166 Tests, alle grün**; `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler / 10 Warnungen; `npm run build` erfolgreich. Zusätzlich live gegen den Produktionsserver geprüft: `scripts/verify-live.sh` → **130 Prüfungen, 0 Fehler** bei Erstinitialisierung (**128**, wenn die Instanz bereits initialisiert war – der Bootstrap-Zweig enthält zwei Prüfungen mehr). Mit verpflichtendem zweitem Faktor (TOTP) sind es **136 / 134**; siehe §4a.
 
 ## 1. Suiten und Abdeckung
 
@@ -85,6 +85,15 @@ mit `argv[]`, echte Ausführung (`stdout`), digestgebundene Evidenz (`ART-…`, 
 des Tokenzugriffs auf Verwaltungsrouten (401), Shell-Programm (409),
 Subjekt-Spoofing (409) und Ausführung nach Widerruf (403) sowie Sperre durch den
 System-Lockdown (409).
+
+**Schritt 11 – zweiter Faktor (TOTP) live** (nur mit `BOB_CREATOR_TOTP_SECRET`): Der Status
+nennt `secondFactor: TOTP`, die Anmeldung **ohne** Code wird mit 403 abgelehnt, ein falscher Code
+ebenfalls, ein gültiger Code wird akzeptiert (201) und seine **Wiederverwendung** innerhalb des
+Fensters abgelehnt (Replay-Schutz, 403). Der Code wird im Skript lokal aus demselben Secret
+berechnet; das Secret selbst verlässt den Server nicht. Weil ein akzeptierter Code verbraucht ist,
+wartet das Skript für die zweite gültige Anmeldung auf das nächste Zeitfenster und wiederholt eine
+Anmeldung höchstens einmal – drei aufeinanderfolgende Läufe sind damit ohne Creator-Sperre möglich
+(geprüft: `locked: false` nach Lauf 3).
 
 Zusätzlich geprüft: Der **Nachweis einer blockierten Autorisierung** (Abschnitt 49) –
 `GET /api/artifacts?kind=DENIAL&taskId=…` liefert die Evidenz, ihr Digest ist über
