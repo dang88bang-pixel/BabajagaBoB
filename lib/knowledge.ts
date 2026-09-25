@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import {loadFabric,saveFabric} from "./fabric-store";
 
 export type MemoryLayer="WORKING"|"EPISODIC"|"SEMANTIC"|"NEGATIVE";
