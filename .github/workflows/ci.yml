@@ -1,7 +1,13 @@
 name: BabajagaBoB CI
 
 # Verifikationspipeline (Abschnitt 35/37):
-# BRANCH -> LINT -> TYPECHECK -> UNIT -> INTEGRATION -> SECURITY -> BUILD -> BROWSER
+# BRANCH -> LINT -> TYPECHECK -> UNIT -> INTEGRATION -> SECURITY -> SABOTAGE -> BUILD
+#   -> FEHLERINJEKTION (echter Prozessabsturz) -> BROWSER
+#
+# SABOTAGE und FEHLERINJEKTION sind Pflichtstufen: Eine Suite, die eine
+# absichtlich entfernte Schutzregel nicht bemerkt, ist kein Nachweis (TEST-004);
+# und ein Dienst, dessen Absturz nicht nachweislich überlebt wird, ebenso wenig
+# (TEST-003).
 # Der Workflow läuft auf jedem Push (alle Branches) und auf jedem Pull Request,
 # damit auch Feature-Branches und der jeweils aktuelle Commit tatsächlich getestet werden.
 
@@ -58,8 +64,33 @@ jobs:
         run: npm run test:integration
       - name: Regressionstests
         run: npm run test:regression
-      - name: UI-Vertragstests (Control Center, 39 Abschnitte)
+      - name: UI-Vertragstests (Control Center, 42 Abschnitte)
         run: npm run test:ui
+
+  sabotage:
+    name: Sabotageproben (TEST-004)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Katalog prüfen (jeder Anker genau einmal, jede Testdatei vorhanden)
+        run: node scripts/sabotage.mjs --check
+      - name: Sabotageproben (jede geschwächte Regel muss erkannt werden)
+        run: node scripts/sabotage.mjs
+        env:
+          BOB_STORAGE_DIR: ${{ runner.temp }}/bob-sabotage
+      - name: Bericht sichern (auch bei Fehlschlag)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sabotage-report
+          path: ${{ runner.temp }}/bob-sabotage/sabotage/report.json
+          if-no-files-found: warn
 
   security:
     name: Security- und End-to-End-Suite
@@ -92,11 +123,20 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - name: Fehlerinjektion am laufenden Dienst (SIGKILL, echter Neustart)
+        run: node scripts/fault-injection.mjs --cycles=1 --port=3300 --storage=${{ runner.temp }}/bob-crash
+      - name: Bericht sichern (auch bei Fehlschlag)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fault-injection-report
+          path: ${{ runner.temp }}/bob-crash/fault-injection/report.json
+          if-no-files-found: warn
 
   verification-gate:
     name: Verification Gate
     runs-on: ubuntu-latest
-    needs: [lint-and-typecheck, unit-integration, security, build]
+    needs: [lint-and-typecheck, unit-integration, sabotage, security, build]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.3.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0

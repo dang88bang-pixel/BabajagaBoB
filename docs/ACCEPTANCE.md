@@ -11,8 +11,8 @@ Eingefroren: 2026-09-25. Quellen: GESAMTAUFTRAG (53 Punkte); docs/MASTER_COMPLET
 
 | Status | Anzahl | Bedeutung |
 |---|---|---|
-| ✅ PASS | 75 | Implementierung + Test + Nachweis vorhanden |
-| 🟡 PARTIAL | 5 | Teilweise umgesetzt, Lücke benannt |
+| ✅ PASS | 77 | Implementierung + Test + Nachweis vorhanden |
+| 🟡 PARTIAL | 3 | Teilweise umgesetzt, Lücke benannt |
 | ❌ FAIL | 0 | Umgesetzt, aber Nachweis fehlgeschlagen |
 | ⚪ NOT_IMPLEMENTED | 2 | Bewusst nicht gebaut (Begründung) |
 | 🔵 NOT_VERIFIED | 3 | Vorhanden, aber Umgebung erlaubt keinen Nachweis |
@@ -97,14 +97,14 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 | UI-002 | Control Center | Die Oberfläche enthält keine Geheimnisse; Auslieferung, Quell- und Datenvertrag sind automatisiert geprüft. | `components/control-center.tsx`<br>`scripts/audit-ui.mjs` | `tests/regression/ui-contract.test.ts` (5) | `scripts/audit-ui.mjs` | — | ✅ |
 | UI-003 | Control Center | Verifikation in einem echten Browser (Rendering, Interaktion, Screenshots als Evidenz).<br><small>In der Umgebung existiert kein Browser und kein Playwright-Cache; die Hosts für Browser-Downloads sind gesperrt. Ersatzweise jsdom + HTTP-Audit.</small> | — | `tests/ui/control-center-api.test.tsx` (2) | — | — | 🔵 |
 
-## P4 (24/28 PASS)
+## P4 (26/28 PASS)
 
 | ID | Bereich | Anforderung | Implementierung | Test | Nachweis | UI | Status |
 |---|---|---|---|---|---|---|---|
 | TEST-001 | Teststrategie | Pyramide aus Unit-, Integrations-, Security-, Regression-, UI- und E2E-Suiten ist in CI blockierend verdrahtet. | `package.json`<br>`.github/workflows/ci.yml` | `tests/unit/control-plane.test.ts` (7)<br>`tests/integration/sandbox-runtime.test.ts` (6) | `.github/workflows/ci.yml` | — | ✅ |
 | TEST-002 | Teststrategie | Regressionstests sind je Fehlerfall dauerhaft registriert und blockieren eine Promotion. | `lib/regression.ts`<br>`lib/promotion.ts` | `tests/regression/regression-engine.test.ts` (5) | `GET /api/cicd` | Regression | ✅ |
-| TEST-003 | Teststrategie | Fehlerinjektion (Prozessabsturz, Worker-Verlust, Netzwerkverlust, doppelte Jobs, konkurrierende Schreibvorgänge).<br><small>Kontrolliertes Scheitern, Lease-Ablauf, Nebenläufigkeit und Recovery während Recovery sind abgedeckt; ein echter Prozessabsturz des Servers, Netzwerkverlust und konkurrierende Schreibvorgänge auf denselben Store sind nicht injiziert.</small> | `lib/queue.ts`<br>`lib/worker.ts` | `tests/integration/worker-recovery.test.ts` (8) | `tests/integration/worker-recovery.test.ts` | — | 🟡 |
-| TEST-004 | Teststrategie | Sabotageproben belegen, dass die Suiten Schwächungen tatsächlich erkennen.<br><small>Sabotageproben wurden manuell gefahren und dokumentiert (Backup-Aufbewahrung, Enrollment fail closed, SLO-UNKNOWN); sie laufen nicht automatisiert in CI.</small> | `docs/TESTING.md` | `tests/unit/slo.test.ts` (9) | `docs/TESTING.md` | — | 🟡 |
+| TEST-003 | Teststrategie | Fehlerinjektion (Prozessabsturz, Worker-Verlust, Netzwerkverlust, doppelte Jobs, konkurrierende Schreibvorgänge).<br><small>Sechs Injektionsarten verändern echten Zustand (Prozessabbruch, Worker-Verlust, Netzwerkverweigerung fail closed, doppelter Job, konkurrierende Schreibvorgänge, Store-Manipulation) und werden gegen Store-Integrität, Event- und Audit-Kette geprüft; nicht ausgelöst = NOT_INJECTED, nie „überlebt“. `scripts/fault-injection.mjs` tötet den Dienst zweimal per SIGKILL und prüft nach echtem Neustart Sitzung, Daten, Job-Identität, Lease-Ablauf, Audit-Kette und Store-Digests (28/28).</small> | `lib/fault-injection.ts`<br>`lib/fault-harness.ts`<br>`lib/queue.ts`<br>`lib/worker.ts` | `tests/integration/fault-injection.test.ts` (10)<br>`tests/integration/worker-recovery.test.ts` (8) | `scripts/fault-injection.mjs`<br>`GET /api/faults`<br>`docs/TESTING.md` | Faults | ✅ |
+| TEST-004 | Teststrategie | Sabotageproben belegen, dass die Suiten Schwächungen tatsächlich erkennen.<br><small>Acht Proben schwächen tragende Regeln ab (Egress-Allowlist fail closed, Audit-Kette, Replay auf beiden Ebenen, Freigabe, Kill-Switch, Geräte-Enrollment, Store-Digest, Staging-Stufe) und verlangen, dass die zuständigen Suiten rot werden: 8/8 erkannt. Der Lauf ist Pflichtstufe in CI; ein nicht erkannter Angriff bricht ab (Exit 1), ein ungültiger Anker ebenfalls (Exit 2). Die dabei gefundenen Deckungslücken (Freigabe- und Staging-Gate ohne echte Zusicherung) sind in tests/security/promotion-gates.test.ts geschlossen.</small> | `scripts/sabotage.mjs`<br>`docs/acceptance/sabotage-probes.json` | `tests/unit/sabotage-plan.test.ts` (6)<br>`tests/security/promotion-gates.test.ts` (10) | `scripts/sabotage.mjs`<br>`.github/workflows/ci.yml` | Faults | ✅ |
 | LIVE-001 | Betriebsnachweis | Live-Prüfungen gegen den Produktionsserver: Verifikation, Aktions-/Attributmatrix, Routenprüfung, Oberflächenprüfung. | `scripts/verify-live.sh`<br>`scripts/audit-actions.mjs`<br>`scripts/audit-api.sh`<br>`scripts/audit-ui.mjs` | `tests/security/api-route-contract.test.ts` (5) | `scripts/verify-live.sh`<br>`scripts/audit-actions.mjs` | — | ✅ |
 | LOAD-001 | Betriebsnachweis | Begrenzter Lastnachweis mit definierten Schwellen (p95-Budget, Erfolgsquote) und wirksamem Negativpfad.<br><small>Der begrenzte Lauf hat Schwellen und einen Negativnachweis; ein Dauerlauf über Stunden (Lastkurve, SLO-Zusage) fehlt.</small> | `scripts/soak.mjs`<br>`lib/slo.ts` | `tests/unit/slo.test.ts` (9) | `scripts/soak.mjs` | — | 🟡 |
 | ACC-001 | Abnahme §49 | E2E-Erfolgspfad: Creator → Mission → Task → Sandbox → Token → Ausführung → Evidenz → Audit → Provenance. | `tests/e2e/creator-flow.test.ts` | `tests/e2e/creator-flow.test.ts` (2) | `tests/e2e/creator-flow.test.ts` | — | ✅ |

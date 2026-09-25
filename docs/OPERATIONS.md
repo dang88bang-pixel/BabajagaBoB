@@ -248,7 +248,7 @@ letzter Lauf **502 Prüfungen / 0 Fehler**, Exit 0;
 Details in `docs/TESTING.md` §4c.
 
 `scripts/audit-ui.mjs` prüft die Oberfläche in drei Stufen: Quellvertrag
-(40 Abschnitte, Renderpfade, Spalten, kein literales Markdown), Auslieferung
+(42 Abschnitte, Renderpfade, Spalten, kein literales Markdown), Auslieferung
 (Assets, Sprache, Cookie-Flags, **kein Geheimnis im HTML/JS**) und den
 Datenvertrag jedes Abschnitts gegen die echte Route — letzter Lauf
 **88 Prüfungen / 0 Fehler**, Exit 0; Details in `docs/TESTING.md` §4d.

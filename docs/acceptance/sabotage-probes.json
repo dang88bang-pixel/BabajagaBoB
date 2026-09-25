@@ -1,0 +1,107 @@
+{
+ "_comment": "Sabotageproben (TEST-004). Jede Probe schwächt eine Sicherheits- oder Nachweisregel im Quellcode absichtlich ab und erwartet, dass die genannten Suiten das erkennen. Ein Anchor, der nicht genau einmal vorkommt, macht die Probe ungültig — sie wird dann als INVALID gemeldet, nicht als bestanden. Die Datei ist maschinenlesbare Quelle für scripts/sabotage.mjs und tests/unit/sabotage-plan.test.ts.",
+ "probes": [
+  {
+   "id": "ALLOWLIST_FAIL_CLOSED",
+   "title": "Egress-Allowlist wird nicht mehr verweigert",
+   "guard": "Netzwerk bleibt standardmäßig DENY; ALLOWLIST ist fail closed.",
+   "file": "lib/sandbox/fabric.ts",
+   "find": "if (request.network === \"ALLOWLIST\" || (request.allowlist?.length ?? 0) > 0) {",
+   "replace": "if (false) {",
+   "tests": [
+    "tests/security/route-guards.test.ts",
+    "tests/integration/fault-injection.test.ts"
+   ]
+  },
+  {
+   "id": "AUDIT_CHAIN_ALWAYS_VALID",
+   "title": "Manipulierte Audit-Kette gilt als gültig",
+   "guard": "Die Audit-Kette erkennt nachträgliche Änderungen.",
+   "file": "lib/audit.ts",
+   "find": "valid: issues.length === 0,",
+   "replace": "valid: true,",
+   "tests": [
+    "tests/unit/audit-retention.test.ts"
+   ]
+  },
+  {
+   "id": "TOKEN_REPLAY_ALLOWED",
+   "title": "Capability-Token darf mehrfach verwendet werden",
+   "guard": "Eine Autorisierung = eine Ausführung: Replay wird auf beiden Prüfebenen verweigert.",
+   "tests": [
+    "tests/security/token-replay.test.ts"
+   ],
+   "edits": [
+    {
+     "file": "lib/authority.ts",
+     "find": "if (checkUsage && (token.uses ?? 0) >= (token.maxUses ?? 1)) {",
+     "replace": "if (false) {"
+    },
+    {
+     "file": "lib/authority.ts",
+     "find": "if (uses >= maxUses) {",
+     "replace": "if (false) {"
+    }
+   ]
+  },
+  {
+   "id": "APPROVAL_ALWAYS_GRANTED",
+   "title": "Freigabe gilt ohne Entscheidung als erteilt",
+   "guard": "Kritische Wirkung verlangt eine gewährte Creator-Freigabe.",
+   "file": "lib/approvals.ts",
+   "find": "return store.read().requests.some(r => r.approvalId === approvalId && r.status === \"GRANTED\");",
+   "replace": "return true;",
+   "tests": [
+    "tests/security/promotion-gates.test.ts",
+    "tests/integration/deployment.test.ts"
+   ]
+  },
+  {
+   "id": "KILL_SWITCH_IGNORED",
+   "title": "Kill-Switch wird nicht mehr beachtet",
+   "guard": "Ein aktiver Kill-Switch blockiert Ausführung und Auslieferung.",
+   "file": "lib/governance.ts",
+   "find": "  const payload = store.read();\n  if (payload.switches.some(s => s.active && s.scope === \"SYSTEM\")) return true;\n  return payload.switches.some(s => s.active && s.scope === scope && s.targetId === targetId);",
+   "replace": "  const payload = store.read();\n  void payload;\n  return false;",
+   "tests": [
+    "tests/security/gate-bypass.test.ts",
+    "tests/security/promotion-gates.test.ts"
+   ]
+  },
+  {
+   "id": "ENROLLMENT_ACCEPTS_ANY_SECRET",
+   "title": "Geräte-Enrollment akzeptiert jedes Geheimnis",
+   "guard": "Discovery ist keine Autorisierung; ohne gültiges Geheimnis fail closed.",
+   "file": "lib/device-enrollment.ts",
+   "find": "if (typeof secret !== \"string\" || !matches(secret)) {",
+   "replace": "if (false) {",
+   "tests": [
+    "tests/security/device-enrollment.test.ts"
+   ]
+  },
+  {
+   "id": "REGISTRY_DIGEST_NOT_CHECKED",
+   "title": "Store-Envelope wird ohne Digest-Prüfung gelesen",
+   "guard": "Ein manipulierter Store wird erkannt (Digest, fail closed).",
+   "file": "lib/persistence/store.ts",
+   "find": "return envelope.digest === envelopeDigest(envelope.version, envelope.payload, envelope.store);",
+   "replace": "return true;",
+   "tests": [
+    "tests/unit/persistence.test.ts",
+    "tests/integration/fault-injection.test.ts"
+   ]
+  },
+  {
+   "id": "DEPLOYMENT_STAGING_GATE_OPEN",
+   "title": "Staging-Gate lässt fehlende Pflichtprüfungen durch",
+   "guard": "Ausrollen verlangt bestandene Pflichtprüfungen; Lücken müssen quittiert werden.",
+   "file": "lib/deployment.ts",
+   "find": "  if (![\"PREVIEW\", \"STAGING\", \"SMOKE\"].includes(pipeline.stage)) reasons.push(`staging requires a promoted stage (current: ${pipeline.stage})`);",
+   "replace": "  // Sabotage: Stufenprüfung entfernt",
+   "tests": [
+    "tests/security/promotion-gates.test.ts"
+   ]
+  }
+ ],
+ "_changes": "Proben müssen die wirksame Schutzregel entfernen. Proben mit mehreren Änderungen (edits) entfernen redundante Ebenen gemeinsam; eine Probe, die nur eine von zwei Ebenen schwächt, belegt nichts."
+}

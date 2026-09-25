@@ -63,7 +63,7 @@ zuerst, keine Funktionalität „später füllen".
 | **P1** | Autonome Laufzeit: Queue/Worker/Run, Sandbox-Lebenszyklus, Snapshot/Restore, Fehlerintelligenz, Recovery-Verifikation, Experimente, Kausalvalidierung, Regression, Wissen, Status, Observatory, Timeline/Replay, Why, Approvals | `Q-001…003`, `SB-001…004`, `EXP-001`, `SCI-001`, `ERR-001`, `REC-001`, `REG-001`, `KNO-001`, `STA-001`, `OBS-001`, `TL-001`, `WHY-001`, `APR-001`, `INB-001`, `GOV-001` | **20/20 PASS** |
 | **P2** | Fabric: Runtime-Registry, Werkzeuge, Skills, Werkstatt, Provider, Geräte, Computer Use, Simulation, Offline, betriebliche Wiederherstellung | `RT-001`, `TOOL-001`, `SKILL-001`, `WS-001`, `PROVF-001/002`, `DEV-001/002`, `CU-001`, `SIM-001`, `OFF-001`, `OPR-001/002` | 9/13 PASS, Computer Use/Geräte `PARTIAL`, Provider live `NOT_VERIFIED`, Offline `NOT_IMPLEMENTED` |
 | **P3** | Control Center vollständig an echte Daten, Visualisierung, Status/Progress, Observability, Approvals, Security, Integrationen | `UI-001…003` | 2/3 PASS, Browser `NOT_VERIFIED` |
-| **P4** | Verifikation: Pyramide, Regression, Fehlerinjektion, Betriebs-/Lastnachweis, die vier §49-Abnahmen | `TEST-001…004`, `LIVE-001`, `LOAD-001`, `ACC-001…004`, `CH-01…CH-18` | PASS mit drei benannten Lücken (Fehlerinjektion, Sabotage-Automatisierung, Dauerlauf) |
+| **P4** | Verifikation: Pyramide, Regression, Fehlerinjektion, Betriebs-/Lastnachweis, die vier §49-Abnahmen | `TEST-001…004`, `LIVE-001`, `LOAD-001`, `ACC-001…004`, `CH-01…CH-18` | PASS; Fehlerinjektion und Sabotage automatisiert in CI — offen bleibt nur der Dauerlauf (`LOAD-001`) |
 | **P5** | Produktion: Metriken/Alarme/SLO, Bereitschaft, Deployment mit Rollback, Betriebshärtung | `OPS-001…004` | 3/4 PASS; Betriebshärtung `NOT_IMPLEMENTED` (Rate-Limits, Graceful Shutdown, Secret-Externalisierung) |
 
 ## 3. Was „fertig" konkret bedeutet (Definition of Done)
@@ -86,15 +86,16 @@ Punkte 2, 6 und 9 werden **maschinell** geprüft; 1, 3–5, 7, 8 über die verla
 
 | Status | Anzahl | Anteil | Bedeutung im Projekt |
 |---|---|---|---|
-| ✅ PASS | 72 | 85 % | mit Implementierung, Test, Nachweis |
-| 🟡 PARTIAL | 8 | 9 % | Lücke benannt (Geräte-Scheduling `DEV-001`, Computer-Use-Treiber `CU-001`, Fehlerinjektion `TEST-003`, Sabotage-Automatisierung `TEST-004`, Dauerlauf `LOAD-001`, Deployment/Rollback `OPS-003` und `CH-15`, Checkpointing `CH-04`) |
+| ✅ PASS | 77 | 91 % | mit Implementierung, Test, Nachweis — inkl. Fehlerinjektion und Sabotage |
+| 🟡 PARTIAL | 3 | 4 % | Lücke benannt (Computer-Use-Treiber `CU-001`, Dauerlauf `LOAD-001`, Checkpointing/Planer `CH-04`) |
 | 🔵 NOT_VERIFIED | 3 | 4 % | OCI-Runtime (`OCI-001`), Provider-Live-Verbindung (`PROVF-002`), Browser-E2E (`UI-003`) |
 | ⚪ NOT_IMPLEMENTED | 2 | 2 % | Offline Fabric (`OFF-001`), Betriebshärtung (`OPS-004`) |
 | ❌ FAIL / ⛔ BLOCKED | 0 | — | keine |
 
-Stand `node scripts/acceptance.mjs` (statisch, 15/0) und `… --live` (82/0): die drei
-zuvor offenen P1-Anforderungen `STA-001`, `OBS-001` und `WHY-001` sind auf **PASS** gehoben —
-mit Implementierung, Test und Route-Nachweis, nicht durch Statusänderung allein.
+Stand `node scripts/acceptance.mjs` (statisch, 15/0): `TEST-003` (Fehlerinjektion) und `TEST-004`
+(Sabotageproben) sind auf **PASS** gehoben — mit Implementierung, Test, ausgeführtem Nachweisprüfer,
+Oberflächensektion und CI-Pflichtstufe, nicht durch Statusänderung allein. Frühere Hebungen
+(`STA-001`, `OBS-001`, `WHY-001`) bleiben unverändert gültig.
 
 Die vollständige Tabelle steht in `docs/ACCEPTANCE.md` (generiert), die Einzelbegründungen in
 `docs/acceptance/requirements.json` (`note`-Feld).
@@ -103,8 +104,10 @@ Die vollständige Tabelle steht in `docs/ACCEPTANCE.md` (generiert), die Einzelb
 
 - **Deployment** (`CH-15`/`OPS-003`): Promotion-Gates existieren, ein Ausrollvorgang mit
   Health-Check und Rollback nicht. Solange fehlt der letzte Schritt der Zielkette.
-- **Dauerlauf/Sabotage** (`LOAD-001`, `TEST-004`): Lastspitzen sind gemessen (Soak mit
-  p95-Budget), ein Betrieb über Stunden und automatisch in CI ausgeführte Sabotageproben fehlen.
+- **Dauerlauf** (`LOAD-001`): Lastspitzen sind gemessen (Soak mit p95-Budget, 120 autorisierte
+  Ausführungen je Lauf) und die Fehlerinjektion überlebt einen echten `SIGKILL` mit Neustart
+  (`scripts/fault-injection.mjs`, 28/28 in zwei Zyklen); ein Betrieb über Stunden (Dauerlauf)
+  fehlt weiterhin. Sabotageproben laufen seit dieser Runde automatisiert in CI (`TEST-004` → PASS).
 - **Geräte-Scheduling/Computer-Use-Treiber** (`DEV-001`, `CU-001`): Discovery, Autorisierung und
   Freigabe sind umgesetzt; echte Treiber bzw. Ressourcenplanung fehlen ohne Umgebung.
 
@@ -150,8 +153,11 @@ Streng in dieser Ordnung, jeweils mit Nachweis (Tests + Live-Lauf + Doku):
    Port 3100 (Plan `STAGING` mit quittierten Lücken, `PRODUCTION` benannt blockiert, Vorgang
    `STAGED` → Supervisor → Datensatz `ACTIVE`, `--live` 83/0, 67/67 Routen). `OPS-003` und `CH-15`
    stehen damit auf `PASS`.
-3. **P4-Härtung:** Fehlerinjektion (Serverprozess-Abbruch, Netzwerkverlust, konkurrierende
-   Schreibvorgänge) und automatisierte Sabotageproben in CI.
+3. ~~**P4-Härtung:** Fehlerinjektion (Serverprozess-Abbruch, Netzwerkverlust, konkurrierende
+   Schreibvorgänge) und automatisierte Sabotageproben in CI.~~ **Erledigt (2026-09-25):**
+   `lib/fault-injection.ts` + `scripts/fault-injection.mjs` (echter `SIGKILL` mit Neustart, 28/28),
+   `scripts/sabotage.mjs` + Katalog (8/8 erkannt), beide als Pflichtstufen in der CI,
+   Oberflächensektion **Fehlerinjektion**, `TEST-003`/`TEST-004` auf `PASS`.
 4. **P2-Rest:** Computer-Use-Treiber, Geräte-Scheduling nach Ressourcen, Provider-Adapterlauf
    (sobald ein kontrollierter Egress existiert), Offline-Paketbestand.
 5. **P5-Rest:** Rate-Limits und Graceful Shutdown. (Das Upgrade-/Rollback-Verfahren ist seit

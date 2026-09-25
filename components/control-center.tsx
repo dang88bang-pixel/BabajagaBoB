@@ -40,6 +40,7 @@ type SectionId =
   | "Errors"
   | "Recovery"
   | "Regression"
+  | "Faults"
   | "Inbox"
   | "Approvals"
   | "Governance"
@@ -83,6 +84,7 @@ const NAV: {id: SectionId; label: string; group: string}[] = [
   {id: "Errors", label: "Fehlerfälle", group: "Widerstandsfähigkeit"},
   {id: "Recovery", label: "Recovery", group: "Widerstandsfähigkeit"},
   {id: "Regression", label: "Regression", group: "Widerstandsfähigkeit"},
+  {id: "Faults", label: "Fehlerinjektion", group: "Widerstandsfähigkeit"},
   {id: "Inbox", label: "Creator-Inbox", group: "Governance"},
   {id: "Approvals", label: "Freigaben", group: "Governance"},
   {id: "Governance", label: "Governance", group: "Governance"},
@@ -648,6 +650,8 @@ export default function ControlCenter() {
   };
   const [readiness, setReadiness] = useState<Row | null>(null);
   const [deployment, setDeployment] = useState<Row | null>(null);
+  /** Fehlerinjektion/Sabotage: Katalog, Injektionen und die Skriptberichte. */
+  const [faults, setFaults] = useState<Row | null>(null);
   const [audit, setAudit] = useState<Row | null>(null);
   const [provenance, setProvenance] = useState<Row | null>(null);
   const [governance, setGovernance] = useState<Row | null>(null);
@@ -692,7 +696,7 @@ export default function ControlCenter() {
     setSnapshot(control.data);
     setError("");
 
-    const [tl, errRes, inboxRes, gov, caps, prov, auditRes, priv, persistenceRes, readinessRes, artifactsRes, runtimeRes, deploymentRes] = await Promise.all([
+    const [tl, errRes, inboxRes, gov, caps, prov, auditRes, priv, persistenceRes, readinessRes, artifactsRes, runtimeRes, deploymentRes, faultsRes] = await Promise.all([
       fetchJson<{timeline: TimelineEntry[]}>("/api/timeline"),
       fetchJson<{incidents: ErrorIncident[]}>("/api/errors"),
       fetchJson<{items: InboxItem[]}>("/api/inbox"),
@@ -705,7 +709,8 @@ export default function ControlCenter() {
       fetchJson<Row>("/api/readiness"),
       fetchJson<{artifacts: Row[]}>("/api/artifacts"),
       fetchJson<Row>("/api/runtime"),
-      fetchJson<Row>("/api/deployment")
+      fetchJson<Row>("/api/deployment"),
+      fetchJson<Row>("/api/faults")
     ]);
     setTimeline(tl.data?.timeline ?? null);
     setIncidents(errRes.data?.incidents ?? null);
@@ -718,6 +723,7 @@ export default function ControlCenter() {
     setPersistence(persistenceRes.data);
     setReadiness(readinessRes.data);
     setDeployment(deploymentRes.data);
+    setFaults(faultsRes.data);
     setArtifacts(artifactsRes.data?.artifacts ?? null);
     setRuntime(runtimeRes.data);
 
@@ -1250,6 +1256,136 @@ export default function ControlCenter() {
               </div>
             );
           })}
+        </section>
+      );
+    }
+
+    if (section === "Faults") {
+      const snapshotFaults = faults ?? {};
+      const summary = (snapshotFaults.summary ?? {}) as Row;
+      const catalog = (snapshotFaults.catalog ?? []) as Row[];
+      const injections = (snapshotFaults.injections ?? []) as Row[];
+      const crash = snapshotFaults.processCrashProbe as Row | null | undefined;
+      const sabotage = snapshotFaults.sabotage as Row | null | undefined;
+      const num = (value: unknown) => (typeof value === "number" ? value : Number(value ?? 0) || 0);
+      const crashChecks = ((crash?.checks ?? []) as Row[]).filter(check => check.ok !== true);
+      const sabotageResults = ((sabotage?.results ?? []) as Row[]);
+      const sabotageCaught = num(sabotage?.caught);
+      const sabotageMissed = num(sabotage?.missed);
+      const sabotageInvalid = num(sabotage?.invalid);
+      return (
+        <section className="panel sectionPanel">
+          <small>FEHLERINJEKTION / SABOTAGE</small>
+          <h2>Fehlerinjektion</h2>
+          <p>
+            Geprüft wird, was die Plattform <strong>aushält</strong>: jede Injektion verändert den echten Zustand (Prozessabbruch,
+            Lease-Verlust, Netzwerkverweigerung, doppelte Jobs, konkurrierende Schreibvorgänge, Store-Manipulation) und wird danach gegen
+            Store-Integrität, Event- und Audit-Kette geprüft. Ergebnis ist <code>SURVIVED</code>, <code>DEGRADED</code>,{" "}
+            <code>FAILED</code> oder <code>NOT_INJECTED</code> — <em>nicht</em> ausgelöst ist kein Bestehen. Eine Injektion ist eine
+            Creator-Aktion; ein aktiver System-Kill-Switch blockiert sie mit <code>HTTP 423</code>.
+          </p>
+          <div className="metrics">
+            {[
+              {k: "Injektionen", v: String(num(summary.total)), s: "bisher dokumentiert"},
+              {k: "Überlebt", v: String(num(summary.survived)), s: "SURVIVED"},
+              {k: "Beeinträchtigt", v: String(num(summary.degraded)), s: "DEGRADED — sichtbar gemeldet"},
+              {k: "Fehlgeschlagen", v: String(num(summary.failed)), s: "FAILED — als Fehlerfall geführt"},
+              {k: "Nicht ausgelöst", v: String(num(summary.notInjected)), s: "NOT_INJECTED — kein Nachweis"}
+            ].map(metric => (
+              <div className="metric" key={metric.k}>
+                <small>{metric.k}</small>
+                <strong>{metric.v}</strong>
+                <span>{metric.s}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="headerActions">
+            {(["PROCESS_ABORT", "WORKER_LOSS", "NETWORK_LOSS", "DUPLICATE_JOB", "CONCURRENT_WRITE", "STORE_TAMPER"] as const).map(kind => (
+              <button key={kind} onClick={() => void post("/api/faults", {action: "inject", kind})}>
+                {kind}
+              </button>
+            ))}
+          </div>
+
+          <small>PROZESSABSTURZ DES DIENSTES (SIGKILL, ECHTER NEUSTART)</small>
+          {!crash && <p className="emptyNote">Kein Bericht vorhanden — <code>node scripts/fault-injection.mjs</code> ausführen.</p>}
+          {crash && (
+            <div className="experiment">
+              <div>
+                <b>
+                  {String(crash.outcome ?? "UNBEKANNT")} · {String(num(crash.passed))}/{String(num(crash.passed) + num(crash.failed))} Prüfungen
+                </b>
+                <StatusBadge status={crash.outcome === "SURVIVED" ? "COMPLETED" : "ERROR"} />
+              </div>
+              <small>
+                {String(num(crash.cycles))} Absturzzyklen · {String(crash.service ?? "Dienst")} · {String(crash.base ?? "")} · {String(crash.ranAt ?? "")}
+              </small>
+              {crashChecks.slice(0, 5).map((check, index) => (
+                <small key={`${String(check.name)}-${index}`}>
+                  <b>Nicht bestanden:</b> {String(check.name)} — {String(check.detail ?? "")}
+                </small>
+              ))}
+              {crashChecks.length === 0 && <small>Alle Prüfungen bestanden: Sitzung, Daten, Job-Identität, Lease-Ablauf, Audit-Kette, Store-Digests.</small>}
+            </div>
+          )}
+
+          <small>SABOTAGEPROBEN (SUITEN MÜSSEN SCHWÄCHUNGEN ERKENNEN)</small>
+          {!sabotage && <p className="emptyNote">Kein Bericht vorhanden — <code>node scripts/sabotage.mjs</code> ausführen.</p>}
+          {sabotage && (
+            <>
+              <p className="privacy">
+                {String(num(sabotage.total))} Proben · erkannt {sabotageCaught} · nicht erkannt {sabotageMissed} · ungültig {sabotageInvalid} ·{" "}
+                {String(sabotage.ranAt ?? "")}
+              </p>
+              {sabotageResults.map(result => (
+                <div className="experiment" key={String(result.id)}>
+                  <div>
+                    <b>{String(result.id)}</b>
+                    <StatusBadge status={result.outcome === "CAUGHT" ? "COMPLETED" : result.outcome === "MISSED" ? "ERROR" : "WAITING"} />
+                  </div>
+                  <span>{String(result.title ?? "")}</span>
+                  <small>
+                    {String(result.outcome)} · {String(Array.isArray(result.tests) ? result.tests.join(", ") : "")}
+                  </small>
+                </div>
+              ))}
+            </>
+          )}
+
+          <small>INJEKTIONSKATALOG</small>
+          {catalog.map(entry => (
+            <div className="experiment" key={String(entry.kind)}>
+              <b>{String(entry.kind)}</b>
+              <span>{String(entry.title ?? "")}</span>
+              <small>Erwartet: {String(entry.expected ?? "")}</small>
+              <small>Prüfung: {String(entry.probe ?? "")}</small>
+            </div>
+          ))}
+
+          <small>BISHERIGE INJEKTIONEN</small>
+          {faults === null && <p className="emptyNote">{loadedOnce ? "nicht verfügbar" : "wird geladen …"}</p>}
+          {faults !== null && injections.length === 0 && <p className="emptyNote">Noch keine Injektion ausgeführt.</p>}
+          {injections.map(injection => (
+            <div className="experiment" key={String(injection.faultId)}>
+              <div>
+                <b>
+                  {String(injection.faultId)} · {String(injection.kind)}
+                </b>
+                <StatusBadge status={injection.outcome === "SURVIVED" ? "COMPLETED" : injection.outcome === "FAILED" ? "ERROR" : "WAITING"} />
+              </div>
+              <span>{String(injection.observed ?? "")}</span>
+              <small>
+                {String(injection.outcome)} · Ziel {String(injection.target ?? "—")} · {String(injection.recordedAt ?? "")}
+              </small>
+              {((injection.checks ?? []) as Row[]).filter(check => check.ok !== true).map((check, index) => (
+                <small key={`${String(injection.faultId)}-${index}`}>
+                  <b>Nicht bestanden:</b> {String(check.name)} — {String(check.detail ?? "")}
+                </small>
+              ))}
+              {injection.evidenceId ? <small>Evidenz {String(injection.evidenceId)} · Wissen {String(injection.knowledgeId ?? "—")} · Fehlerfall {String(injection.failureId ?? "—")}</small> : null}
+            </div>
+          ))}
         </section>
       );
     }

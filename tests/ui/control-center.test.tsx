@@ -182,15 +182,15 @@ afterEach(() => {
 });
 
 describe("Control Center Oberfläche", () => {
-  it("zeigt alle 20 Abschnitte in der Navigation", async () => {
+  it("zeigt alle 42 Abschnitte in der Navigation", async () => {
     await render();
     const labels = [...container.querySelectorAll("nav button")].map(button => button.textContent?.replace("›", "").trim());
     // Vollständige Navigationsliste (Abschnitt 34): jeder Eintrag ist an eine
     // echte Serverroute gebunden.
-    for (const label of ["Übersicht", "Missionen", "Service-Level", "Objectives", "Aufgaben", "Agenten", "Warteschlange", "Runs", "Sandboxes", "Runtimes", "Evidenz", "Audit", "Provenance", "Timeline / Replay", "Wissen", "Experimente", "Wissenschaft", "Fehlerfälle", "Recovery", "Regression", "Creator-Inbox", "Freigaben", "Governance", "Sicherheit", "Datenschutz", "Provider", "Geräte", "Computer Use", "CI/CD-Pipeline", "Tests", "Betrieb/Persistenz", "Metriken", "Secrets", "Werkzeuge", "Skills", "Werkstatt", "Simulation", "Galerie", "Apps"]) {
+    for (const label of ["Übersicht", "Missionen", "Service-Level", "Objectives", "Aufgaben", "Agenten", "Warteschlange", "Runs", "Sandboxes", "Runtimes", "Evidenz", "Audit", "Provenance", "Timeline / Replay", "Observatory", "Wissen", "Experimente", "Wissenschaft", "Fehlerfälle", "Recovery", "Regression", "Fehlerinjektion", "Creator-Inbox", "Freigaben", "Governance", "Sicherheit", "Datenschutz", "Provider", "Geräte", "Computer Use", "CI/CD-Pipeline", "Deployment", "Tests", "Betrieb/Persistenz", "Metriken", "Secrets", "Werkzeuge", "Skills", "Werkstatt", "Simulation", "Galerie", "Apps"]) {
       expect(labels).toContain(label);
     }
-    expect(labels.length).toBeGreaterThanOrEqual(39);
+    expect(labels.length).toBeGreaterThanOrEqual(42);
   });
 
   it("rendert echte Daten statt Platzhaltern", async () => {

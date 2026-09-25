@@ -1865,44 +1865,37 @@
    "phase": "P4",
    "requirement": "Fehlerinjektion (Prozessabsturz, Worker-Verlust, Netzwerkverlust, doppelte Jobs, konkurrierende Schreibvorgänge).",
    "implementation": [
+    "lib/fault-injection.ts",
+    "lib/fault-harness.ts",
     "lib/queue.ts",
     "lib/worker.ts"
    ],
    "tests": [
     {
+     "file": "tests/integration/fault-injection.test.ts",
+     "min": 10
+    },
+    {
      "file": "tests/integration/worker-recovery.test.ts",
      "min": 8
     }
    ],
-   "ui": [],
+   "ui": [
+    "Faults"
+   ],
    "evidence": [
     {
-     "kind": "file",
-     "path": "tests/integration/worker-recovery.test.ts"
-    }
-   ],
-   "docs": [
-    "docs/TESTING.md"
-   ],
-   "status": "PARTIAL",
-   "note": "Kontrolliertes Scheitern, Lease-Ablauf, Nebenläufigkeit und Recovery während Recovery sind abgedeckt; ein echter Prozessabsturz des Servers, Netzwerkverlust und konkurrierende Schreibvorgänge auf denselben Store sind nicht injiziert."
-  },
-  {
-   "id": "TEST-004",
-   "area": "Teststrategie",
-   "phase": "P4",
-   "requirement": "Sabotageproben belegen, dass die Suiten Schwächungen tatsächlich erkennen.",
-   "implementation": [
-    "docs/TESTING.md"
-   ],
-   "tests": [
+     "kind": "script",
+     "script": "scripts/fault-injection.mjs"
+    },
     {
-     "file": "tests/unit/slo.test.ts",
-     "min": 9
-    }
-   ],
-   "ui": [],
-   "evidence": [
+     "kind": "route",
+     "method": "GET",
+     "path": "/api/faults",
+     "expect": [
+      200
+     ]
+    },
     {
      "kind": "file",
      "path": "docs/TESTING.md"
@@ -1911,8 +1904,46 @@
    "docs": [
     "docs/TESTING.md"
    ],
-   "status": "PARTIAL",
-   "note": "Sabotageproben wurden manuell gefahren und dokumentiert (Backup-Aufbewahrung, Enrollment fail closed, SLO-UNKNOWN); sie laufen nicht automatisiert in CI."
+   "status": "PASS",
+   "note": "Sechs Injektionsarten verändern echten Zustand (Prozessabbruch, Worker-Verlust, Netzwerkverweigerung fail closed, doppelter Job, konkurrierende Schreibvorgänge, Store-Manipulation) und werden gegen Store-Integrität, Event- und Audit-Kette geprüft; nicht ausgelöst = NOT_INJECTED, nie „überlebt“. `scripts/fault-injection.mjs` tötet den Dienst zweimal per SIGKILL und prüft nach echtem Neustart Sitzung, Daten, Job-Identität, Lease-Ablauf, Audit-Kette und Store-Digests (28/28)."
+  },
+  {
+   "id": "TEST-004",
+   "area": "Teststrategie",
+   "phase": "P4",
+   "requirement": "Sabotageproben belegen, dass die Suiten Schwächungen tatsächlich erkennen.",
+   "implementation": [
+    "scripts/sabotage.mjs",
+    "docs/acceptance/sabotage-probes.json"
+   ],
+   "tests": [
+    {
+     "file": "tests/unit/sabotage-plan.test.ts",
+     "min": 6
+    },
+    {
+     "file": "tests/security/promotion-gates.test.ts",
+     "min": 10
+    }
+   ],
+   "ui": [
+    "Faults"
+   ],
+   "evidence": [
+    {
+     "kind": "script",
+     "script": "scripts/sabotage.mjs"
+    },
+    {
+     "kind": "file",
+     "path": ".github/workflows/ci.yml"
+    }
+   ],
+   "docs": [
+    "docs/TESTING.md"
+   ],
+   "status": "PASS",
+   "note": "Acht Proben schwächen tragende Regeln ab (Egress-Allowlist fail closed, Audit-Kette, Replay auf beiden Ebenen, Freigabe, Kill-Switch, Geräte-Enrollment, Store-Digest, Staging-Stufe) und verlangen, dass die zuständigen Suiten rot werden: 8/8 erkannt. Der Lauf ist Pflichtstufe in CI; ein nicht erkannter Angriff bricht ab (Exit 1), ein ungültiger Anker ebenfalls (Exit 2). Die dabei gefundenen Deckungslücken (Freigabe- und Staging-Gate ohne echte Zusicherung) sind in tests/security/promotion-gates.test.ts geschlossen."
   },
   {
    "id": "LIVE-001",

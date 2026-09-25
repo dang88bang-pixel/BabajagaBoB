@@ -126,6 +126,7 @@ beforeAll(async () => {
     "/api/provenance": (await import("../../app/api/provenance/route")).GET as Handler,
     "/api/observatory": (await import("../../app/api/observatory/route")).GET as Handler,
     "/api/deployment": (await import("../../app/api/deployment/route")).GET as Handler,
+    "/api/faults": (await import("../../app/api/faults/route")).GET as Handler,
     "/api/metrics": (await import("../../app/api/metrics/route")).GET as Handler,
     "/api/alerts": (await import("../../app/api/alerts/route")).GET as Handler
   };
@@ -177,7 +178,7 @@ describe("Control Center gegen echte Routen", () => {
     await renderUi(true);
     expect(container.textContent).toContain("Creator");
 
-    for (const section of ["Fehlerfälle", "Agenten", "Missionen", "Objectives", "Aufgaben", "Warteschlange", "Runs", "Sandboxes", "Runtimes", "Evidenz", "Audit", "Provenance", "Timeline / Replay", "Observatory", "Wissen", "Deployment", "Experimente", "Wissenschaft", "Recovery", "Regression", "Creator-Inbox", "Freigaben", "Governance", "Sicherheit", "Datenschutz", "Provider", "Geräte", "Computer Use", "CI/CD-Pipeline", "Tests", "Betrieb/Persistenz", "Werkzeuge", "Skills", "Werkstatt", "Simulation", "Galerie", "Apps"]) {
+    for (const section of ["Fehlerfälle", "Agenten", "Missionen", "Objectives", "Aufgaben", "Warteschlange", "Runs", "Sandboxes", "Runtimes", "Evidenz", "Audit", "Provenance", "Timeline / Replay", "Observatory", "Wissen", "Deployment", "Experimente", "Wissenschaft", "Recovery", "Regression", "Fehlerinjektion", "Creator-Inbox", "Freigaben", "Governance", "Sicherheit", "Datenschutz", "Provider", "Geräte", "Computer Use", "CI/CD-Pipeline", "Tests", "Betrieb/Persistenz", "Werkzeuge", "Skills", "Werkstatt", "Simulation", "Galerie", "Apps"]) {
       await click(section);
       expect(container.textContent, `Abschnitt ${section} meldet einen Ausfall`).not.toContain("nicht verfügbar");
     }
@@ -217,6 +218,32 @@ describe("Control Center gegen echte Routen", () => {
     // nicht (kein Lesezugriff auf Geheimnisse), es gibt keine Platzhalterwerte.
     await click("Secrets");
     expect(container.textContent).toContain("KEIN LESEZUGRIFF");
+  });
+
+  it("zeigt Fehlerinjektion, Absturzbericht und Sabotageproben als echten Zustand", async () => {
+    // Eine echte Injektion in denselben Speicher, den die Route liest.
+    const faults = await import("../../lib/fault-injection");
+    const injection = await faults.injectFault({kind: "DUPLICATE_JOB", requestedBy: "CREATOR"});
+    expect(injection.outcome).toBe("SURVIVED");
+
+    await renderUi(true);
+    await click("Fehlerinjektion");
+    const text = container.textContent ?? "";
+
+    // Der Katalog kommt aus der Route, nicht aus dem Bauteil.
+    for (const kind of ["PROCESS_ABORT", "WORKER_LOSS", "NETWORK_LOSS", "DUPLICATE_JOB", "CONCURRENT_WRITE", "STORE_TAMPER"]) {
+      expect(text, `Katalogart ${kind} fehlt`).toContain(kind);
+    }
+    // Die echte Injektion ist sichtbar — mit Ergebnis, nicht als Platzhalter.
+    expect(text).toContain(injection.faultId);
+    expect(text).toContain("SURVIVED");
+    expect(text).toContain(injection.observed.slice(0, 20));
+
+    // Berichte der Skriptprüfer fehlen hier (nicht gelaufen) — das wird gesagt,
+    // nicht verschwiegen; erfunden wird nichts.
+    expect(text).toContain("scripts/fault-injection.mjs");
+    expect(text).toContain("scripts/sabotage.mjs");
+    expect(text).toContain("Kein Bericht vorhanden");
   });
 
   it("zeigt ohne Session die Anmeldemaske und keine Daten", async () => {

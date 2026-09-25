@@ -41,7 +41,7 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 | Betriebsmetriken | Prometheus-Text unter `GET /api/metrics` (Session-pflichtig), aus Stores/Integritätsprüfungen, nur Zahlen | `lib/metrics.ts`, `tests/integration/metrics-backup.test.ts` |
 | Datenintegrität (aus Live-Prüfung) | **gefundener Fehler behoben:** der Backup-Pfad legte für noch nie beschriebene Stores einen Envelope mit `payload: null` und gültigem Digest an; `/api/inbox` lieferte dadurch 500. Jetzt: Schreiben von `null` wird verweigert, Lesen erkennt und repariert den Zustand (journalliert), `POST /api/persistence {action:"repair"}` saniert alle Stores (auditiert) | `lib/persistence/store.ts`, `app/api/persistence/route.ts`, `tests/unit/store-migration.test.ts` |
 | Deployment (Ausrollen/Rückroll) | **VERIFIED** – Release-Slots mit sha256-Digest, Gates (Staging mit ausdrücklich quittierten Lücken, Produktion weiter gesperrt), sieben Health-Checks inkl. echter HTTP-Antworten, Rückroll nur mit unversehrtem Vorgänger; „aktiv“ erst nach gemessener Build-ID **aus dem Slot**. Live: `STAGED` → Supervisor startet aus dem Slot → Datensatz `ACTIVE` | `lib/release.ts`, `lib/deployment.ts`, `scripts/release-supervisor.sh`, `app/api/deployment/route.ts` |
-| Control Center an echte Daten | Alle **40 Abschnitte** gebunden; die Bereiche aus §26 der Spezifikation sind vollständig enthalten (Dashboard→Übersicht, Artifacts→Evidenz, Activity/Timeline/Replay→Timeline / Replay, Deployments→CI/CD-Pipeline, Settings→Betrieb/Persistenz); leer = „keine Einträge“, fehlend = „nicht verfügbar“; live alle 38 Routen mit 200 geprüft | `components/control-center.tsx`, `tests/ui/control-center.test.tsx`, `tests/ui/control-center-api.test.tsx` |
+| Control Center an echte Daten | Alle **42 Abschnitte** gebunden; die Bereiche aus §26 der Spezifikation sind vollständig enthalten (Dashboard→Übersicht, Artifacts→Evidenz, Activity/Timeline/Replay→Timeline / Replay, Deployments→CI/CD-Pipeline, Settings→Betrieb/Persistenz); leer = „keine Einträge“, fehlend = „nicht verfügbar“; live alle 39 Routen mit 200 geprüft | `components/control-center.tsx`, `tests/ui/control-center.test.tsx`, `tests/ui/control-center-api.test.tsx` |
 | Supply Chain | GitHub-Actions auf Commit-SHAs gepinnt (checkout v4.3.0, setup-node v4.4.0) | `.github/workflows/ci.yml` |
 | Creator Inbox | `POST {action:"resolve"}` war unerreichbar (stand hinter einem `return`): jede Anfrage legte einen neuen Eintrag an. Jetzt eigener Zweig, Creator-Pflicht, Validierung, Ablehnung doppelter Beantwortung | `app/api/inbox/route.ts`, `tests/security/inbox-route.test.ts` |
 | Ausführungs-Evidenz | jede autorisierte Ausführung erzeugt einen **digestgebundenen, persistenten** Evidenzdatensatz (`ART-…`, SHA-256 über den gespeicherten Inhalt), verknüpft in Provenance (Knoten `EVIDENCE` + Kante) und Audit (`evidence.record` mit Digest); `GET /api/artifacts?verify=…` prüft erneut; Inhalte > 8 KiB werden sichtbar gekürzt (`truncated`) | `lib/artifacts.ts`, `lib/execution-broker.ts`, `tests/integration/execution-evidence.test.ts` |
@@ -72,7 +72,7 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 
 | Nachweis | Ergebnis |
 |---|---|
-| Automatisierte Tests | **54 Dateien / 336 Tests grün** (`npx vitest run`; Unit 80, Security 112, Integration 105, Regression 15, UI 12, E2E 11) |
+| Automatisierte Tests | **57 Dateien / 371 Tests grün** (`npx vitest run`; Unit 93, Security 124, Integration 115, Regression 15, UI 13, E2E 11) |
 | Betriebsprüfung aller Routen | `scripts/audit-api.sh`: **242 Prüfungen / 0 Fehler** (Exit 0), 9 Abschnitte inkl. autonomer Fehlerkette, Observatory/Warum-Record/Status-Modell; wiederholbar gegen dieselbe Instanz |
 | Vollständige Aktions-/Attributprüfung | `scripts/audit-actions.mjs`: **517 Prüfungen / 0 Fehler** (Exit 0) — Matrix aus dem Quellcode (40 POST-Routen, 129 Aktionen), inkl. „destruktive Aktion ohne Attribut → 400 statt stillem Erfolg“, Attributtypen, 14 Interaktionsketten bis `REGRESSION_LOCKED` |
 | Statische Gates | `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler (10 Warnungen); `npm run build` erfolgreich (Exit-Code geprüft, nicht nur Ausgabe) |
@@ -103,7 +103,7 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 | Computer Use | Vertrag + Zustandsmaschine + Autorisierung; kein Browser-/Desktop-Treiber angebunden |
 | Simulation/Visualisierung | Szenarien und Visualisierungsarten persistent, aber keine Renderer/Ausführung |
 | Runtime-Registry | 3 Definitionen (Node 22, Python 3.13, Custom OCI), erweiterbar; kein automatisches Provisionieren |
-| Control Center UI | 40 Abschnitte, jeder an echte Serverdaten gebunden (kein Platzhalterzustand), jsdom-Renderingtests gegen echte Routen-Handler; Browser-E2E offen |
+| Control Center UI | 42 Abschnitte, jeder an echte Serverdaten gebunden (kein Platzhalterzustand), jsdom-Renderingtests gegen echte Routen-Handler; Browser-E2E offen |
 | Metrik-Alarmierung | Export und Empfehlungen vorhanden; kein Scraper/Alertmanager im Repository |
 | Backup-Automation | Backup/Restore implementiert und geprüft; kein geplanter Job und keine Rotation |
 | Legacy-Token | Standardmäßig deaktiviert; Aktivierung nur mit ausdrücklicher Freigabe (dokumentiert, nicht empfohlen) |
@@ -123,7 +123,7 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 - Verhalten über lange Betriebszeit: ein **Dauerlauf über Stunden/Lastkurve** fehlt
   (`scripts/soak.mjs` läuft begrenzt **mit** Schwellen; `lib/slo.ts` bewertet den Zustand, sagt aber
   keine SLO für Dauerbetrieb zu) — `NOT_VERIFIED`.
-- Echte Browser-Darstellung des Control Centers (Playwright/Browser-E2E). Das Rendering ist unter jsdom getestet (`tests/ui/control-center.test.tsx`: 40 Abschnitte, echte Daten, „nicht verfügbar“-Meldung, Anmeldemaske; `tests/ui/control-center-api.test.tsx`: echte Routen-Handler, Metriken und Secret-Grenze).
+- Echte Browser-Darstellung des Control Centers (Playwright/Browser-E2E). Das Rendering ist unter jsdom getestet (`tests/ui/control-center.test.tsx`: 42 Abschnitte, echte Daten, „nicht verfügbar“-Meldung, Anmeldemaske; `tests/ui/control-center-api.test.tsx`: echte Routen-Handler, Metriken und Secret-Grenze).
 
 ## G. Sicherheitsgrenzen
 
@@ -159,7 +159,7 @@ Keine Erfolgsaussage stützt sich auf Mock-Verhalten; Simulationen
   fehlender Messwert = `UNKNOWN`), **Status-Modell** (5 Tests: jeder deklarierte Zustand beschrieben,
   jeder Tone hat eine CSS-Regel, unbekannte Werte nie „gesund", nur echte Endzustände terminal, jeder
   neue Zustand hat einen Produzenten) und der Offline-Vektorindex.
-- Security (**17 Dateien / 113 Tests**): Authority-Invarianten (inkl. Token-Ablauf und
+- Security (**18 Dateien / 124 Tests**): Authority-Invarianten (inkl. Token-Ablauf und
   Wiederholungssperre), API-Guard, API-Gate, Routen-Guards, direkt aufgerufene Routen ohne Gate,
   argv-Policy, Creator-Login, Lockout, TOTP, Inbox, **Routenvertrag rekursiv** (auch verschachtelte
   Routen), Token-Leseprojektion ohne `secretHash`, Geräte-Registrierung, Kausalintegrität.
@@ -172,7 +172,7 @@ Keine Erfolgsaussage stützt sich auf Mock-Verhalten; Simulationen
 - Regression (**3 Dateien / 15 Tests**): Regression Engine, Quellvertrag der Oberfläche (inkl. des
   Renderpfads für Zustandsspalten über das Status-Modell) und der Isolationsbericht.
 - UI (**2 Dateien / 12 Tests**): Control Center unter jsdom mit vollständiger Navigation
-  (**40 Abschnitte**), echten Routen-Handlern (**38 Routen**, inklusive Observatory), ausgewiesener
+  (**42 Abschnitte**), echten Routen-Handlern (**39 Routen**, inklusive Observatory), ausgewiesener
   Geräte-Autorisierung und Backup-Automation.
 - E2E (**4 Dateien / 11 Tests**): Erfolgskette Creator → Knowledge, Fehlerkette bis `REGRESSION_LOCKED`
   und die **Abnahmekette** über alle 18 Stufen der Zielkette (API, Persistenz, Audit/Event, Provenance).
@@ -184,7 +184,7 @@ Keine Erfolgsaussage stützt sich auf Mock-Verhalten; Simulationen
   `scripts/audit-api.sh` (**227 / 0**, inkl. Abschnitt 8: Observatory, Warum-Record, Status-Modell),
   `scripts/audit-ui.mjs` (**90 / 0**, 46 Datenabrufe, 30 Abschnitte mit echten Zeilen),
   `scripts/soak.mjs` (40 autorisierte Ausführungen, p95 2,22 s, Budget 5 s) **`MEETS_BUDGET`**.
-- Gesamt: **54 Dateien / 336 Tests grün** (Unit 80, Security 113, Integration 105, Regression 15, UI 12,
+- Gesamt: **57 Dateien / 371 Tests grün** (Unit 93, Security 124, Integration 115, Regression 15, UI 13,
   E2E 11); `tsc --noEmit` fehlerfrei, `eslint .` 0 Fehler / 10 Warnungen, `npm run build` erfolgreich.
 
 Details und Befehle: `docs/TESTING.md`.
