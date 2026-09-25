@@ -25,6 +25,18 @@ export function discoverDevice(device:Omit<Device,"authorized"|"state">){
   const existing=devices.find(d=>d.id===device.id);if(existing)return clone(existing);const d={...device,authorized:false,state:"DISCOVERED" as const};devices.push(d);persist();observe({type:"device.discovered",message:`Gerät ${d.id} entdeckt (Discovery ≠ Autorisierung)`,status:"WAITING",actor:"AG-INT",agentId:"AG-INT",action:"device.discover",resource:d.id,argumentsValue:{os:d.os,capabilities:d.capabilities}});return clone(d)}
 export function authorizeDevice(id:string,authorized=true,actor="CREATOR"){const d=devices.find(x=>x.id===id);if(!d)throw new Error("device not found");if(actor!=="CREATOR")throw new Error("device authorization requires Creator authority");if(d.state==="UNKNOWN"||d.state==="DISCOVERED"||d.state==="IDENTIFIED")d.state=authorized?"AUTHORIZED":"RELEASED";d.authorized=authorized;persist();observe({type:authorized?"device.authorized":"device.revoked",message:`Gerät ${id}: ${authorized?"autorisiert":"widerrufen"}`,status:authorized?"COMPLETED":"BLOCKED",actor,action:"device.authorize",resource:id,decision:authorized?"ALLOW":"DENY"});return clone(d)}
 export function allocateDevice(id:string,taskId:string){const d=devices.find(x=>x.id===id);if(!d)throw new Error("device not found");if(!d.authorized||!["AUTHORIZED","AVAILABLE"].includes(d.state))throw new Error("device is not authorized/available");d.state="ALLOCATED";d.currentTaskId=taskId;persist();observe({type:"device.allocated",message:`Gerät ${id} an ${taskId} gebunden`,status:"RUNNING",actor:"AG-OPS",agentId:"AG-OPS",taskId,action:"device.allocate",resource:id});return clone(d)}
+
+/** Wählt deterministisch das am besten geeignete autorisierte, verfügbare Gerät. */
+export function scheduleDevice(taskId:string,requirements:{cpu?:number;ramMb?:number;gpu?:string;os?:string;arch?:string;capabilities?:string[];network?:DeviceNetwork}={}){
+ if(typeof taskId!=="string"||taskId.trim().length===0)throw new Error("taskId required");
+ const cpu=Math.max(1,Number(requirements.cpu??1)); const ramMb=Math.max(1,Number(requirements.ramMb??1));
+ const requiredCaps=(requirements.capabilities??[]).map(String).filter(Boolean);
+ const candidates=devices.filter(d=>d.authorized&&["AUTHORIZED","AVAILABLE"].includes(d.state)&&d.cpu>=cpu&&d.ramMb>=ramMb&&(requirements.gpu===undefined||requirements.gpu==="none"||d.gpu===requirements.gpu)&&(requirements.os===undefined||d.os===requirements.os)&&(requirements.arch===undefined||d.arch===requirements.arch)&&(requirements.network===undefined||d.network===requirements.network)&&requiredCaps.every(c=>d.capabilities.includes(c)));
+ if(candidates.length===0)throw new Error("no authorized device satisfies requirements");
+ const score=(d:Device)=>{const cpuSlack=d.cpu-cpu;const ramSlack=d.ramMb-ramMb;const load=d.state==="AVAILABLE"?0:1;return load*1_000_000+cpuSlack*1000+ramSlack;};
+ candidates.sort((a,b)=>score(a)-score(b)||a.id.localeCompare(b.id));
+ return allocateDevice(candidates[0].id,taskId);
+}
 export function releaseDevice(id:string){const d=devices.find(x=>x.id===id);if(!d)throw new Error("device not found");d.state="RELEASED";delete d.currentTaskId;persist();observe({type:"device.released",message:`Gerät ${id} freigegeben`,status:"COMPLETED",actor:"AG-OPS",agentId:"AG-OPS",action:"device.release",resource:id});return clone(d)}
 /**
  * Lebenszeichen eines gemeldeten Geräts.
