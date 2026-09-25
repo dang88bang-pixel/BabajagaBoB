@@ -45,6 +45,25 @@ export default tseslint.config(
     }
   },
   {
+    // Betriebs-/Nachweis-Skripte (Node, kein TypeScript): Node-Globals bekannt machen,
+    // statt sie als undefiniert zu melden. Sicherheitsregeln gelten weiter.
+    files: ["scripts/**/*.mjs", "scripts/**/*.js"],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      globals: {
+        process: "readonly",
+        console: "readonly",
+        fetch: "readonly",
+        URL: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly"
+      }
+    }
+  },
+  {
     files: ["tests/**/*.ts"],
     rules: {
       "@typescript-eslint/no-non-null-assertion": "off"

@@ -79,7 +79,8 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 | §49-Abnahme 2 (bewusster Fehler) | `tests/e2e/failure-recovery.test.ts` (Exit-Code 7) + Live-Schritt 6 |
 | §49-Abnahme 3 (blockierter Angriff) | fremder Sandbox-Bindungsversuch 409, unbekanntes Token 409, Shell-Programm/-Metazeichen 409, Audit-DENY + Evidenz; `tests/e2e/creator-flow.test.ts` Test 2, Live-Schritt 5 |
 | Gefundene und behobene Fehler | Upgrade-Blocker (Schemaerhöhung sperrte die Anmeldung aus, 500 → 201 nach Migration), Store-Vergiftung (`payload: null`), unerreichbarer Inbox-`resolve`-Zweig, fehlende Umgebungsbindung des Agentenwegs (`/api/runtime` erzwang `development`), ungeschützte GET-Methoden in sechs Routen, **Audit-Kürzung ohne Checkpoint** (falscher Alarm `sequence gap`/`chain break`, live gefunden → Checkpoint + Rekonstruktion), **Verweigerungsevidenz fehlte** (§49 verlangt Nachweis, nicht nur Log) — jeder Fix mit Regressionstest |
-| CI | Läufe `36090732676`, `36090186817`, `36086611264`, `36091730579` – alle grün |
+| Begrenzter Lastnachweis | `scripts/soak.mjs` (echte HTTP-Oberfläche, Kernel-Isolation aktiv): 2 × 120 autorisierte Ausführungen, 0 Fehler; p50 1,31 s / p95 2,33 s bei Nebenläufigkeit 4, p50 4,84 s / p95 6,66 s bei 8; Audit-Kette und Store-Integrität danach gültig. **Keine** SLO-Aussage (siehe `docs/OPERATIONS.md` §5a) |
+| CI | Läufe `36107372935`, `36107377587` (Commit `b2391bc`), davor `36104924399`, `36104927512`, `36104319789`, `36104323205`, `36097553143`, `36090732676`, `36090186817`, `36086611264` – alle grün |
 
 ## D. Teilimplementiert (PARTIAL)
 
@@ -197,7 +198,7 @@ Details und Befehle: `docs/TESTING.md`.
 | Provider/Device/Computer Use | **PARTIAL** | Verträge, Zustandsmaschinen und Autorisierung vollständig; keine echten externen Verbindungen/Treiber |
 | UI/Control Center | **PARTIAL** | Funktion vorhanden, keine Browser-E2E-Abdeckung |
 | Beobachtbarkeit/Betrieb | **PARTIAL** | Statusrouten, Events, Audit, Readiness, Prometheus-Export und geprüftes Backup vorhanden; kein Scraper/Alertmanager, keine geplante Rotation |
-| Last/Robustheit über Zeit | **NOT_VERIFIED** | Nebenläufigkeitsgrenze geprüft (12 parallel), aber keine SLO-/Durchsatz- oder Soak-Nachweise |
+| Last/Robustheit über Zeit | **PARTIAL / NOT_VERIFIED** | Nebenläufigkeitsgrenze geprüft (12 parallel, `load-broker`) und begrenzter Lastnachweis (2 × 120 Ausführungen, `scripts/soak.mjs`); **keine** SLO-Schwellen, keine Lastkurve, kein Dauerlauf |
 
 **Gesamtaussage:** Die Plattform erfüllt die Sicherheits- und Nachweisziele des
 Auftrags (`PASS` für Autorisierung, Persistenz, Kernkette, lokale Runtime). Sie ist

@@ -129,6 +129,36 @@ eine zweite gültige Anmeldung auf das nächste Zeitfenster.
 Der Live-Lauf ist der Nachweis gegen die **echte HTTP-Oberfläche**; er ist ausdrücklich keine
 Aussage über Produktionslast (keine Lastkurve, keine SLO-Messung).
 
+## 5a. Begrenzter Lastnachweis (`scripts/soak.mjs`)
+
+```bash
+BASE=http://localhost:3000 BOB_BOOTSTRAP_SECRET=… BOB_CREATOR_LOGIN_SECRET=… \
+SOAK_COUNT=120 SOAK_CONCURRENCY=4 SOAK_REPORT=/tmp/bob-soak.json node scripts/soak.mjs
+```
+
+Das Skript meldet sich an, legt Mission/Objective/Task/Sandbox an und führt `SOAK_COUNT`
+**autorisierte** Ausführungen über die echte HTTP-Oberfläche aus — je Ausführung wird ein eigenes
+Capability-Token ausgestellt und verbraucht (eine Autorisierung = eine Ausführung). Gemessen werden
+Latenz je Ausführung (min/p50/p95/p99/max), Durchsatz, Fehlerquote sowie der Zustand danach
+(Audit-Kette, Aufbewahrung, Store-Integrität, Isolationsstufe). Das Ergebnis wird als JSON
+geschrieben; der Exit-Code ist ungleich 0, sobald eine Ausführung scheitert.
+
+Gemessene Momentaufnahme (2026-09-25, `REAL_LOCAL` mit Kernel-Isolation `NAMESPACES`, dieselbe
+Maschine, Session-gebundene Creator-Anmeldung):
+
+| Lauf | Ausführungen | Nebenläufigkeit | Erfolg | p50 | p95 | Durchsatz | Audit/Stores danach |
+|---|---|---|---|---|---|---|---|
+| A | 120 | 4 | 120 / 0 | 1,31 s | 2,33 s | 2,11 /s | Kette gültig (`FULL_CHAIN`), Integrität 1 |
+| B | 120 | 8 | 120 / 0 | 4,84 s | 6,66 s | 1,14 /s | Kette gültig (`FULL_CHAIN`), Integrität 1 |
+
+Beobachtung (kein SLO): Mehr Nebenläufigkeit **erhöht** die Latenz und senkt den Durchsatz. Ursache
+ist die serielle Persistenz- und Mount-Arbeit je Ausführung (Datei-Store-Schreibvorgänge mit
+tmp+rename und fsync sowie der Aufbau der Isolation: `unshare`, Binds, `chroot`), nicht die CPU.
+Allein das Ausstellen eines Tokens kostet in diesem Betrieb p50 ≈ 0,41 s. Für höheren Durchsatz wäre
+ein anderer Persistenzpfad (gebündelte Schreibvorgänge) und ein vorbereiteter Rootfs-Mount nötig —
+beides ist hier `NOT_IMPLEMENTED`. Diese Zahlen sind eine Momentaufnahme eines begrenzten Laufs in
+dieser Umgebung: **keine** SLO-Zusage, **keine** Lastkurve, kein Dauerlauf.
+
 **Runbook „Isolation fehlt":** Meldet `GET /api/runtime` `level: "FILESYSTEM_ONLY"` und laufen
 Ausführungen mit 409 auf, dann fehlt der Rootfs (Volume nicht gemountet, Pfad falsch) oder die
 Umgebung erlaubt keine unprivilegierten User-Namespaces. Vorgehen: `bash scripts/build-ns-rootfs.sh`

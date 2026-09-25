@@ -151,6 +151,9 @@ Details: `docs/CI_CD.md`.
 - Die Kernel-Isolation ist **kein** Container: kein OCI-Image, kein `runc`, keine cgroup-Quotas
   (Ressourcenlimits bleiben zeitbasiert) und kein eigener Kernel. Sie ist als Stufe `NAMESPACES`
   ausgewiesen, nicht als `CONTAINER`; die Testsuite prüft die Garantien, die tatsächlich gelten.
+- Last-/Soak-Nachweis: `scripts/soak.mjs` misst einen **begrenzten** Lauf (120 autorisierte
+  Ausführungen je Lauf) mit Latenz-Perzentilen, Durchsatz und Zustand danach; die Zahlen stehen in
+  `docs/OPERATIONS.md` §5a. Es gibt **keine** SLO-Zusage, keine Lastkurve und keinen Dauerlauf.
 - `tests/integration/ns-isolation.test.ts` baut den Rootfs real (126 MB) und benötigt eine Umgebung,
   die unprivilegierte User-Namespaces erlaubt. Ist das nicht der Fall — GitHub-Runner beschränken
   unprivilegierte User-Namespaces per AppArmor —, meldet die Suite die Isolationsnachweise als
