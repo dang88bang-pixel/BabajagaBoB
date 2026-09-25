@@ -308,7 +308,7 @@ export class LocalWorkspaceRuntime implements SandboxRuntime {
     // Kernel-Isolation, wenn die Umgebung sie zulässt (BOB_NS_ISOLATION=auto|on).
     // Ist sie aktiv, gibt es keinen unisolierten Ausführungspfad.
     if (isolationActive()) {
-      return runIsolated(argv, {workspace: record.workspace, timeoutMs: timeout, sandboxId: record.sandboxId});
+      return runIsolated(argv, {workspace: record.workspace, timeoutMs: timeout, sandboxId: record.sandboxId, limits: record.limits});
     }
     if ((process.env.BOB_NS_ISOLATION ?? "auto").toLowerCase() === "on") {
       throw new Error(`kernel isolation is enforced (BOB_NS_ISOLATION=on) but unavailable: ${isolationReport().detail}`);

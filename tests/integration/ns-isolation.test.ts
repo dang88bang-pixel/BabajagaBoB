@@ -145,6 +145,97 @@ isolationDescribe("Kernel-Isolation (NAMESPACES)", () => {
     expect(result.accepted).toBe(false);
   }, 60_000);
 
+  it("erzwingt CPU-Zeit und Dateigröße kernel-seitig (rlimits)", async () => {
+    // Kleines CPU-Kontingent über eine lange Laufzeit: 200 Millicores × 8 s = 2 s CPU.
+    const burn = await ns.runIsolated(["node", "-e", "const t=Date.now();while(Date.now()-t<20000){}"], {
+      workspace: path.join(root, "work-cpu"),
+      timeoutMs: 8_000,
+      sandboxId: "SB-NS-CPU",
+      limits: {cpuMillicores: 200, memoryMb: 256, storageMb: 8, timeoutMs: 8_000, processes: 32}
+    });
+    expect(burn.accepted).toBe(false);
+    expect(burn.timedOut).toBe(false); // nicht das Wall-Clock-Timeout, sondern die CPU-Grenze
+    expect(burn.resourceLimits?.kernel).toContain("CPU_TIME");
+
+    const write = await ns.runIsolated(
+      [
+        "node",
+        "-e",
+        'try{require("fs").writeFileSync("/work/gross.bin",Buffer.alloc(4*1024*1024))}catch(e){process.stdout.write(e.code)}'
+      ],
+      {
+        workspace: path.join(root, "work-fsize"),
+        timeoutMs: 15_000,
+        sandboxId: "SB-NS-FSIZE",
+        limits: {cpuMillicores: 1000, memoryMb: 512, storageMb: 1, timeoutMs: 15_000, processes: 32}
+      }
+    );
+    expect(write.stdout).toBe("EFBIG");
+    // Der Kernel bricht den Schreibvorgang an der Grenze ab: die Datei ist höchstens
+    // so groß wie erlaubt (nicht 4 MB) — das ist der Nachweis, nicht die Fehlermeldung.
+    const written = fs.statSync(path.join(root, "work-fsize", "gross.bin")).size;
+    expect(written).toBeLessThanOrEqual(1024 * 1024);
+    expect(written).toBeLessThan(4 * 1024 * 1024);
+  }, 60_000);
+
+  it("erzwingt Speicher- und Prozesslimits über einen delegierten cgroup-Unterbaum", async () => {
+    if (ns.cgroupAvailable().available === false) return; // ohne Delegation nicht prüfbar
+    const limits = {cpuMillicores: 1000, memoryMb: 48, storageMb: 8, timeoutMs: 20_000, processes: 16};
+    const hog = await ns.runIsolated(
+      ["node", "-e", 'const a=[];for(;;)a.push(Buffer.alloc(8*1024*1024))'],
+      {workspace: path.join(root, "work-cgroup"), timeoutMs: 20_000, sandboxId: "SB-NS-CGROUP", limits}
+    );
+    expect(hog.accepted).toBe(false);
+    expect(hog.resourceLimits?.cgroup).toBe("ENFORCED");
+    expect(ns.isolationReport().enforced).toContain("CGROUP_MEMORY_LIMIT");
+    expect(ns.isolationReport().enforced).toContain("CGROUP_PIDS_LIMIT");
+
+    // Prozesslimit: bei pids.max = 16 scheitert das Erzeugen **gleichzeitig**
+    // laufender Prozesse (pids.current zählt nur lebende Prozesse), also deutlich
+    // vor dem Zählerstand, den es ohne Limit erreichen würde.
+    const forks = await ns.runIsolated(
+      [
+        "node",
+        "-e",
+        [
+          'const cp=require("child_process");',
+          'const kinder=[];let n=0;',
+          'for(;n<100;n++){try{kinder.push(cp.spawn("/bin/sleep",["5"]))}catch(e){break}}',
+          'for(const k of kinder)k.kill("SIGKILL");',
+          'setTimeout(()=>process.stdout.write(String(n)),50)'
+        ].join("")
+      ],
+      {workspace: path.join(root, "work-pids"), timeoutMs: 20_000, sandboxId: "SB-NS-PIDS", limits}
+    );
+    const started = Number(forks.stdout);
+    expect(Number.isFinite(started)).toBe(true);
+    expect(started).toBeLessThan(100);
+    // Kein Restverzeichnis: die Ausführung räumt ihren cgroup-Zweig auf.
+    expect(fs.readdirSync(ns.cgroupRoot() as string).filter(entry => entry.startsWith("bob-SB-NS-CGROUP"))).toEqual([]);
+  }, 90_000);
+
+  it("verweigert jede Ausführung, wenn cgroup-Limits konfiguriert aber nicht nutzbar sind", async () => {
+    const previous = process.env.BOB_CGROUP_DIR;
+    process.env.BOB_CGROUP_DIR = path.join(root, "kein-cgroup");
+    try {
+      vi.resetModules();
+      const strict = await import("../../lib/ns-isolation");
+      expect(strict.cgroupAvailable().available).toBe(false);
+      expect(strict.isolationReport(true).resourceLimits.cgroup).toBe("UNAVAILABLE");
+      await expect(
+        strict.runIsolated(["node", "-e", "1"], {
+          workspace: path.join(root, "work-nocgroup"),
+          timeoutMs: 5_000,
+          sandboxId: "SB-NS-NOCGROUP",
+          limits: {cpuMillicores: 1000, memoryMb: 128, storageMb: 8, timeoutMs: 5_000, processes: 16}
+        })
+      ).rejects.toThrow(/cgroup/);
+    } finally {
+      if (previous === undefined) delete process.env.BOB_CGROUP_DIR;
+      else process.env.BOB_CGROUP_DIR = previous;
+    }
+  }, 60_000);
+
   it("erkennt einen verschwundenen Rootfs und behauptet keine Isolation", async () => {
     vi.resetModules();
     const live = await import("../../lib/ns-isolation");

@@ -71,6 +71,7 @@ Steuerung (Umgebungsvariablen):
 | --- | --- | --- |
 | `BOB_NS_ISOLATION` | `auto` (Standard), `on`, `off` | `on` erzwingt Kernel-Isolation: fehlen die Voraussetzungen, wird die Ausführung **verweigert** statt unisoliert zu laufen. `off` deaktiviert sie ausdrücklich (nur für Diagnose). |
 | `BOB_NS_ROOTFS` | Pfad | Wurzeldateisystem der Isolation; Standard `${BOB_STORAGE_DIR}/ns-rootfs`. |
+| `BOB_CGROUP_DIR` | Pfad | Delegierter cgroup-v2-Unterbaum; nur dann werden Speicher- und Prozesslimits kernel-seitig durchgesetzt (sonst `UNAVAILABLE`). |
 | `BOB_NS_PROBE_FORCE_UNAVAILABLE` | `1` | Nur Diagnose/Testnachweis: meldet User-Namespaces als nicht verfügbar und belegt damit den Skip-Pfad der Testsuite und das fail-closed-Verhalten. |
 
 Rootfs bauen (Node + Bibliotheken + BusyBox, ca. 126 MB, ohne Netzwerkzugriff auf
@@ -90,10 +91,45 @@ isolierten Prozesses:
  "procs":1,"ifaces":"    lo:","routeLines":0,"ro":"EROFS","rw":"ok"}
 ```
 
-Belegte Grenzen (ehrlich, nicht „Container"): kein OCI-Image-Format, kein `runc`,
-keine cgroup-Quotas (Ressourcenlimits bleiben zeitbasiert), Rootfs wird aus dem
-Host-Binärbaum kopiert. Diese Isolationsstufe ist daher `NAMESPACES` und **nicht**
-`CONTAINER`; OCI bleibt in dieser Umgebung `NOT_VERIFIED`.
+### 2b. Ressourcenlimits (kernel-seitig, Mechanismen getrennt ausgewiesen)
+
+Zeit allein ist kein Ressourcenlimit. Deshalb werden die Sandbox-Limits zusätzlich
+kernel-seitig durchgesetzt — und zwar genau mit dem Mechanismus, der tatsächlich greift:
+
+| Limit | Mechanismus | Status |
+| --- | --- | --- |
+| CPU-Zeit | `RLIMIT_CPU` (Wrapper setzt `ulimit -t`) | **immer aktiv**, Überschreitung beendet den Prozess |
+| Dateigröße | `RLIMIT_FSIZE` (`ulimit -f`) | **immer aktiv**, Schreiben darüber scheitert mit `EFBIG` (Datei wird an der Grenze abgeschnitten) |
+| Speicher | `memory.max` im cgroup-v2-Unterbaum | nur mit delegiertem Unterbaum (`BOB_CGROUP_DIR`) — `ENFORCED`, sonst `UNAVAILABLE` |
+| Prozesse | `pids.max` im cgroup-v2-Unterbaum | dito |
+| Ausgabemenge | Begrenzung des erfassten stdout/stderr (Broker/Runtime) | immer aktiv |
+| Node-Heap | `NODE_OPTIONS=--max-old-space-size` (V8, kein Kernel-Limit) | aktiv, **nicht** als Kernel-Garantie gezählt |
+
+Warum nicht immer cgroups: `RLIMIT_AS` bricht Node (V8 reserviert großen Adressraum, der
+Prozess startet dann nicht) und `RLIMIT_NPROC` zählt pro Host-UID — eine Sandbox würde damit
+alle Prozesse desselben Benutzers drosseln, also die ganze Plattform. Beides ist bewusst
+**nicht** im Einsatz; der delegierte cgroup-Unterbaum ist der saubere Weg und wird genutzt,
+sobald er verfügbar ist.
+
+Setup der Delegation (einmalig, mit Administratorrechten; `bob` = Benutzer der Plattform):
+
+```bash
+sudo mkdir -p /sys/fs/cgroup/bob
+sudo chown $(id -u):$(id -g) /sys/fs/cgroup/bob
+echo "+cpu +memory +pids" | sudo tee /sys/fs/cgroup/bob/cgroup.subtree_control
+export BOB_CGROUP_DIR=/sys/fs/cgroup/bob
+```
+
+Ist `BOB_CGROUP_DIR` gesetzt, aber nicht nutzbar (fehlt, nicht beschreibbar), dann werden
+Ausführungen mit Limits **verweigert** statt still ohne Limit zu laufen. `GET /api/runtime`
+weist unter `isolation.resourceLimits` aus, welche Mechanismen greifen
+(`kernel: ["CPU_TIME","FILE_SIZE"]`, `cgroup: "ENFORCED" | "UNAVAILABLE"`, plus Begründung);
+jede Ausführung trägt denselben Zustand in der Evidenz (`resourceLimits`).
+
+Belegte Grenzen (ehrlich, nicht „Container"): kein OCI-Image-Format, kein `runc`, kein eigener
+Kernel, Rootfs wird aus dem Host-Binärbaum kopiert, keine Namensraum-übergreifende Netzwerk-
+oder Dateisystem-Policy. Diese Isolationsstufe ist daher `NAMESPACES` und **nicht** `CONTAINER`;
+OCI bleibt in dieser Umgebung `NOT_VERIFIED`.
 
 ## 3. Runtime-Registry (viele Sprachen/Umgebungen)
 

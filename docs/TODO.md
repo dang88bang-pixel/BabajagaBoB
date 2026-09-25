@@ -39,7 +39,7 @@ Live-Nachweis über 114 HTTP-Prüfungen (inkl. Agentenweg über Capability-Token
 | ~~Recovery-Tier-Ableitung~~ | erledigt | automatische, begründete Klassifikation in `lib/recovery-tier.ts` (Tests: `tests/unit/recovery-tier.test.ts`) |
 | Alarmierung | Prometheus-Export vorhanden, aber kein Scraper/Alertmanager | Scraper + Alarmregeln aus `docs/OPERATIONS.md` §4a aufsetzen |
 | Backup-Automation | Backup/Restore mit Digest-Prüfung implementiert, aber manuell | geplanten Job und Aufbewahrungsregel ergänzen |
-| Last-/Soak-Tests | nicht durchgeführt | Nebenläufigkeits- und Langzeittest mit definierten SLOs |
+| ~~Last-/Soak-Tests~~ | begrenzter Nachweis erbracht (`scripts/soak.mjs`, 2 × 120 Ausführungen, Zahlen in `docs/OPERATIONS.md` §5a) | offen bleibt ein Langzeittest mit definierten SLO-Schwellen |
 
 ## 3. Nicht implementiert (bewusst)
 

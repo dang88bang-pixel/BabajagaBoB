@@ -344,6 +344,27 @@ assert_json "Rootfs ist read-only, Workspace bleibt schreibbar" '(.stdout | from
 assert_json "Nur das Loopback-Interface existiert" '(.stdout | fromjson | .ifaces) as $i | $i | test("^ *lo: *$")'
 assert_json "Keine Netzwerkroute (leere Routingtabelle im Namespace)" '(.stdout | fromjson | .routeLines) == 0'
 assert_json "Keine Host-Prozesse sichtbar" '(.stdout | fromjson | .procs) as $p | ($p > 0 and $p < 20)'
+# Ressourcenlimits: kernel-seitig, nicht nur per Zeitlimit. Eigene Sandbox mit
+# kleinem Dateilimit (1 MiB), damit die Grenze real greift.
+LSB=$(api -X POST -d "{\"action\":\"create\",\"type\":\"test\",\"taskId\":\"$ATID\",\"agentId\":\"AG-BUILD\",\"risk\":\"LOW\",\"limits\":{\"cpuMillicores\":500,\"memoryMb\":256,\"storageMb\":1,\"timeoutMs\":15000,\"processes\":16}}" "$BASE/api/sandboxes" >/dev/null; jqv '.sandbox.sandboxId')
+api -X POST -d "{\"action\":\"start\",\"sandboxId\":\"$LSB\"}" "$BASE/api/sandboxes" >/dev/null
+assert_status "Sandbox mit engen Ressourcenlimits (1 MiB Dateilimit)" 200 "$(api "$BASE/api/sandboxes")"
+assert_json "Limit ist an der Sandbox gebunden" "(.sandboxes[] | select(.sandboxId == \"$LSB\") | .status) != null"
+LIMIT_TOK=$(api -X POST -d "{\"action\":\"issue\",\"input\":{\"subject\":\"AG-BUILD\",\"taskId\":\"$ATID\",\"sandboxId\":\"$LSB\",\"environment\":\"test\",\"capabilities\":[\"task:execute\",\"sandbox:run\"],\"risk\":\"LOW\",\"issuedBy\":\"CREATOR\",\"issuedByKind\":\"CREATOR\",\"expiresAt\":\"$EXPIRES\"}}" "$BASE/api/authority" >/dev/null; jqv '.token.id')
+LIMIT_SEC=$(jqv '.secret')
+LIMIT_BODY=$(jq -n --arg tid "$ATID" --arg sid "$LSB" --arg tok "$LIMIT_TOK" --arg script 'try{require("fs").writeFileSync("/work/zu-gross.bin",Buffer.alloc(4*1024*1024))}catch(e){process.stdout.write(e.code)}' '{action:"execute",taskId:$tid,agentId:"AG-BUILD",sandboxId:$sid,capabilityTokenId:$tok,argv:["node","-e",$script]}')
+assert_status "Schreibversuch ueber dem Dateilimit" 200 "$(agent_call_with "$LIMIT_TOK" "$LIMIT_SEC" /api/runtime "$LIMIT_BODY")"
+assert_json "Kernel bricht den Schreibvorgang ab (EFBIG)" '.stdout == "EFBIG"'
+assert_json "Der Lauf weist die durchgesetzten Limits aus" '(.resourceLimits.kernel | index("CPU_TIME")) != null and (.resourceLimits.kernel | index("FILE_SIZE")) != null'
+if [ -n "${BOB_CGROUP_DIR:-}" ]; then
+  assert_json "Der Lauf lief unter cgroup-Limits" '.resourceLimits.cgroup == "ENFORCED"'
+fi
+assert_status "Isolationsbericht nennt die durchgesetzten Limits" 200 "$(api "$BASE/api/runtime")"
+assert_json "Ressourcenlimits werden getrennt nach Mechanismus ausgewiesen" '(.isolation.resourceLimits.kernel | length) >= 2 and ((.isolation.resourceLimits.cgroup == "ENFORCED") or (.isolation.resourceLimits.cgroup == "UNAVAILABLE"))'
+if [ -n "${BOB_CGROUP_DIR:-}" ]; then
+  assert_json "cgroup-Limits sind aktiv (Speicher/Prozesse)" '.isolation.resourceLimits.cgroup == "ENFORCED"'
+  assert_json "cgroup-Garantien sind benannt" '([.isolation.enforced[]] | index("CGROUP_MEMORY_LIMIT")) != null and ([.isolation.enforced[]] | index("CGROUP_PIDS_LIMIT")) != null'
+fi
 # Fail closed: ohne erzwungene Isolation darf gar nicht ausgefuehrt werden.
 assert_status "Isolationsbericht nennt die erzwungenen Garantien" 200 "$(api "$BASE/api/runtime")"
 assert_json "Isolation ist nicht nur angekuendigt" '([.isolation.enforced[]] | index("PID_NAMESPACE")) != null'

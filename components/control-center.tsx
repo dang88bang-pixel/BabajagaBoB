@@ -1449,12 +1449,21 @@ export default function ControlCenter() {
             <span className="privacy">
               NETZWERK · {(privacy?.policy as Row | undefined)?.networkDefault ? String((privacy?.policy as Row).networkDefault) : "DENY"}
             </span>
-            <span className="privacy" title={String((runtime?.isolation as Row | undefined)?.detail ?? "Isolationszustand unbekannt")}>
+            <span
+              className="privacy"
+              title={`${String((runtime?.isolation as Row | undefined)?.detail ?? "Isolationszustand unbekannt")} · ${String(((runtime?.isolation as Row | undefined)?.resourceLimits as Row | undefined)?.detail ?? "Ressourcenlimits unbekannt")}`}
+            >
               ISOLATION ·{" "}
               {(runtime?.isolation as Row | undefined)?.level === "NAMESPACES"
                 ? "NAMESPACES"
                 : runtime?.isolation
                   ? "FILESYSTEM_ONLY"
+                  : "UNBEKANNT"}
+              {" · LIMITS · "}
+              {((runtime?.isolation as Row | undefined)?.resourceLimits as Row | undefined)?.cgroup === "ENFORCED"
+                ? "CGROUP"
+                : runtime?.isolation
+                  ? "RLIMIT"
                   : "UNBEKANNT"}
             </span>
             <button className="danger" onClick={() => void post("/api/control", {action: "lockdown", locked: !locked})}>

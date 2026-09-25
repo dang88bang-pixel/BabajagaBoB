@@ -71,9 +71,10 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 
 | Nachweis | Ergebnis |
 |---|---|
-| Automatisierte Tests | **32 Dateien / 179 Tests grün** (`npx vitest run`) |
+| Automatisierte Tests | **32 Dateien / 182 Tests grün** (`npx vitest run`) |
 | Statische Gates | `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler (10 Warnungen); `npm run build` erfolgreich (Exit-Code geprüft, nicht nur Ausgabe) |
-| Live über HTTP | `scripts/verify-live.sh` gegen `npx next start`: **149 PASS / 0 FAIL** (frisch initialisiert; 147 bei bereits initialisierter Instanz; mit verpflichtendem zweitem Faktor 155 / 153), jeweils mit aktiver Kernel-Isolation – Auth fail closed (428/401/403/201/200), Kette bis Knowledge, Sandbox + Snapshot + Capability, autorisierte Ausführung (`argv`, stdout `live-ok`), Angriffsblockaden mit Audit, Fehlerkette bis `REGRESSION_LOCKED`, Lockdown/Privacy/Provider/Geräte, Restore/Persistenz/Readiness, **Schritt 10: Agentenweg über Capability-Token ohne Browser-Session**, **Evidenz der blockierten Autorisierung** (`kind=DENIAL`, Digest erneut geprüft, ohne Klartext-Argumente), **Replay-Verweigerung** (zweiter Lauf mit demselben Token → 409 + Evidenz), **Schritt 11: kernel-gemessene Isolation** (`CapBnd`/`CapEff` = 0, `NoNewPrivs` = 1, `EROFS`, nur `lo`, leere Routingtabelle) und **Schritt 12: zweiter Faktor live** (Pflicht, Ablehnung ohne/mit falschem Code, Akzeptanz, Replay-Ablehnung) |
+| Live über HTTP | `scripts/verify-live.sh` gegen `npx next start`: **159 PASS / 0 FAIL** (frisch initialisiert; 157 bei bereits initialisierter Instanz; ohne cgroup-Delegation 156 / 154; mit verpflichtendem zweitem Faktor 165 / 163), jeweils mit aktiver Kernel-Isolation und durchgesetzten Ressourcenlimits – Auth fail closed (428/401/403/201/200), Kette bis Knowledge, Sandbox + Snapshot + Capability, autorisierte Ausführung (`argv`, stdout `live-ok`), Angriffsblockaden mit Audit, Fehlerkette bis `REGRESSION_LOCKED`, Lockdown/Privacy/Provider/Geräte, Restore/Persistenz/Readiness, **Schritt 10: Agentenweg über Capability-Token ohne Browser-Session**, **Evidenz der blockierten Autorisierung** (`kind=DENIAL`, Digest erneut geprüft, ohne Klartext-Argumente), **Replay-Verweigerung** (zweiter Lauf mit demselben Token → 409 + Evidenz), **Schritt 11: kernel-gemessene Isolation** (`CapBnd`/`CapEff` = 0, `NoNewPrivs` = 1, `EROFS`, nur `lo`, leere Routingtabelle) und **Schritt 12: zweiter Faktor live** (Pflicht, Ablehnung ohne/mit falschem Code, Akzeptanz, Replay-Ablehnung) |
+| Ressourcenlimits | kernel-seitig: CPU-Zeit (`RLIMIT_CPU`) und Dateigröße (`RLIMIT_FSIZE`) immer, Speicher und Prozesse über delegierten cgroup-v2-Unterbaum (`BOB_CGROUP_DIR`); ohne Delegation `UNAVAILABLE` statt Behauptung; Limits per `POST /api/sandboxes {limits}` setzbar (Creator, gegen Obergrenzen geprüft) |
 | Kernel-Isolation der Ausführung | `NAMESPACES` (real gemessen): User-/Netzwerk-/PID-/IPC-/UTS-/Mount-Namespace, Rootfs `EROFS`, nur `/work` schreibbar, leeres Capability-Bounding-Set, `NoNewPrivs` = 1; `scripts/build-ns-rootfs.sh` (126 MB), `lib/ns-isolation.ts`, `scripts/ns-exec.sh`; `BOB_NS_ISOLATION=on` verweigert ohne Rootfs jede Ausführung (fail closed) |
 | §49-Abnahme 1 (Erfolgspfad) | `tests/e2e/creator-flow.test.ts` + Live-Schritte 2–4 |
 | §49-Abnahme 2 (bewusster Fehler) | `tests/e2e/failure-recovery.test.ts` (Exit-Code 7) + Live-Schritt 6 |
@@ -134,7 +135,7 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 |---|---|---|---|
 | `REAL_LOCAL` | real | Standard in Tests, CI und Live-Nachweis: echte Kindprozesse, echte Snapshots mit SHA-256 | `tests/integration/*`, `scripts/verify-live.sh` |
 | `REAL_OCI` | implementiert, **UNVERIFIED** | gehärtete Container-Isolation, ohne Daemon ungeprüft | `lib/oci-runtime.ts` |
-| `REAL_LOCAL` + Kernel-Isolation | real, gemessen (`NAMESPACES`) | ohne Daemon verfügbare Kernel-Grenzen (Namespaces, read-only Rootfs, Capabilities 0); **kein** OCI-Image, keine cgroup-Quotas | `lib/ns-isolation.ts`, `tests/integration/ns-isolation.test.ts`, `scripts/verify-live.sh` §11 |
+| `REAL_LOCAL` + Kernel-Isolation | real, gemessen (`NAMESPACES`) | ohne Daemon verfügbare Kernel-Grenzen (Namespaces, read-only Rootfs, Capabilities 0, `RLIMIT_CPU`/`RLIMIT_FSIZE`, mit delegiertem cgroup-Unterbaum auch Speicher/Prozesse); **kein** OCI-Image, kein `runc` | `lib/ns-isolation.ts`, `tests/integration/ns-isolation.test.ts`, `scripts/verify-live.sh` §11 |
 | `MOCK` | MOCK/SIMULATED | nur Entwicklung, nur mit `BOB_ALLOW_MOCK_RUNTIME=1` | `lib/runtime.ts` |
 
 Keine Erfolgsaussage stützt sich auf Mock-Verhalten; Simulationen
@@ -151,8 +152,8 @@ Keine Erfolgsaussage stützt sich auf Mock-Verhalten; Simulationen
 - Regression (1 / 5): Regression Engine (argv-Policy, leere Suite = Fehlschlag).
 - E2E (2 / 4): Erfolgskette Creator → Knowledge; Fehlerkette bis `REGRESSION_LOCKED`.
 - UI (2 / 6): Control Center unter jsdom mit vollständiger Navigation und echten Routen-Handlern.
-- Live: `scripts/verify-live.sh` (**149 Prüfungen, 0 Fehler** bei Erstinitialisierung, mit Kernel-Isolation).
-- Gesamt: **32 Dateien / 179 Tests grün**.
+- Live: `scripts/verify-live.sh` (**159 Prüfungen, 0 Fehler** bei Erstinitialisierung, mit Kernel-Isolation und Ressourcenlimits).
+- Gesamt: **32 Dateien / 182 Tests grün**.
 
 Details und Befehle: `docs/TESTING.md`.
 

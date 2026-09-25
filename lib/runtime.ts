@@ -72,6 +72,8 @@ export type ExecutionResult = {
   evidence?: {artifactId: string; digest: string; verified: boolean; truncated: boolean};
   /** Isolationsstufe, in der dieser Lauf tatsächlich ausgeführt wurde. */
   isolation?: IsolationLevel;
+  /** Durchgesetzte Ressourcenlimits dieses Laufs (kernel rlimits / cgroup). */
+  resourceLimits?: {kernel: string[]; cgroup: "ENFORCED" | "UNAVAILABLE"};
 };
 
 export type RuntimeObservation = {

@@ -19,6 +19,36 @@
 # ============================================================================
 set -eu
 
+# ---------------------------------------------------------------------------
+# Ressourcenlimits (kernel-seitig, ohne Container):
+#   - CPU-Zeit  (RLIMIT_CPU)        → harter Abbruch bei Überziehung
+#   - Dateigröße (RLIMIT_FSIZE)     → Schreibversuche darüber scheitern (EFBIG)
+#   - cgroup v2 (falls delegiert)   → Speicher- und Prozesslimit je Ausführung
+# Sind Limits angefordert, aber nicht setzbar, wird NICHTS ausgeführt (Exit 126):
+# eine Zusage, die nicht durchgesetzt wird, wäre schlimmer als ein Fehler.
+# ---------------------------------------------------------------------------
+if [ -n "${BOB_NS_RLIMIT_CPU_SECONDS:-}" ]; then
+  if ! ulimit -t "$BOB_NS_RLIMIT_CPU_SECONDS" 2>/dev/null; then
+    echo "ns-exec: RLIMIT_CPU konnte nicht gesetzt werden" >&2
+    exit 126
+  fi
+fi
+if [ -n "${BOB_NS_RLIMIT_FSIZE_BYTES:-}" ]; then
+  # dash/busybox: -f in 512-Byte-Blöcken.
+  blocks=$((BOB_NS_RLIMIT_FSIZE_BYTES / 512))
+  if [ "$blocks" -lt 1 ]; then blocks=1; fi
+  if ! ulimit -f "$blocks" 2>/dev/null; then
+    echo "ns-exec: RLIMIT_FSIZE konnte nicht gesetzt werden" >&2
+    exit 126
+  fi
+fi
+if [ -n "${BOB_NS_CGROUP_PROCS:-}" ]; then
+  if ! echo "$$" > "$BOB_NS_CGROUP_PROCS" 2>/dev/null; then
+    echo "ns-exec: cgroup-Beitritt fehlgeschlagen: $BOB_NS_CGROUP_PROCS" >&2
+    exit 126
+  fi
+fi
+
 if [ "$#" -lt 3 ]; then
   echo "ns-exec: usage: ns-exec.sh <rootfs> <workspace> <argv...>" >&2
   exit 125

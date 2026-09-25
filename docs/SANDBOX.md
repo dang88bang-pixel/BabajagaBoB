@@ -30,6 +30,16 @@ Sandbox-Typen: `development`, `experiment`, `test`, `browser`, `security`,
 | Kernel-Isolation | Mit gebautem Rootfs läuft jede lokale Ausführung in `NAMESPACES` (`lib/ns-isolation.ts`): eigene Netzwerk-/PID-/IPC-/UTS-/Mount-/User-Namespace, Rootfs `EROFS`, nur `/work` schreibbar, `NoNewPrivs=1`, Capabilities leer. Gemessen: CapBnd/CapEff `0000000000000000`, 1 sichtbarer Prozess, nur `lo`, leere Routingtabelle. Details: `docs/RUNTIME.md` §2a. |
 | Isolation erzwungen | `BOB_NS_ISOLATION=on` ⇒ ohne verfügbare Kernel-Isolation wird die Ausführung verweigert (`409`, „kernel isolation is enforced … but unavailable"), **nichts** läuft unisoliert. |
 
+## 2a. Ressourcenlimits setzen und durchsetzen
+
+Limits werden bei der Erstellung an die Sandbox gebunden (`POST /api/sandboxes {action:"create", limits:{…}}`,
+Creator-only) und gegen dieselben Obergrenzen geprüft wie im Broker (`MAX_RESOURCE_LIMITS`); ungültige
+Werte werden mit 400 abgewiesen statt still auf Vorgaben zurückzufallen. Durchgesetzt werden sie
+kernel-seitig, soweit die Umgebung das erlaubt: CPU-Zeit (`RLIMIT_CPU`) und Dateigröße (`RLIMIT_FSIZE`)
+immer, Speicher (`memory.max`) und Prozesse (`pids.max`) über einen delegierten cgroup-v2-Unterbaum
+(`BOB_CGROUP_DIR`). Ohne Delegation meldet `GET /api/runtime` für cgroup `UNAVAILABLE` — es wird nichts
+behauptet, was nicht greift. Details und Setup: `docs/RUNTIME.md` §2b.
+
 ## 3. Snapshot und Restore (echt, nicht simuliert)
 
 - `snapshotSandbox(sandboxId)` erzeugt ein Snapshot-Manifest mit SHA-256-Digest über
@@ -45,7 +55,7 @@ Sandbox-Typen: `development`, `experiment`, `test`, `browser`, `security`,
 
 | Modus | Datei | Klassifikation |
 |---|---|---|
-| `local` | `lib/runtime-local.ts`, `lib/ns-isolation.ts` | **REAL_LOCAL**: eigener Prozess je Ausführung, `spawn(..., {shell:false})`, Timeout → `SIGKILL` der Prozessgruppe, reduzierte Umgebung, Ausgabe erfasst. Isolationsstufe `NAMESPACES` (Kernel-Namespaces + Rootfs read-only), sobald ein Rootfs vorhanden ist; sonst `FILESYSTEM_ONLY`. Kein OCI-Image, kein `runc`, keine cgroup-Quotas. |
+| `local` | `lib/runtime-local.ts`, `lib/ns-isolation.ts` | **REAL_LOCAL**: eigener Prozess je Ausführung, `spawn(..., {shell:false})`, Timeout → `SIGKILL` der Prozessgruppe, reduzierte Umgebung, Ausgabe erfasst. Isolationsstufe `NAMESPACES` (Kernel-Namespaces + Rootfs read-only), sobald ein Rootfs vorhanden ist; sonst `FILESYSTEM_ONLY`. Kein OCI-Image, kein `runc`; Ressourcenlimits kernel-seitig: `RLIMIT_CPU`/`RLIMIT_FSIZE` immer, Speicher/Prozesse über einen delegierten cgroup-Unterbaum (`BOB_CGROUP_DIR`, sonst als `UNAVAILABLE` ausgewiesen). |
 | `oci` | `lib/oci-runtime.ts` | **REAL_OCI**: Docker-Adapter mit gehärteten Flags (u. a. `--network none`, `--read-only`, `--cap-drop ALL`, `--security-opt no-new-privileges`, `--pids-limit`, Speicher-/CPU-Limits, `--user`). Benötigt eine vorhandene Docker-Umgebung; sonst fail closed (`UNVERIFIED` in dieser Umgebung). |
 | `mock` | `MockSandboxRuntime` | **MOCK**: nur für Entwicklung/Tests. Nie Produktionslaufzeit. Wird im Status als `mock` ausgewiesen. |
 

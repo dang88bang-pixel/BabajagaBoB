@@ -67,7 +67,7 @@ function argvFingerprint(argv?: string[]) {
 }
 
 const riskRank: Record<Risk, number> = {SAFE: 0, LOW: 1, MODERATE: 2, HIGH: 3, CRITICAL: 4};
-const MAX_RESOURCE_LIMITS = {cpuMillicores: 8000, memoryMb: 16384, storageMb: 32768, timeoutMs: 3_600_000, processes: 512};
+export const MAX_RESOURCE_LIMITS = {cpuMillicores: 8000, memoryMb: 16384, storageMb: 32768, timeoutMs: 3_600_000, processes: 512};
 
 function deny(request: Partial<ExecutionRequest>, check: string, reason: string): never {
   const actor = request.agentId ?? "UNKNOWN";

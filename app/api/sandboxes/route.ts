@@ -11,7 +11,8 @@ import {
   startSandbox
 } from "../../../lib/sandbox/fabric";
 import {guardRequest, toDeniedResponse} from "../../../lib/api/guard";
-import type {Risk, SandboxType} from "../../../lib/types";
+import {MAX_RESOURCE_LIMITS} from "../../../lib/execution-broker";
+import type {ResourceLimits, Risk, SandboxType} from "../../../lib/types";
 
 /**
  * Sandbox-Lebenszyklus über die Fabric (Abschnitt 11).
@@ -26,6 +27,31 @@ export const dynamic = "force-dynamic";
 
 const TYPES: SandboxType[] = ["development", "experiment", "test", "browser", "security", "migration", "staging", "recovery", "diagnostic"];
 const RISKS: Risk[] = ["SAFE", "LOW", "MODERATE", "HIGH", "CRITICAL"];
+
+/**
+ * Optionale Ressourcenlimits bei der Erstellung. Sie werden gegen dieselben
+ * Obergrenzen geprüft wie im Broker (`RESOURCE_LIMITS`) — ungültige Werte werden
+ * abgewiesen (400), nicht stillschweigend auf Vorgaben zurückgesetzt. Die Limits
+ * gelten danach für jede Ausführung der Sandbox und werden kernel-seitig
+ * durchgesetzt, soweit die Umgebung das erlaubt (siehe `docs/RUNTIME.md` §2b).
+ */
+function parseLimits(value: unknown): ResourceLimits | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "object" || Array.isArray(value)) throw new Error("limits must be an object");
+  const input = value as Record<string, unknown>;
+  const result = {} as ResourceLimits;
+  for (const key of Object.keys(MAX_RESOURCE_LIMITS) as (keyof ResourceLimits)[]) {
+    const raw = input[key];
+    if (raw === undefined) throw new Error(`limits.${key} is required`);
+    if (typeof raw !== "number" || !Number.isInteger(raw) || raw <= 0 || raw > MAX_RESOURCE_LIMITS[key]) {
+      throw new Error(`limits.${key} must be an integer between 1 and ${MAX_RESOURCE_LIMITS[key]}`);
+    }
+    result[key] = raw;
+  }
+  const unknown = Object.keys(input).filter(key => !(key in MAX_RESOURCE_LIMITS));
+  if (unknown.length) throw new Error(`unknown limit field(s): ${unknown.join(", ")}`);
+  return result;
+}
 
 export async function GET(req: Request) {
   try {
@@ -54,7 +80,8 @@ export async function POST(req: Request) {
         taskId,
         agentId: String(body.agentId ?? ""),
         risk,
-        image: typeof body.image === "string" ? body.image : undefined
+        image: typeof body.image === "string" ? body.image : undefined,
+        limits: parseLimits(body.limits)
       };
       const sandbox = action === "create" ? await createSandbox(request) : await cloneSandbox(String(body.sourceSandboxId ?? ""), request);
       return NextResponse.json({sandbox}, {status: 201});

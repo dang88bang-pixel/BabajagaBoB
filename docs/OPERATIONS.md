@@ -109,9 +109,9 @@ Ausführung mit Capability-Token, Verweigerungen (fremde Bindung, Shell-Programm
 widerrufenes Token, Lockdown), Evidence/Provenance/Audit-Kette, Metriken, Persistenz,
 Backups, Readiness und Queue. Ergebnis wird als Anzahl `PASS`/`FAIL` ausgegeben.
 
-Prüfumfang des Skripts (**149 Prüfungen** bei Erstinitialisierung, **147** wenn die Instanz
+Prüfumfang des Skripts (**159 Prüfungen** bei Erstinitialisierung, **157** wenn die Instanz
 bereits initialisiert ist — der Bootstrap-Zweig enthält zwei Prüfungen mehr; mit verpflichtendem
-zweitem Faktor **155 / 153**):
+zweitem Faktor **165 / 163**; ohne delegierten cgroup-Unterbaum **156 / 154**):
 Authentifizierung, Mission → Objective → Task → Sandbox → Capability, autorisierte Ausführung
 mit Evidenzprüfung, Angriffsblockaden, **Evidenz einer blockierten Autorisierung
 (`kind=DENIAL`, Digest erneut geprüft, keine Klartext-Argumente)**, Fehlerkette bis
