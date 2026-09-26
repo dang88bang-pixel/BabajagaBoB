@@ -262,3 +262,12 @@ Jede operative Aktion muss über:
 `UI → Control Plane → Authorization → Execution Gate → Broker → Sandbox/Runtime → Evidence/Audit`
 
 laufen.
+
+
+## Verbindliche Gesamtspezifikation
+
+Die vollständige deutschsprachige Spezifikation für Rekonstruktion, Entwicklung, Sicherheitsregeln, Berechtigungen, Datenmodelle, Agenten, Runtimes, Sandboxen, Integrationen, Statusmodell, Tests und finale Abnahme befindet sich in:
+
+- docs/APP_VOLLSTAENDIGE_SPEZIFIKATION_DE.md
+
+Dieses Dokument ist der kanonische Soll-Zustand. Implementierte Funktionen gelten erst nach ausführbarer Verifikation als VERIFIED.
