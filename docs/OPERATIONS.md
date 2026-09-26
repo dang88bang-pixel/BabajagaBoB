@@ -433,3 +433,29 @@ Vorgang Ziel, Zustand, `acknowledgedGaps` und Zeitpunkt. Jeder Vorgang erzeugt E
   Monitoring angebunden werden (`NOT_VERIFIED`).
 - Ein Multi-Knoten-Betrieb (mehrere Control-Plane-Instanzen auf demselben Storage-Root)
   ist nicht unterstützt: Schreibvorgänge sind atomar, aber es gibt kein verteiltes Sperren.
+
+## 3c. Produktionshärtung: Rate-Limits und Graceful Shutdown
+
+Die Control-Plane setzt ein serverseitiges, fail-closed Rate-Limit vor geschützten API-Aufrufen durch:
+
+- BOB_RATE_LIMIT_MAX (Vorgabe 120 je Zeitfenster) und BOB_RATE_LIMIT_WINDOW_MS (Vorgabe 60 s).
+- Authentifizierung verwendet einen eigenen Grenzwert BOB_AUTH_RATE_LIMIT_MAX (Vorgabe 30).
+- Authentifizierte Anfragen werden über die Session-ID gebucketet; anonyme Anfragen verwenden ohne vertrauenswürdigen Proxy nur einen gehashten User-Agent.
+- x-forwarded-for wird nur bei BOB_TRUST_PROXY=1 als Identität verwendet.
+- Überschreitungen liefern 429 mit Retry-After und werden auditiert.
+- Die Begrenzung ist bewusst pro Prozess; ein Multi-Knoten-Rate-Limiter benötigt eine gemeinsame, vertrauenswürdige Zustandsquelle.
+
+Der Produktionsstart verwendet server.mjs statt next start. Bei SIGTERM/SIGINT beginnt ein Drain:
+
+1. neue Control-Plane-Arbeit wird mit 503 SHUTTING_DOWN abgewiesen,
+2. der HTTP-Server nimmt keine neuen Verbindungen an,
+3. bestehende Verbindungen dürfen bis zum Timeout auslaufen,
+4. danach werden verbleibende Verbindungen geschlossen.
+
+BOB_SHUTDOWN_TIMEOUT_MS steuert den maximalen Drain (Vorgabe 15 s).
+
+### Session-Schlüssel
+
+Session-Credentials werden nicht als Klartext gespeichert. Der zufällige Session-Wert bleibt im HttpOnly-Cookie; serverseitig wird ausschließlich ein HMAC-SHA-256-Digest gespeichert. Der HMAC-Schlüssel kommt aus BOB_SESSION_SECRET.
+
+Produktion: BOB_SESSION_SECRET ist verpflichtend und muss mindestens 32 Zeichen besitzen. Fehlt er, startet die Session-Schicht fail closed. Rotation des Schlüssels invalidiert bestehende Sessions bewusst.
