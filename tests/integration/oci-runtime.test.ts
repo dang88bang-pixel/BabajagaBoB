@@ -13,11 +13,16 @@ describe("real OCI runtime",()=>{
       });
       expect(created.mode).toBe("REAL_OCI");
       expect(created.state).toBe("READY");
+      // Storage-Quota muss ehrlich gemeldet werden: entweder durchgesetzt
+      // oder ausdrücklich UNAVAILABLE (Befund B1, behoben 2026-09-26).
+      // Stillschweigendes Verwerfen wäre ein Verstoß gegen die Meldepflicht.
+      expect(created.storageQuota==="ENFORCED"||created.storageQuota==="UNAVAILABLE",`storageQuota ungemeldet: ${created.storageQuota}`).toBe(true);
 
       const started=await ociContainerRuntime.start(id);
       expect(started.state).toBe("RUNNING");
       expect(started.network.mode).toBe("DENY");
       expect(started.limits.storageMb).toBe(128);
+      expect(started.storageQuota).toBe(created.storageQuota);
 
       const execution=await ociContainerRuntime.execute(id,["echo","oci-ok"]);
       expect(execution.accepted).toBe(true);

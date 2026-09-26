@@ -55,6 +55,11 @@ export type RuntimeHandle = {
   workspace?: string;
   /** Tatsächlich erzwungene Isolationsebene (keine Behauptung, sondern Zustand). */
   isolation?: IsolationLevel;
+  /**
+   * Nur REAL_OCI: Wird die Storage-Quota vom Daemon tatsächlich erzwungen?
+   * `UNAVAILABLE` statt stillschweigendem Verzicht (Muster wie cgroup-Limits).
+   */
+  storageQuota?: "ENFORCED" | "UNAVAILABLE";
 };
 
 export type ExecutionResult = {

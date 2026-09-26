@@ -616,7 +616,7 @@
         "docs/RUNTIME.md"
       ],
       "status": "NOT_VERIFIED",
-      "note": "Implementierung und realer Docker-Lifecycle-Test sind vorhanden; PASS wird erst nach einem erfolgreich ausgeführten OCI-CI-Run gesetzt. Der aktuelle Connector kann den neuen Workflow-Run noch nicht beobachten."
+      "note": "Implementierung und realer Docker-Lifecycle-Test sind vorhanden. Seit 2026-09-27 meldet die Runtime die Storage-Quota ehrlich: ENFORCED, wenn der Daemon sie erzwingt, sonst ausdrücklich UNAVAILABLE (Fallback nach cgroup-Muster, abgesichert durch tests/integration/oci-storage-quota-fallback.test.ts). PASS wird erst gesetzt, wenn ein CI-Lauf den vollen Lifecycle belegt UND die erzwungene Quota auf einem unterstützenden Host (overlay2 über XFS mit pquota) nachgewiesen ist."
     },
     {
       "id": "Q-001",

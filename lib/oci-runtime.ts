@@ -44,7 +44,9 @@ export type OciExecutionResult = ExecutionResult;
 
 export type OciRuntimeObservation = RuntimeObservation & {containerId?: string; containerName?: string; image?: string};
 
-type Persisted = {sandboxId: string; containerName: string; image: string; state: RuntimeHandle["state"]; limits: ResourceLimits; network: NetworkPolicy; createdAt: string};
+type StorageQuotaState = "ENFORCED" | "UNAVAILABLE";
+
+type Persisted = {sandboxId: string; containerName: string; image: string; state: RuntimeHandle["state"]; limits: ResourceLimits; network: NetworkPolicy; createdAt: string; storageQuota?: StorageQuotaState};
 
 type PersistedSnapshot = RuntimeSnapshot & {imageTag: string; limits: ResourceLimits};
 type Payload = {containers: Persisted[]; snapshots: PersistedSnapshot[]};
@@ -97,7 +99,7 @@ export class OciContainerRuntimeAdapter implements SandboxRuntime {
   handle(sandboxId: string): RuntimeHandle | undefined {
     const record = this.find(sandboxId);
     if (!record) return undefined;
-    return {sandboxId, state: record.state, network: record.network, limits: record.limits, mode: "REAL_OCI"};
+    return {sandboxId, state: record.state, network: record.network, limits: record.limits, mode: "REAL_OCI", storageQuota: record.storageQuota ?? "ENFORCED"};
   }
 
   async health() {
@@ -119,7 +121,7 @@ export class OciContainerRuntimeAdapter implements SandboxRuntime {
     if (existing) throw new Error(`OCI sandbox already exists: ${spec.id}`);
     const image = spec.image ?? process.env.BOB_OCI_IMAGE ?? "alpine:3.20";
     const command = spec.argv && spec.argv.length ? spec.argv : ["sleep", "infinity"];
-    const args = [
+    const buildArgs = (withStorageQuota: boolean): string[] => [
       "create",
       "--name",
       containerName,
@@ -135,8 +137,7 @@ export class OciContainerRuntimeAdapter implements SandboxRuntime {
       `${spec.limits.memoryMb}m`,
       "--pids-limit",
       String(spec.limits.processes),
-      "--storage-opt",
-      `size=${spec.limits.storageMb}m`,
+      ...(withStorageQuota ? ["--storage-opt", `size=${spec.limits.storageMb}m`] : []),
       "--read-only",
       "--cap-drop",
       "ALL",
@@ -147,7 +148,18 @@ export class OciContainerRuntimeAdapter implements SandboxRuntime {
       image,
       ...command
     ];
-    const result = await runDocker(args, Math.min(spec.limits.timeoutMs, 30_000));
+    // Storage-Quota (`--storage-opt size=`) wird nur von manchen Daemon-/
+    // Dateisystem-Kombinationen erzwungen (overlay2 über XFS mit pquota).
+    // Lehnt der Daemon sie ab, wird sie ausdrücklich als UNAVAILABLE gemeldet —
+    // niemals still verworfen und niemals als durchgesetzt behauptet
+    // (dasselbe Ehrlichkeitsmuster wie bei den cgroup-Limits; Befund B1,
+    // behoben 2026-09-26). Alle übrigen Härtungsflags bleiben immer aktiv.
+    let storageQuota: StorageQuotaState = "ENFORCED";
+    let result = await runDocker(buildArgs(true), Math.min(spec.limits.timeoutMs, 30_000));
+    if (!result.timedOut && result.code !== 0 && /storage.?opt|not supported|unsupported|pquota|quota/i.test(`${result.stderr}\n${result.stdout}`)) {
+      storageQuota = "UNAVAILABLE";
+      result = await runDocker(buildArgs(false), Math.min(spec.limits.timeoutMs, 30_000));
+    }
     if (result.timedOut || result.code !== 0) throw new Error(`OCI create failed: ${result.stderr || result.stdout || "unknown error"}`);
     const record: Persisted = {
       sandboxId: spec.id,
@@ -156,12 +168,13 @@ export class OciContainerRuntimeAdapter implements SandboxRuntime {
       state: "READY",
       limits: spec.limits,
       network: {mode: "DENY", allowlist: []},
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      storageQuota
     };
     store.update(payload => {
       payload.containers.push(record);
     });
-    return {sandboxId: spec.id, state: "READY", network: record.network, limits: record.limits, mode: "REAL_OCI"};
+    return {sandboxId: spec.id, state: "READY", network: record.network, limits: record.limits, mode: "REAL_OCI", storageQuota};
   }
 
   private update(sandboxId: string, state: RuntimeHandle["state"]) {
@@ -177,7 +190,7 @@ export class OciContainerRuntimeAdapter implements SandboxRuntime {
     const result = await runDocker(["start", record.containerName], Math.min(record.limits.timeoutMs, 30_000));
     if (result.timedOut || result.code !== 0) throw new Error(`OCI start failed: ${result.stderr || result.stdout}`);
     this.update(sandboxId, "RUNNING");
-    return {sandboxId, state: "RUNNING", network: record.network, limits: record.limits, mode: "REAL_OCI"};
+    return {sandboxId, state: "RUNNING", network: record.network, limits: record.limits, mode: "REAL_OCI", storageQuota: record.storageQuota ?? "ENFORCED"};
   }
 
   async pause(sandboxId: string): Promise<RuntimeHandle> {
@@ -186,7 +199,7 @@ export class OciContainerRuntimeAdapter implements SandboxRuntime {
     const result = await runDocker(["pause", record.containerName], 30_000);
     if (result.timedOut || result.code !== 0) throw new Error(`OCI pause failed: ${result.stderr || result.stdout}`);
     this.update(sandboxId, "PAUSED");
-    return {sandboxId, state: "PAUSED", network: record.network, limits: record.limits, mode: "REAL_OCI"};
+    return {sandboxId, state: "PAUSED", network: record.network, limits: record.limits, mode: "REAL_OCI", storageQuota: record.storageQuota ?? "ENFORCED"};
   }
 
   async reset(sandboxId: string): Promise<RuntimeHandle> {
