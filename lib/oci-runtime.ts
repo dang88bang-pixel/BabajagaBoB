@@ -46,7 +46,8 @@ export type OciRuntimeObservation = RuntimeObservation & {containerId?: string; 
 
 type Persisted = {sandboxId: string; containerName: string; image: string; state: RuntimeHandle["state"]; limits: ResourceLimits; network: NetworkPolicy; createdAt: string};
 
-type Payload = {containers: Persisted[]; snapshots: (RuntimeSnapshot & {imageTag: string})[]};
+type PersistedSnapshot = RuntimeSnapshot & {imageTag: string; limits: ResourceLimits};
+type Payload = {containers: Persisted[]; snapshots: PersistedSnapshot[]};
 const store = createStore<Payload>("oci-runtime", 2, () => ({containers: [], snapshots: []}));
 
 const MAX_CAPTURE = 400_000;
@@ -134,6 +135,8 @@ export class OciContainerRuntimeAdapter implements SandboxRuntime {
       `${spec.limits.memoryMb}m`,
       "--pids-limit",
       String(spec.limits.processes),
+      "--storage-opt",
+      `size=${spec.limits.storageMb}m`,
       "--read-only",
       "--cap-drop",
       "ALL",
@@ -218,13 +221,14 @@ export class OciContainerRuntimeAdapter implements SandboxRuntime {
     const inspect = await runDocker(["image", "inspect", "--format", "{{.Id}}", imageTag], 30_000);
     const imageDigest = inspect.stdout.trim();
     if (inspect.code !== 0 || !imageDigest) throw new Error("OCI snapshot digest could not be determined");
-    const snapshot: RuntimeSnapshot & {imageTag: string} = {
+    const snapshot: PersistedSnapshot = {
       id: `SNP-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
       sandboxId,
       createdAt: new Date().toISOString(),
       state: "SNAPSHOTTED",
       digest: crypto.createHash("sha256").update(imageDigest).digest("hex"),
-      imageTag
+      imageTag,
+      limits: structuredClone(record.limits)
     };
     store.update(payload => {
       payload.snapshots.push(snapshot);
@@ -253,7 +257,7 @@ export class OciContainerRuntimeAdapter implements SandboxRuntime {
       id: sandboxId,
       type: "restore",
       network: {mode: "DENY", allowlist: []},
-      limits: record?.limits ?? {cpuMillicores: 1000, memoryMb: 1024, storageMb: 2048, timeoutMs: 300_000, processes: 64},
+      limits: structuredClone(snapshot.limits),
       risk: "LOW",
       image: snapshot.imageTag
     });
