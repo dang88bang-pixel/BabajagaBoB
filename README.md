@@ -37,9 +37,10 @@ Recovery`
   verifizierten Snapshot **und** bestandene Regression, `LEARNED` verlangt `fix.verify`.
 - Angriffe werden blockiert **und** auditiert (fremdes Token, Shell-Programm,
   Shell-Metazeichen, fremde Sandbox-Bindung, Lockdown).
-- Nachweis: **59 Testdateien / 391 Tests** sowie die Live-Prüfungen
-  `scripts/verify-live.sh` (**173 / 0**), `scripts/audit-actions.mjs` (**517 / 0**),
-  `scripts/audit-api.sh` (**242 / 0**) und `scripts/audit-ui.mjs` (**90 / 0**) — jeweils
+- Nachweis: **63 Testdateien / 422 Tests** sowie die Live-Prüfungen
+  `scripts/verify-live.sh` (**174 / 0**), `scripts/audit-actions.mjs` (**525 / 0**),
+  `scripts/audit-api.sh` (**248 / 0**), `scripts/audit-ui.mjs` (**92 / 0**) und der
+  Grenznachweis `scripts/verify-rate-limit.sh` (**6 / 0**, Standardbudget) — jeweils
   auf der Instanz `:3100` mit Kernel-Isolation und cgroup-Limits; dazu der Abnahmeprüfer
   `node scripts/acceptance.mjs --live` (**82 / 0**, 66/66 Routennachweise).
 

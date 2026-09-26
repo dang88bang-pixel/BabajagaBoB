@@ -9,8 +9,8 @@ Abnahme-Selbsttests `tests/unit/acceptance-matrix.test.ts` (4/4) und
 `tests/e2e/acceptance-chain.test.ts` (4/4, 18 Stufen) laufen mit.
 **Live-Prüferlauf** gegen die Instanz `:3100` (cgroup-delegiert, `BOB_NS_ISOLATION=on`,
 `BOB_DEVICE_ENROLLMENT_SECRET` gesetzt):
-`node scripts/acceptance.mjs --live` → **83 bestanden / 0 fehlgeschlagen**, davon
-**67/67 Routen-Nachweise** mit Creator-Session. Der Prüfer erkennt jetzt beide
+`node scripts/acceptance.mjs --live` → **84 bestanden / 0 fehlgeschlagen**, davon
+**68/68 Routen-Nachweise** mit Creator-Session. Der Prüfer erkennt jetzt beide
 Schreibweisen von `BOB_SESSION_COOKIE` (reiner Sitzungswert oder fertiger Cookie-Kopf) — zuvor
 sahen gültige Sitzungen wie `401`-Fehlschläge aus, was ein Prüferfehler war und nicht
 abgeschwächt, sondern behoben wurde. Zwei Nachweise waren zuerst falsch
@@ -157,12 +157,12 @@ Streng in dieser Ordnung, jeweils mit Nachweis (Tests + Live-Lauf + Doku):
    `tests/integration/deployment.test.ts` (7), `tests/e2e/deployment-release.test.ts` (3),
    `tests/security/route-guards.test.ts` (+3: kein Selbst-Ausrollen durch Agenten), Live-Lauf auf
    Port 3100 (Plan `STAGING` mit quittierten Lücken, `PRODUCTION` benannt blockiert, Vorgang
-   `STAGED` → Supervisor → Datensatz `ACTIVE`, `--live` 83/0, 67/67 Routen). `OPS-003` und `CH-15`
+   `STAGED` → Supervisor → Datensatz `ACTIVE`, `--live` 84/0, 68/68 Routen). `OPS-003` und `CH-15`
    stehen damit auf `PASS`.
 3. ~~**P4-Härtung:** Fehlerinjektion (Serverprozess-Abbruch, Netzwerkverlust, konkurrierende
    Schreibvorgänge) und automatisierte Sabotageproben in CI.~~ **Erledigt (2026-09-25):**
    `lib/fault-injection.ts` + `scripts/fault-injection.mjs` (echter `SIGKILL` mit Neustart, 28/28),
-   `scripts/sabotage.mjs` + Katalog `docs/acceptance/sabotage-probes.json` (**19/19 erkannt**, mit
+   `scripts/sabotage.mjs` + Katalog `docs/acceptance/sabotage-probes.json` (**25/25 erkannt**, mit
    vorgeschalteter Grundprobe über alle betroffenen Suiten), beide als Pflichtstufen in der CI;
    Oberflächensektion **Fehlerinjektion**, `TEST-003`/`TEST-004` auf `PASS`.
 4. **P2-Rest:** Computer-Use-Treiber, Geräte-Scheduling nach Ressourcen, Provider-Adapterlauf

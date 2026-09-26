@@ -261,9 +261,9 @@ echtes HTTP), `tests/security/inbox-route.test.ts`,
 `tests/security/gate-bypass.test.ts`, `tests/security/token-read-projection.test.ts` (kein
 `secretHash` in Leseantworten), `tests/security/device-enrollment.test.ts` (Enrollment fail closed,
 kein Selbst-Grant, Geheimnis nie in Antworten), `tests/e2e/creator-flow.test.ts`,
-`tests/e2e/failure-recovery.test.ts` (**18 Dateien / 124 Tests** in der Security-Suite, 57 Dateien /
-391 Tests gesamt) und der Live-Nachweis `scripts/verify-live.sh` (**173 Prüfungen / 0 Fehler** auf der
-Instanz mit aktiver Kernel-Isolation) sowie `scripts/audit-ui.mjs` (**90 / 0**, u. a. „kein
+`tests/e2e/failure-recovery.test.ts` (**20 Dateien / 135 Tests** in der Security-Suite, 63 Dateien /
+422 Tests gesamt) und der Live-Nachweis `scripts/verify-live.sh` (**174 Prüfungen / 0 Fehler** auf der
+Instanz mit aktiver Kernel-Isolation und delegiertem cgroup-Unterbaum) sowie `scripts/audit-ui.mjs` (**92 / 0**, u. a. „kein
 Geheimnisfeld in einer Antwort an den Browser", „kein Gerät ohne Creator-Freigabe autorisiert").
 Zusammenfassung: `docs/TESTING.md`. Offene, als `PARTIAL`/`UNVERIFIED` gekennzeichnete Punkte sind dort und in
 `docs/TODO.md` gelistet.

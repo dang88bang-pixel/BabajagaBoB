@@ -19,7 +19,7 @@ Jobs, die bei jedem Push auf den Feature-Branch laufen:
 `main` wird nie direkt geändert: Feature-Branch → Commit → CI → Pull Request → Review → Merge.
 
 Der Sabotagejob (Pflichtstufe `TEST-004`) entfernt gezielt Schutzregeln aus dem Produktionscode und
-verlangt, dass die zuständigen Suiten **rot** werden (19/19). Vor der ersten Mutation läuft eine
+verlangt, dass die zuständigen Suiten **rot** werden (25/25). Vor der ersten Mutation läuft eine
 **Grundprobe** über alle betroffenen Suiten: Wären sie schon vorher rot, könnte keine Sabotage als
 „erkannt" gelten. Nach jeder Probe wird jede Datei byteweise wiederhergestellt und per SHA-256
 geprüft; eine Abweichung beendet den Lauf mit Exit 2. Der Bericht wird als Artefakt hochgeladen

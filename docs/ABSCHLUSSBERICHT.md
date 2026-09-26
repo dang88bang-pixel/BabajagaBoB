@@ -72,11 +72,11 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 
 | Nachweis | Ergebnis |
 |---|---|
-| Automatisierte Tests | **59 Dateien / 391 Tests grün** (`npx vitest run`; Unit 104, Security 128, Integration 120, Regression 15, UI 13, E2E 11) |
-| Betriebsprüfung aller Routen | `scripts/audit-api.sh`: **242 Prüfungen / 0 Fehler** (Exit 0), 9 Abschnitte inkl. autonomer Fehlerkette, Observatory/Warum-Record/Status-Modell; wiederholbar gegen dieselbe Instanz |
-| Vollständige Aktions-/Attributprüfung | `scripts/audit-actions.mjs`: **517 Prüfungen / 0 Fehler** (Exit 0) — Matrix aus dem Quellcode (40 POST-Routen, 129 Aktionen), inkl. „destruktive Aktion ohne Attribut → 400 statt stillem Erfolg“, Attributtypen, 14 Interaktionsketten bis `REGRESSION_LOCKED` |
-| Statische Gates | `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler (10 Warnungen); `npm run build` erfolgreich (Exit-Code geprüft, nicht nur Ausgabe) |
-| Live über HTTP | `scripts/verify-live.sh` gegen `npx next start`: **173 PASS / 0 FAIL** beim ersten Lauf (**171** auf einer bereits initialisierten Instanz; ohne cgroup-Delegation 167 / 165; mit verpflichtendem zweitem Faktor 174 / 172), jeweils mit aktiver Kernel-Isolation und durchgesetzten Ressourcenlimits – Auth fail closed (428/401/403/201/200), Kette bis Knowledge, Sandbox + Snapshot + Capability, autorisierte Ausführung (`argv`, stdout `live-ok`), Angriffsblockaden mit Audit, Fehlerkette bis `REGRESSION_LOCKED`, Lockdown/Privacy/Provider/Geräte, Restore/Persistenz/Readiness, **Schritt 10: Agentenweg über Capability-Token ohne Browser-Session**, **Evidenz der blockierten Autorisierung** (`kind=DENIAL`, Digest erneut geprüft, ohne Klartext-Argumente), **Replay-Verweigerung** (zweiter Lauf mit demselben Token → 409 + Evidenz), **Schritt 11: kernel-gemessene Isolation** (`CapBnd`/`CapEff` = 0, `NoNewPrivs` = 1, `EROFS`, nur `lo`, leere Routingtabelle) und **Schritt 12: zweiter Faktor live** (Pflicht, Ablehnung ohne/mit falschem Code, Akzeptanz, Replay-Ablehnung) |
+| Automatisierte Tests | **63 Dateien / 422 Tests grün** (`npx vitest run`; Unit 126, Security 135, Integration 122, Regression 15, UI 13, E2E 11) |
+| Betriebsprüfung aller Routen | `scripts/audit-api.sh`: **248 Prüfungen / 0 Fehler** (Exit 0), 9 Abschnitte inkl. autonomer Fehlerkette, Observatory/Warum-Record/Status-Modell; wiederholbar gegen dieselbe Instanz |
+| Vollständige Aktions-/Attributprüfung | `scripts/audit-actions.mjs`: **525 Prüfungen / 0 Fehler** (Exit 0) — Matrix aus dem Quellcode (40 POST-Routen, 129 Aktionen), inkl. „destruktive Aktion ohne Attribut → 400 statt stillem Erfolg“, Attributtypen, 14 Interaktionsketten bis `REGRESSION_LOCKED` |
+| Statische Gates | `npx tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler (11 Warnungen); `npm run build` erfolgreich (Exit-Code geprüft, nicht nur Ausgabe) |
+| Live über HTTP | `scripts/verify-live.sh` gegen `npx next start`: **174 PASS / 0 FAIL** auf der bereits initialisierten Instanz **mit** delegiertem cgroup-Unterbaum (`cgroup: ENFORCED`); ohne cgroup-Delegation drei Prüfungen weniger, jeweils mit aktiver Kernel-Isolation und durchgesetzten Ressourcenlimits – Auth fail closed (428/401/403/201/200), Kette bis Knowledge, Sandbox + Snapshot + Capability, autorisierte Ausführung (`argv`, stdout `live-ok`), Angriffsblockaden mit Audit, Fehlerkette bis `REGRESSION_LOCKED`, Lockdown/Privacy/Provider/Geräte, Restore/Persistenz/Readiness, **Schritt 10: Agentenweg über Capability-Token ohne Browser-Session**, **Evidenz der blockierten Autorisierung** (`kind=DENIAL`, Digest erneut geprüft, ohne Klartext-Argumente), **Replay-Verweigerung** (zweiter Lauf mit demselben Token → 409 + Evidenz), **Schritt 11: kernel-gemessene Isolation** (`CapBnd`/`CapEff` = 0, `NoNewPrivs` = 1, `EROFS`, nur `lo`, leere Routingtabelle) und **Schritt 12: zweiter Faktor live** (Pflicht, Ablehnung ohne/mit falschem Code, Akzeptanz, Replay-Ablehnung) |
 | Ressourcenlimits | kernel-seitig: CPU-Zeit (`RLIMIT_CPU`) und Dateigröße (`RLIMIT_FSIZE`) immer, Speicher und Prozesse über delegierten cgroup-v2-Unterbaum (`BOB_CGROUP_DIR`); ohne Delegation `UNAVAILABLE` statt Behauptung; Limits per `POST /api/sandboxes {limits}` setzbar (Creator, gegen Obergrenzen geprüft) |
 | Kernel-Isolation der Ausführung | `NAMESPACES` (real gemessen): User-/Netzwerk-/PID-/IPC-/UTS-/Mount-Namespace, Rootfs `EROFS`, nur `/work` schreibbar, leeres Capability-Bounding-Set, `NoNewPrivs` = 1; `scripts/build-ns-rootfs.sh` (126 MB), `lib/ns-isolation.ts`, `scripts/ns-exec.sh`; `BOB_NS_ISOLATION=on` verweigert ohne Rootfs jede Ausführung (fail closed) |
 | Abnahmeplan und Prüfer | `docs/acceptance/requirements.json` mit **85 Anforderungen** über P0–P5 und den 18 Stufen der Zielkette; `node scripts/acceptance.mjs` **15 Prüfungen / 0 Verstöße** (statisch, in CI) und `… --live` **82 / 0** gegen die Instanz, davon **66/66 Routen-Nachweise**; Regel „kein PASS ohne Implementierung + Test + Nachweis"; Selbsttest der Matrix 4/4, Kettentest 4/4 | `docs/ABNAHMEPLAN.md`, `docs/ACCEPTANCE.md`, `tests/unit/acceptance-matrix.test.ts`, `tests/e2e/acceptance-chain.test.ts`, `.github/workflows/ci.yml` |
@@ -154,16 +154,16 @@ Keine Erfolgsaussage stützt sich auf Mock-Verhalten; Simulationen
 
 ## I. Tests und Ergebnisse
 
-- Unit (**12 Dateien / 80 Tests**): Persistenz, Store-Migration, Control Plane, Agent Fabric (11 Rollen,
+- Unit (**15 Dateien / 126 Tests**): Persistenz, Store-Migration, Control Plane, Agent Fabric (11 Rollen,
   harte Grenzen), Recovery-Tier, Betriebszustand, Audit-Aufbewahrung, Service-Level-Bewertung (9 Tests,
   fehlender Messwert = `UNKNOWN`), **Status-Modell** (5 Tests: jeder deklarierte Zustand beschrieben,
   jeder Tone hat eine CSS-Regel, unbekannte Werte nie „gesund", nur echte Endzustände terminal, jeder
   neue Zustand hat einen Produzenten) und der Offline-Vektorindex.
-- Security (**18 Dateien / 124 Tests**): Authority-Invarianten (inkl. Token-Ablauf und
+- Security (**20 Dateien / 135 Tests**): Authority-Invarianten (inkl. Token-Ablauf und
   Wiederholungssperre), API-Guard, API-Gate, Routen-Guards, direkt aufgerufene Routen ohne Gate,
   argv-Policy, Creator-Login, Lockout, TOTP, Inbox, **Routenvertrag rekursiv** (auch verschachtelte
   Routen), Token-Leseprojektion ohne `secretHash`, Geräte-Registrierung, Kausalintegrität.
-- Integration (**16 Dateien / 105 Tests**): Sandbox-Runtime, Provider-Fabric, App-Modul-Sandbox, Computer
+- Integration (**19 Dateien / 122 Tests**): Sandbox-Runtime, Provider-Fabric, App-Modul-Sandbox, Computer
   Use, Ausführungs- und Verweigerungs-Evidenz, Backup/Metriken, Nebenläufigkeit, Kernel-Isolation,
   Worker-Fehlerkette, Visualisierung, Alarmierung, Backup-Automation, Ereignis-/Audit-Verkettung,
   Laufzeit-Registry sowie **Observatory und Warum-Record** (8 Tests: echte Aktivität aus
@@ -171,21 +171,23 @@ Keine Erfolgsaussage stützt sich auf Mock-Verhalten; Simulationen
   Grenzen des Records, Route mit Session/404/400, Defekt-Klassifikation `BUG` gegen Umgebungsfehler).
 - Regression (**3 Dateien / 15 Tests**): Regression Engine, Quellvertrag der Oberfläche (inkl. des
   Renderpfads für Zustandsspalten über das Status-Modell) und der Isolationsbericht.
-- UI (**2 Dateien / 12 Tests**): Control Center unter jsdom mit vollständiger Navigation
+- UI (**2 Dateien / 13 Tests**): Control Center unter jsdom mit vollständiger Navigation
   (**42 Abschnitte**), echten Routen-Handlern (**39 Routen**, inklusive Observatory), ausgewiesener
   Geräte-Autorisierung und Backup-Automation.
 - E2E (**4 Dateien / 11 Tests**): Erfolgskette Creator → Knowledge, Fehlerkette bis `REGRESSION_LOCKED`
   und die **Abnahmekette** über alle 18 Stufen der Zielkette (API, Persistenz, Audit/Event, Provenance).
-- Abnahmeprüfer: `node scripts/acceptance.mjs` **15 / 0** (Matrix statisch), `… --live` **82 / 0**,
-  davon **66/66 Routen-Nachweise** mit Creator-Session; Matrix-Selbsttest 4/4, Kettentest 4/4.
-- Live auf der Instanz `:3100` (cgroup-delegiert, Kernel-Isolation): `scripts/verify-live.sh`
-  (**173 / 0** beim ersten Lauf; **171 / 0** auf einer bereits initialisierten Instanz),
-  `scripts/audit-actions.mjs` (**503 / 0**, inkl. Ketten „Alarmierung/Backup" und Service-Level),
-  `scripts/audit-api.sh` (**227 / 0**, inkl. Abschnitt 8: Observatory, Warum-Record, Status-Modell),
-  `scripts/audit-ui.mjs` (**90 / 0**, 46 Datenabrufe, 30 Abschnitte mit echten Zeilen),
+- Abnahmeprüfer: `node scripts/acceptance.mjs` **15 / 0** (Matrix statisch), `… --live` **84 / 0**,
+  davon **68/68 Routen-Nachweise** mit Creator-Session; Matrix-Selbsttest 4/4, Kettentest 4/4.
+- Live auf der Instanz `:3100` (cgroup-delegiert, Kernel-Isolation `NAMESPACES`): `scripts/verify-live.sh`
+  (**174 / 0** auf der initialisierten Instanz; ohne cgroup-Delegation drei Prüfungen weniger),
+  `scripts/audit-actions.mjs` (**525 / 0**, inkl. Ketten „Alarmierung/Backup" und Service-Level),
+  `scripts/audit-api.sh` (**248 / 0**, inkl. Abschnitt 8: Observatory, Warum-Record, Status-Modell),
+  `scripts/audit-ui.mjs` (**92 / 0**, 47 Datenabrufe, 29 Abschnitte mit echten Zeilen),
+  `bash scripts/verify-rate-limit.sh` (**6 / 0**: Standardbudget 30, der 31. Anmeldeversuch → 429 +
+  `retry-after`, Abweisung als `DENY` im Audit, Kette gültig),
   `scripts/soak.mjs` (40 autorisierte Ausführungen, p95 2,22 s, Budget 5 s) **`MEETS_BUDGET`**.
-- Gesamt: **59 Dateien / 391 Tests grün** (Unit 104, Security 128, Integration 120, Regression 15, UI 13,
-  E2E 11); `tsc --noEmit` fehlerfrei, `eslint .` 0 Fehler / 10 Warnungen, `npm run build` erfolgreich.
+- Gesamt: **63 Dateien / 422 Tests grün** (Unit 126, Security 135, Integration 122, Regression 15, UI 13,
+  E2E 11); `tsc --noEmit` fehlerfrei, `eslint .` 0 Fehler / 11 Warnungen, `npm run build` erfolgreich.
 
 Details und Befehle: `docs/TESTING.md`.
 

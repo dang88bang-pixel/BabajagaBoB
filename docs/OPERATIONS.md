@@ -62,6 +62,14 @@ bricht aber ab. Deshalb gilt:
   echte Store. Zuvor schrieb der Backup-Pfad für noch nie beschriebene Stores einen
   Envelope ohne Inhalt — genau daraus entstand der beschriebene Fehler.
 
+Ein **nicht lesbarer** Store (fehlende Rechte, Verzeichnis am Dateipfad, E/A-Fehler) wird seit dem
+2026-09-26 als **Lesefehler** gemeldet und ausdrücklich **nicht** als Beschädigung. Früher lautete beides
+„store file is not valid JSON" — ein Rechte- oder Ownership-Problem sah damit wie Datenverlust aus und
+hätte zur falschen Reparatur verleitet (real aufgetreten: nach einem Serverstart als `root` gehörten
+Store-Dateien `root:root`, der Dienst als normaler Benutzer meldete „nicht gültiges JSON"). Verschwindet
+eine Datei zwischen Prüfung und Lesen, gilt der Store als noch nicht angelegt. Beide Fälle bleiben fail
+closed: Ein unlesbarer Store wird nie als leer behandelt.
+
 `GET /api/persistence` liefert den Integritätsbericht (je Store Version, Digest-Status,
 Größe, Existenz) und die Liste der Backups. `POST {action:"backup"}` (Creator) erzeugt
 digest-geprüfte Sicherungen unter `<BOB_STORAGE_DIR>/backups`.
@@ -236,10 +244,16 @@ Ausführung mit Capability-Token, Verweigerungen (fremde Bindung, Shell-Programm
 widerrufenes Token, Lockdown), Evidence/Provenance/Audit-Kette, Metriken, Persistenz,
 Backups, Readiness und Queue. Ergebnis wird als Anzahl `PASS`/`FAIL` ausgegeben.
 
+Auf der Referenzinstanz mit delegiertem cgroup-Unterbaum wurden **174 Prüfungen / 0 Fehler** gemessen
+(`BOB_NS_ISOLATION=on`, `BOB_CGROUP_DIR=/sys/fs/cgroup/bob`, Kernel-Isolation `NAMESPACES`, `cgroup:
+ENFORCED`); ohne cgroup-Delegation entfallen drei Prüfungen. Zusätzlich weist
+`scripts/verify-rate-limit.sh` die Betriebsgrenze mit **Standardbudget** nach (siehe §3c):
+`bash scripts/verify-rate-limit.sh` → **6 / 0**, Exit 0.
+
 Ergänzend prüft `scripts/audit-api.sh` **alle Routen** über HTTP (GET-Bestand,
 POST mit unlesbarem/leerem Body, Zugriff ohne Session, unvollständige Nutzdaten,
 frühere Fehlerbilder, die autonome Fehlerkette sowie Alarmierung/Sicherung) — letzter Lauf
-**204 Prüfungen / 0 Fehler**, Exit 0; Details in `docs/TESTING.md` §4b.
+**248 Prüfungen / 0 Fehler**, Exit 0; Details in `docs/TESTING.md` §4b.
 
 `scripts/audit-actions.mjs` prüft zusätzlich **jede Aktion und jedes Attribut**
 der Matrix, die direkt aus dem Quellcode gelesen wird, und fährt 14
@@ -436,14 +450,35 @@ Vorgang Ziel, Zustand, `acknowledgedGaps` und Zeitpunkt. Jeder Vorgang erzeugt E
 
 ## 3c. Produktionshärtung: Rate-Limits und Graceful Shutdown
 
-Die Control-Plane setzt ein serverseitiges, fail-closed Rate-Limit vor geschützten API-Aufrufen durch:
+Die Control-Plane setzt ein serverseitiges, fail-closed Rate-Limit vor den API-Aufrufen durch.
+Es gibt **zwei** Budgetklassen (`lib/api/rate-limit.ts`):
 
-- BOB_RATE_LIMIT_MAX (Vorgabe 120 je Zeitfenster) und BOB_RATE_LIMIT_WINDOW_MS (Vorgabe 60 s).
-- Authentifizierung verwendet einen eigenen Grenzwert BOB_AUTH_RATE_LIMIT_MAX (Vorgabe 30).
-- Authentifizierte Anfragen werden über die Session-ID gebucketet; anonyme Anfragen verwenden ohne vertrauenswürdigen Proxy nur einen gehashten User-Agent.
-- x-forwarded-for wird nur bei BOB_TRUST_PROXY=1 als Identität verwendet.
-- Überschreitungen liefern 429 mit Retry-After und werden auditiert.
-- Die Begrenzung ist bewusst pro Prozess; ein Multi-Knoten-Rate-Limiter benötigt eine gemeinsame, vertrauenswürdige Zustandsquelle.
+| Klasse | Standard | Überschreibbar mit | Gilt für |
+|---|---|---|---|
+| `api` | 120 Anfragen je Fenster | `BOB_RATE_LIMIT_MAX` | alle Routen hinter Middleware bzw. `guardOrDeny` (Lese- und Schreibzugriffe der Control Plane) |
+| `auth` | 30 Versuche je Fenster | `BOB_AUTH_RATE_LIMIT_MAX` | `POST /api/auth` (Bootstrap und Anmeldung) — geprüft **vor** jeder Auswertung des Geheimnisses |
+
+- Fenster: `BOB_RATE_LIMIT_WINDOW_MS` (Standard 60 s, erlaubt 1 s … 1 h).
+- **Fallstrick:** Grenzwerte gelten nur im Bereich 1 … 100 000. Ein Wert außerhalb (z. B. `200000`) wird
+  **nicht** als Fehler gemeldet, sondern still auf den Standard zurückgesetzt. Für Live-Prüfläufe mit
+  vielen Aufrufen deshalb genau `BOB_RATE_LIMIT_MAX=100000` setzen und beim Start nachsehen, ob die
+  Variable wirklich angekommen ist: `tr '\0' '\n' < /proc/<pid>/environ | grep RATE`.
+- Identität: Cookie `bob_session` → Sitzung; mit `BOB_TRUST_PROXY=1` → `x-forwarded-for`; sonst ein
+  **Hash** des User-Agent. Die Sitzung hat Vorrang, damit zwei Sitzungen desselben Browsers sich kein
+  Budget teilen (ein Fehler, der genau das verletzte, ist behoben und in `tests/unit/ops-hardening.test.ts`
+  durch zwei Regressionstests festgehalten).
+- Über dem Budget: `429` mit `retry-after` in Sekunden — an der API-Grenze (`lib/api/api-gate.ts`) **und**
+  am Anmeldeendpunkt. Jede Abweisung wird als `DENY` auditiert (`action: "rate-limit"`), die Clientkennung
+  nur als SHA-256-Digest, nie im Klartext.
+- Zweite, unabhängige Ebene: Der Creator-Login sperrt nach wiederholten Fehlversuchen (`CREATOR_LOCKED`,
+  423). Wer die Betriebsgrenze nachweisen will, meldet sich deshalb **zuerst** an und flutet danach.
+- Die Begrenzung ist bewusst pro Prozess; ein Multi-Knoten-Rate-Limiter benötigt eine gemeinsame,
+  vertrauenswürdige Zustandsquelle.
+- Belegt durch `tests/security/ops-enforcement.test.ts` (7 Tests: 429 + `retry-after` + Audit-DENY,
+  Drainage-503, Produktionspflicht des Sitzungsgeheimnisses) und **live mit Standardbudget**:
+  `BASE=http://localhost:3200 bash scripts/verify-rate-limit.sh` → 6/0 (30 Versuche erlaubt, der 31. wird
+  abgewiesen, `retry-after: 60` und `RATE_LIMITED`, die Abweisung steht als `DENY` im Audit, die Kette
+  bleibt gültig).
 
 Der Produktionsstart verwendet server.mjs statt next start. Bei SIGTERM/SIGINT beginnt ein Drain:
 
@@ -452,7 +487,12 @@ Der Produktionsstart verwendet server.mjs statt next start. Bei SIGTERM/SIGINT b
 3. bestehende Verbindungen dürfen bis zum Timeout auslaufen,
 4. danach werden verbleibende Verbindungen geschlossen.
 
-BOB_SHUTDOWN_TIMEOUT_MS steuert den maximalen Drain (Vorgabe 15 s).
+BOB_SHUTDOWN_TIMEOUT_MS steuert den maximalen Drain (Vorgabe 15 s). Läuft der Drain in den
+Timeout, endet der Prozess mit Exit-Code 1 (kein stiller Erfolg); ein regulärer Drain endet mit 0.
+Belegt durch `tests/integration/graceful-shutdown.test.ts` (2 Tests): Der Test startet den **echten**
+Produktionsserver auf einem freien Port, prüft eine Antwort, sendet `SIGTERM` und verlangt
+„draining (SIGTERM)" + „stopped cleanly" + Exit-Code 0. Die Sabotageprobe
+`SHUTDOWN_SIGNAL_NOT_HANDLED` entfernt den Handler und macht genau diesen Test rot.
 
 ### Session-Schlüssel
 
