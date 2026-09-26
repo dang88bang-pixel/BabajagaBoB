@@ -23,6 +23,7 @@ type SectionId =
   | "Overview"
   | "Missions"
   | "Objectives"
+  | "Plans"
   | "Tasks"
   | "Agents"
   | "Queue"
@@ -67,6 +68,7 @@ const NAV: {id: SectionId; label: string; group: string}[] = [
   {id: "Overview", label: "Übersicht", group: "Betrieb"},
   {id: "Missions", label: "Missionen", group: "Betrieb"},
   {id: "Objectives", label: "Objectives", group: "Betrieb"},
+  {id: "Plans", label: "Pläne", group: "Betrieb"},
   {id: "Tasks", label: "Aufgaben", group: "Betrieb"},
   {id: "Agents", label: "Agenten", group: "Betrieb"},
   {id: "Queue", label: "Warteschlange", group: "Ausführung"},
@@ -133,6 +135,20 @@ const SOURCES: Partial<Record<SectionId, {url: string; path?: string[]; columns:
       {key: "title", label: "Titel"},
       {key: "status", label: "Status"},
       {key: "description", label: "Beschreibung"}
+    ]
+  },
+  Plans: {
+    url: "/api/plans",
+    path: ["plans"],
+    note: "Versionierte Ausführungspläne mit erwarteter Wirkung und expliziten Abbruchkriterien.",
+    columns: [
+      {key: "planId", label: "Plan"},
+      {key: "objectiveId", label: "Objective"},
+      {key: "version", label: "Version"},
+      {key: "status", label: "Status"},
+      {key: "steps", label: "Schritte", render: row => Array.isArray(row.steps) ? String((row.steps as unknown[]).length) : "0"},
+      {key: "expectedEffects", label: "Erwartete Wirkung", render: row => Array.isArray(row.expectedEffects) ? (row.expectedEffects as string[]).join(" · ") : "—"},
+      {key: "abortCriteria", label: "Abbruchkriterien", render: row => Array.isArray(row.abortCriteria) ? (row.abortCriteria as string[]).join(" · ") : "—"}
     ]
   },
   Tasks: {
