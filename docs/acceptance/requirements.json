@@ -3003,6 +3003,86 @@
       ],
       "status": "PASS",
       "note": ""
+    },
+    {
+      "id": "CU-EXEC-001",
+      "area": "Computer Use",
+      "phase": "P2",
+      "requirement": "Autorisierte Computer-Use-Aktionen werden über einen realen Child-Process-Driver ausgeführt, mit fail-closed Driver-Grenze, Timeout und digest-basiertem Audit.",
+      "implementation": [
+        "lib/computer-driver.ts",
+        "app/api/computer-use/route.ts"
+      ],
+      "tests": [
+        {
+          "file": "tests/integration/computer-driver.test.ts",
+          "min": 2
+        }
+      ],
+      "ui": [
+        "Computer Use"
+      ],
+      "evidence": [
+        {
+          "kind": "route",
+          "method": "POST",
+          "path": "/api/computer-use",
+          "expect": [
+            400,
+            401,
+            403
+          ]
+        },
+        {
+          "kind": "file",
+          "path": "lib/computer-driver.ts"
+        }
+      ],
+      "docs": [
+        "docs/COMPUTER_USE.md"
+      ],
+      "status": "PASS",
+      "note": "Driver ist real ausführbar, aber nur über explizit konfigurierte BOB_COMPUTER_DRIVER-Grenze; ohne Driver bleibt die Aktion fail closed."
+    },
+    {
+      "id": "OFF-001",
+      "area": "Offline",
+      "phase": "P3",
+      "requirement": "Lokale Ressourcen (Modelle, Dokumentation, Pakete, Git, Images, SDKs, Daten und Indizes) werden persistent mit Digest registriert, verifiziert und für provenance-sicheren Sync vorbereitet.",
+      "implementation": [
+        "lib/offline-fabric.ts",
+        "app/api/offline/route.ts"
+      ],
+      "tests": [
+        {
+          "file": "tests/integration/offline-fabric.test.ts",
+          "min": 2
+        }
+      ],
+      "ui": [
+        "Offline"
+      ],
+      "evidence": [
+        {
+          "kind": "route",
+          "method": "GET",
+          "path": "/api/offline",
+          "expect": [
+            200,
+            401,
+            428
+          ]
+        },
+        {
+          "kind": "file",
+          "path": "lib/offline-fabric.ts"
+        }
+      ],
+      "docs": [
+        "docs/OPERATIONS.md"
+      ],
+      "status": "PASS",
+      "note": "Lokale Ressourcen werden persistent registriert; SHA-256-Verifikation ist Voraussetzung für Sync. Externe Übertragung bleibt Default-DENY."
     }
   ]
 }
