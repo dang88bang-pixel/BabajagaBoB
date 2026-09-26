@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import {createStore} from "./persistence/store";
 import {observe} from "./observability";
+import {hashSessionSecret} from "./session-secret";
 
 /**
  * Browser-Sessions (Abschnitt 37.13 / 38).
@@ -32,7 +33,7 @@ const DEFAULT_TTL_MS = 8 * 3600_000;
 type Payload = {sessions: Session[]};
 const store = createStore<Payload>("sessions", 1, () => ({sessions: []}));
 
-const hash = (secret: string) => crypto.createHash("sha256").update(secret).digest("hex");
+const hash = (secret: string) => hashSessionSecret(secret);
 
 export function createSession(input: {actorId: string; role?: Session["role"]; ttlMs?: number; userAgent?: string}) {
   const secret = crypto.randomBytes(32).toString("base64url");
