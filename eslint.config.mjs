@@ -45,9 +45,10 @@ export default tseslint.config(
     }
   },
   {
-    // Betriebs-/Nachweis-Skripte (Node, kein TypeScript): Node-Globals bekannt machen,
+    // Betriebs-/Nachweis-Skripte und der Produktionsserver (Node, kein
+    // TypeScript): Node-Globals bekannt machen,
     // statt sie als undefiniert zu melden. Sicherheitsregeln gelten weiter.
-    files: ["scripts/**/*.mjs", "scripts/**/*.js"],
+    files: ["scripts/**/*.mjs", "scripts/**/*.js", "server.mjs"],
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "module",

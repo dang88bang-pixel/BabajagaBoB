@@ -64,7 +64,7 @@ export function createPlan(input:{
     expectedEffect:"Task "+taskId+" erfüllt den zugeordneten Objective-Schritt.",
     abortCriteria:input.abortCriteria
   }));
-  const plan:ExecutionPlan={planId,objectiveId,version,status:"DRAFT",steps,expectedEffects:input.expectedEffects.map(requireText),abortCriteria:input.abortCriteria.map(requireText),createdBy,createdAt:now,updatedAt:now};
+  const plan:ExecutionPlan={planId,objectiveId,version,status:"DRAFT",steps,expectedEffects:input.expectedEffects.map((value,index)=>requireText(value,"expectedEffects["+index+"]")),abortCriteria:input.abortCriteria.map((value,index)=>requireText(value,"abortCriteria["+index+"]")),createdBy,createdAt:now,updatedAt:now};
   store.update(next=>{next.plans.push(plan);next.revisions[objectiveId]=version;});
   observe({type:"plan.created",message:"Plan "+plan.planId+" für "+objectiveId+" erstellt",status:"PLANNING",actor:createdBy,action:"plan.create",resource:plan.planId,argumentsValue:{objectiveId,version,taskCount:plan.steps.length}});
   return structuredClone(plan);
