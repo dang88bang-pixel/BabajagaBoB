@@ -3,6 +3,7 @@ import {consumeRateLimit, rateLimitResetForTests} from "../../lib/api/rate-limit
 import {beginShutdown, isShuttingDown, shutdownStatus} from "../../lib/shutdown";
 import crypto from "node:crypto";
 import {createSession, listSessions} from "../../lib/session";
+import {hashSessionSecret} from "../../lib/session-secret";
 
 describe("Betriebshärtung", () => {
   afterEach(() => {
@@ -55,8 +56,8 @@ describe("Betriebshärtung", () => {
     const before = listSessions().length;
     createSession({actorId:"CREATOR",role:"OWNER"});
     const created = listSessions().slice(before)[0];
-    const expected = crypto.createHmac("sha256",process.env.BOB_SESSION_SECRET).update("not-the-random-token").digest("hex");
-    expect(created.secretHash).not.toBe(expected);
+    const expected = crypto.createHmac("sha256",process.env.BOB_SESSION_SECRET).update("known-session-secret").digest("hex");
+    expect(hashSessionSecret("known-session-secret")).toBe(expected);
     expect(created.secretHash).toHaveLength(64);
   });
 
