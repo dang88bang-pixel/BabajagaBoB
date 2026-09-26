@@ -112,4 +112,16 @@ describe("Abnahme-Matrix", () => {
     expect(result.status, "Prüfer hätte den fehlenden Nachweis erkennen müssen").not.toBe(0);
     expect(result.stdout).toContain("Jede PASS-Anforderung hat Implementierung, Test und Nachweis");
   });
+
+  it("erkennt ein erfundenes npm-Skript als Skript-Nachweis (Regression Befund B2)", () => {
+    // Der Prüfer löst `npm run <name>` gegen `package.json` auf (B2, behoben
+    // 2026-09-26). Ein Skript, das dort nicht existiert, muss ein Verstoß
+    // bleiben — die Auflösung darf nicht zur Lockerung werden.
+    const result = runAcceptance(copy => {
+      const target = copy.requirements.find(entry => entry.status === "PASS" && entry.evidence.length > 0);
+      if (target) target.evidence.push({kind: "script", script: "npm run skript-das-es-nicht-gibt"});
+    });
+    expect(result.status, "Prüfer hätte das erfundene npm-Skript erkennen müssen").not.toBe(0);
+    expect(result.stdout).toContain("Jeder Skript-Nachweis existiert");
+  });
 });

@@ -1,8 +1,11 @@
 # Gesamtstatus BabajagaBoB
 
-**Stand:** 2026-09-25 (Fortgeschrieben 2026-09-26: eigene Tests für Queue/Runs,
-Worker/Dispatcher und Experiment-Engine, Baseline-Ergebnis und Befunde im
-`docs/FERTIGSTELLUNGSPLAN.md`)
+**Stand:** 2026-09-25 (Fortgeschrieben 2026-09-26/27: eigene Tests für Queue/Runs,
+Worker/Dispatcher und Experiment-Engine; Befunde B2–B5 behoben; kompletter
+Live-Nachweis erneut gemessen — Details und Zahlen im
+`docs/FERTIGSTELLUNGSPLAN.md` §14: Suite 462/463, Sabotage 25/25,
+Fehlerinjektion 18/18, verify-live 171/0, audit-api 248/0, audit-ui 92/0,
+audit-actions 525/0, acceptance-live 84/0, Rate-Limit 6/0, Soak 120/0)
 **Branch:** `arena/01a0dfc9-babajagabob`
 
 ## Statuslegende
@@ -90,7 +93,7 @@ Produktionsreife:
 | Fehlerinjektion (Abschnitt 37 / TEST-003) | VERIFIED | `lib/fault-injection.ts` (sechs Injektionsarten mit **echter** Wirkung: Prozessabbruch, Worker-Verlust, Netzwerkverweigerung fail closed, doppelter Job, konkurrierende Schreibvorgänge, Store-Manipulation; Ergebnis `SURVIVED`/`DEGRADED`/`FAILED`/`NOT_INJECTED`; jede Injektion prüft Store-Integrität, Event- und Audit-Kette, legt Evidenz mit Digest, Wissensknoten und Audit `fault.inject` an; `FAILED` → Fehlerfall + Inbox-BLOCK) und `scripts/fault-injection.mjs` (startet den gebauten Dienst, least einen echten Job, tötet die Prozessgruppe per `SIGKILL`, startet neu und misst: Sitzung, Daten, Job-Identität, Lease-Ablauf, erneute Ausführbarkeit, Audit-Kette, Store-Digests → **28/28 in 2 Zyklen**). Route `GET|POST /api/faults` (Injektion nur Creator, Kill-Switch → 423), Oberflächensektion **Fehlerinjektion**; Tests `tests/integration/fault-injection.test.ts` (10) |
 | Sabotageproben (Abschnitt 37 / TEST-004) | VERIFIED | `scripts/sabotage.mjs` + `docs/acceptance/sabotage-probes.json`: acht Proben schwächen tragende Regeln ab und verlangen, dass die zuständigen Suiten rot werden — **8/8 erkannt**. Sicherheitsnetze: Anker genau einmal, selbstheilende Wiederherstellung mit sha256-Prüfung, Exit 2 bei Reständerung. Pflichtstufe in CI; `tests/unit/sabotage-plan.test.ts` (13) prüft Katalog und CI-Verdrahtung, `tests/security/promotion-gates.test.ts` (11) schließt die gefundenen Deckungslücken |
 | CI/CD (`ci.yml`) | TESTED | 6 Jobs (Lint/Typecheck, Unit/Integration/Regression/UI, **Sabotageproben**, Security/E2E, Build **inkl. Fehlerinjektion am laufenden Dienst**, Promotion-Gate); grüne Läufe dokumentiert in `docs/CI_CD.md` |
-| Automatisierte Testsuiten | TESTED | **63 Dateien / 422 Tests grün** (Unit 126, Security 135, Integration 122, Regression 15, UI 13, E2E 11), siehe `docs/TESTING.md` |
+| Automatisierte Testsuiten | TESTED | **68 Dateien / 463 Tests** (Stand 2026-09-26: 462 grün; `oci-runtime.test.ts` ist ohne Container-Daemon in der Umgebung rot und bleibt `NOT_VERIFIED` — mit Daemon ist er der `OCI-001`-Nachweis), siehe `docs/TESTING.md` |
 | Betriebsprüfung aller Routen | VERIFIED | `scripts/audit-api.sh`: **204 Prüfungen / 0 Fehler**, Exit 0 (8 Abschnitte, wiederholbar; Routen mit Pflichtparametern werden als 4xx korrekt bewertet); siehe `docs/TESTING.md` §4b |
 | Alarmierung (Regeln) | TESTED | `lib/alerting.ts`: 16 Regeln im Code, bei jeder Abfrage gegen die **real ausgelieferten** Kennzahlen geprüft (unbekannte Kennzahl → Regel ungültig, YAML-Ausgabe 500 = fail closed); `GET /api/alerts[?format=prometheus]`, sichtbar unter Metriken → Alarmregeln; `tests/integration/alerting.test.ts` (8 Tests) |
 | Oberflächenprüfung des Control Centers | VERIFIED | `scripts/audit-ui.mjs`: **88 Prüfungen / 0 Fehler**, Exit 0 — Quellvertrag, Auslieferung, Visualisierungs-Bildroute (passives SVG) und Datenvertrag je Abschnitt, kein Geheimnis im Browser; siehe `docs/TESTING.md` §4d |

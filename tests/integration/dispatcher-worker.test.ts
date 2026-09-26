@@ -85,21 +85,29 @@ describe("dispatchTask: Bindung und Idempotenz", () => {
     expect(sandbox!.agentId).toBe("AG-BUILD");
   });
 
-  it("verweigert einen zweiten Dispatch desselben Tasks statt still doppelt einzureihen (Befund B5)", async () => {
-    // Befund B5 (Fertigstellungsplan): `createRun`/`enqueueJob` sind über den
-    // Idempotenzschlüssel dedupliziert, `dispatchTask` ruft danach aber
-    // `queueRun` erneut auf und wirft deshalb „invalid run transition
-    // QUEUED -> QUEUED". Das ist fail closed (kein doppeltes Einreihen), aber
-    // keine saubere Idempotenz-Antwort. Hier wird das **vorhandene** Verhalten
-    // belegt; die Bereinigung erfordert eine Creator-Freigabe.
+  it("gibt beim zweiten Dispatch dieselbe Bindung idempotent zurück (Regression Befund B5)", async () => {
+    // Regression zu Befund B5 (behoben 2026-09-26): `createRun`/`enqueueJob`
+    // deduplizieren über den Idempotenzschlüssel; zuvor rief `dispatchTask`
+    // danach erneut `queueRun` auf und warf „invalid run transition
+    // QUEUED -> QUEUED". Jetzt wird die vorhandene Bindung zurückgegeben —
+    // ohne zweiten Run, zweiten Job oder eine zweite Sandbox.
     const task = setupTask("Idempotenz");
     const first = await dispatcher.dispatchTask({taskId: task.taskId, agentId: "AG-BUILD", risk: "LOW"});
     expect(first.state).toBe("QUEUED");
-    await expect(dispatcher.dispatchTask({taskId: task.taskId, agentId: "AG-BUILD", risk: "LOW"}))
-      .rejects.toThrow(/invalid run transition QUEUED -> QUEUED/);
-    // Es wurde nichts doppelt eingericht: genau ein Run, genau ein Job.
+    expect(first.created).toBe(true);
+
+    const second = await dispatcher.dispatchTask({taskId: task.taskId, agentId: "AG-BUILD", risk: "LOW"});
+    expect(second.created).toBe(false);
+    expect(second.runId).toBe(first.runId);
+    expect(second.jobId).toBe(first.jobId);
+    expect(second.sandboxId).toBe(first.sandboxId);
+    expect(second.state).toBe("QUEUED");
+
+    // Nichts wurde doppelt eingericht: genau ein Run, genau ein Job, genau
+    // eine Sandbox zu diesem Task.
     expect(runs.listRuns().filter(r => r.taskId === task.taskId)).toHaveLength(1);
     expect(queue.queueSnapshot().filter(j => j.taskId === task.taskId)).toHaveLength(1);
+    expect(cp.getControlState().sandboxes.filter(s => s.taskId === task.taskId)).toHaveLength(1);
   });
 });
 

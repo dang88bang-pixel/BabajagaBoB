@@ -1,7 +1,7 @@
 import {approvalGranted} from "./approvals";
 import {executeAuthorized} from "./execution-broker";
 import {executionGate} from "./execution-gate";
-import {enqueueJob, expireLeases, leaseJob, startJob, completeJob, failJob} from "./queue";
+import {enqueueJob, expireLeases, leaseJob, startJob, completeJob, failJob, queueSnapshot} from "./queue";
 import {getRun, queueRun, leaseRun, startRun, completeRun, failRun, attachExecution, createRun} from "./runs";
 import {createSandbox} from "./sandbox/fabric";
 import {ensureExecutionCapability} from "./authority";
@@ -69,6 +69,37 @@ export async function dispatchTask(input: DispatchInput): Promise<DispatchResult
   }
 
   const sandboxId = input.sandboxId ?? `SB-${Date.now().toString(36).toUpperCase()}`;
+  // Run zuerst anlegen (Deduplizierung über den Idempotenzschlüssel): War der
+  // Task bereits dispatcht, wird die vorhandene Bindung zurückgegeben statt
+  // doppelt zu dispatchen oder zu werfen (Befund B5, behoben 2026-09-26 —
+  // zuvor warf `queueRun` „invalid run transition QUEUED -> QUEUED").
+  const run = createRun({
+    taskId: task.taskId,
+    agentId: input.agentId,
+    risk: input.risk,
+    sandboxId,
+    idempotencyKey: input.idempotencyKey ?? `task:${task.taskId}:${agent.agentId}`,
+    timeoutMs: input.timeoutMs
+  });
+  if (run.state !== "CREATED") {
+    const boundSandboxId = run.sandboxId ?? sandboxId;
+    const boundJob = queueSnapshot().find(entry => entry.runId === run.runId) ?? null;
+    observe({
+      type: "task.dispatch.deduplicated",
+      message: `Task ${task.taskId} war bereits dispatcht — vorhandene Bindung zurückgegeben`,
+      status: "QUEUED",
+      actor: input.agentId,
+      agentId: input.agentId,
+      taskId: task.taskId,
+      runId: run.runId,
+      action: "task.dispatch",
+      resource: task.taskId,
+      decision: "ALLOW",
+      argumentsValue: {idempotent: true, state: run.state}
+    });
+    return {runId: run.runId, jobId: boundJob?.jobId ?? run.jobId ?? "", sandboxId: boundSandboxId, state: run.state, created: false};
+  }
+
   const existingSandbox = state.sandboxes.find(s => s.sandboxId === sandboxId);
   if (!existingSandbox) {
     await createSandbox({
@@ -80,14 +111,6 @@ export async function dispatchTask(input: DispatchInput): Promise<DispatchResult
     });
   }
 
-  const run = createRun({
-    taskId: task.taskId,
-    agentId: input.agentId,
-    risk: input.risk,
-    sandboxId,
-    idempotencyKey: input.idempotencyKey ?? `task:${task.taskId}:${agent.agentId}`,
-    timeoutMs: input.timeoutMs
-  });
   const job = enqueueJob({
     taskId: task.taskId,
     runId: run.runId,

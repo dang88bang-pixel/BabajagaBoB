@@ -143,7 +143,7 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 
 | Prüfung | Ergebnis |
 |---|---|
-| Statische Matrix-Prüfung (`node scripts/acceptance.mjs`) | **1 Verstöße** |
+| Statische Matrix-Prüfung (`node scripts/acceptance.mjs`) | **0 Verstöße** |
 | Live-Routennachweise (`--live`) | nicht ausgeführt (statischer Modus) |
 
 Details: `docs/ABNAHMEPLAN.md`, `docs/TESTING.md`.

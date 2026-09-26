@@ -181,7 +181,16 @@ step("2. Nachweisregel (kein DONE ohne Nachweis)");
   else bad("Jeder Routen-Nachweis zeigt auf eine existierende Route", brokenRoutes.join(", "));
 
   const scriptEvidence = requirements.flatMap(entry => (entry.evidence ?? []).filter(item => item.kind === "script").map(item => item.script));
-  const missingScripts = [...new Set(scriptEvidence)].filter(script => !existsSync(script) && script !== "scripts/acceptance.mjs");
+  // Skript-Nachweise sind Dateipfade **oder** npm-Skripte (`npm run <name>`).
+  // Ein npm-Nachweis gilt nur, wenn das Skript in `package.json` definiert ist —
+  // erfundene Kommandos bleiben ein Verstoß (Befund B2, 2026-09-26 behoben:
+  // zuvor wurde `npm run test:oci` als Dateipfad geprüft und war immer rot).
+  const packageScripts = JSON.parse(readFileSync("package.json", "utf8")).scripts ?? {};
+  const scriptKnown = script =>
+    existsSync(script) ||
+    script === "scripts/acceptance.mjs" ||
+    (/^npm run [\w:.-]+$/.test(script) && Object.hasOwn(packageScripts, script.slice("npm run ".length)));
+  const missingScripts = [...new Set(scriptEvidence)].filter(script => !scriptKnown(script));
   if (missingScripts.length === 0) ok("Jeder Skript-Nachweis existiert", `${new Set(scriptEvidence).size} Skripte`);
   else bad("Jeder Skript-Nachweis existiert", missingScripts.join(", "));
 

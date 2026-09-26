@@ -214,7 +214,13 @@ export function leaseRun(runId: string, workerId: string, leaseMs = 60_000): Run
 export function startRun(runId: string): Run | null {
   const run = store.read().runs.find(r => r.runId === runId);
   if (!run) return null;
-  if (run.state === "CREATED" || run.state === "QUEUED" || run.state === "LEASED") {
+  // `CREATED` ist hier bewusst **kein** Startzustand: die Zustandsmaschine
+  // verlangt den expliziten Weg CREATED → QUEUED → LEASED → RUNNING
+  // (RUN_TRANSITIONS). Ein direkter Start aus CREATED war früher eine
+  // Ausnahme („invalid run transition CREATED -> RUNNING") statt einer
+  // sauberen Verweigerung — Befund B4, behoben 2026-09-26. Worker, Dispatcher
+  // und die `/api/runs`-Route leasen deshalb vor dem Start.
+  if (run.state === "QUEUED" || run.state === "LEASED") {
     return transition(run, "RUNNING", "worker started execution", r => {
       r.attempt += 1;
       r.startedAt = new Date().toISOString();

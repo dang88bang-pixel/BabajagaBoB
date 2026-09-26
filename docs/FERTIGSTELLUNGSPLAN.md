@@ -268,16 +268,52 @@ Bei Baseline und Testarbeit aufgefallen. Jeder Befund ist belegt; die
 **Behebung erfordert eine Creator-Freigabe** (Regel 1/5), weil sie Code,
 Prüfer oder Matrix berührt.
 
-| Nr. | Befund | Beleg | Einordnung |
+| Nr. | Befund | Beleg | Stand |
 |---|---|---|---|
-| B1 | **CI auf `main` ist rot** (Lauf `36275065312` zum Release-Commit `d5ca4f4`): „Unit- und Integrationstests" scheitert im Unit-Schritt; „Real OCI Runtime" scheitert **obwohl der Docker-Daemon bereitstand** — die OCI-Lücke ist damit nicht mehr nur „kein Daemon", sondern ein realer Testfehlschlag gegen Docker. Die Doku („alle Läufe grün") bildet das nicht ab. Die zugehörigen Log-Archive waren aus dieser Umgebung nicht abrufbar (EOF). | `gh run view 36275065312` | Freigabe nötig: Ursachenanalyse des OCI-Laufs und des Unit-Fehlers |
-| B2 | **Statischer Abnahmeprüfer rot (14/1):** `OCI-001` führt als Skript-Nachweis das Kommando `npm run test:oci`; der Prüfer prüft Skript-Nachweise aber mit `existsSync` (Dateipfad). Dadurch sind `tests/unit/acceptance-matrix.test.ts` und `node scripts/acceptance.mjs` rot. | `node scripts/acceptance.mjs`, `scripts/acceptance.mjs` Z. 183–186 | Freigabe nötig: Nachweis-Eintrag oder Prüfer korrigieren (beides berührt den Abnahmerahmen) |
-| B3 | **Reihenfolge-Falle:** `tests/integration/graceful-shutdown.test.ts` verlangt den Produktionsbuild (`.next/BUILD_ID`); `npm run verify` führt Tests aber **vor** dem Build aus. In CI wird der Build vorangestellt, lokal läuft der Test ohne Build rot (Vorbereitungsfehler, kein Produktfehler — der Test meldet das korrekt). | Testkommentar in der Datei, Baseline-Lauf | Dokumentation/Bedienhinweis; optional Freigabe für ein `verify` mit Build zuerst |
-| B4 | **`startRun` aus `CREATED` wirft** `invalid run transition CREATED -> RUNNING`: Der `CREATED`-Zweig in `startRun` (`lib/runs.ts`) passt nicht zur Zustandsmaschine (`RUN_TRANSITIONS.CREATED = [QUEUED, CANCELLED]`). Heute nicht erreichbar (Worker und `/api/runs` leasen zuerst), aber ein direkter Aufruf wirft statt sauber zu verweigern. | Sondiertest 2026-09-26 (Ausgabe im Commit-Verlauf), `lib/runs.ts` | Freigabe nötig: toten Zweig entfernen oder Übergang erklären |
-| B5 | **Zweiter `dispatchTask` desselben Tasks wirft** `invalid run transition QUEUED -> QUEUED` statt einer idempotenten Antwort: `createRun`/`enqueueJob` deduplizieren, `dispatchTask` ruft danach erneut `queueRun` auf. Fail closed (nichts wird doppelt eingericht), aber keine saubere Idempotenz; MASTER §5 verlangt Idempotenz. | `tests/integration/dispatcher-worker.test.ts` („Befund B5", belegt das vorhandene Verhalten) | Freigabe nötig: Idempotenz-Antwort statt Wurf |
-| B6 | **Paralleler Arbeitszweig:** Auf GitHub existiert der Branch `fix/spec-compliance-computer-offline` mit ebenfalls roter CI (Typecheck, Produktionsbuild, Sabotageproben). Vor weiteren Arbeiten abstimmen, um keine Konflikte einzubauen. | `gh run list` (2026-09-26) | Koordination mit dem Creator |
+| B1 | **CI auf `main` ist rot** (Lauf `36275065312` zum Release-Commit `d5ca4f4`): „Unit- und Integrationstests" scheitert im Unit-Schritt; „Real OCI Runtime" scheitert **obwohl der Docker-Daemon bereitstand**. Die Doku („alle Läufe grün") bildete das nicht ab. | `gh run view 36275065312` | 🟡 teilweise behoben 2026-09-26: Der Unit-Fehler war Befund B2 (mit B2 behoben; Unit-Suite ist lokal grün). **OCI-Teilursache identifiziert:** `lib/oci-runtime.ts` übergibt bei `docker create` bedingungslos `--storage-opt size=…m`; GitHub-Runner unterstützen Storage-Quotas auf ihrem Dateisystem in der Regel nicht (nur overlay2 über XFS mit `pquota`) → `create` schlägt fehl. **Vorschlag (freigabepflichtig, hier nicht verifizierbar ohne Docker):** Quota wie beim cgroup-Muster handhaben — durchsetzen, wenn der Daemon es kann, sonst ausdrücklich als `UNAVAILABLE` ausweisen statt hart zu scheitern; der Test prüft dann erzwungene Quota nur auf unterstützenden Hosts. Log-Archive der GitHub-Läufe waren aus dieser Umgebung nicht abrufbar (EOF). |
+| B2 | **Statischer Abnahmeprüfer rot (14/1):** `OCI-001` führt als Skript-Nachweis das Kommando `npm run test:oci`; der Prüfer prüfte Skript-Nachweise mit `existsSync` (Dateipfad). | `node scripts/acceptance.mjs` | ✅ **behoben 2026-09-26:** Der Prüfer löst `npm run <name>` jetzt gegen `package.json` auf (`scripts/acceptance.mjs`); ein erfundenes Skript bleibt ein Verstoß (neue Negativprobe in `tests/unit/acceptance-matrix.test.ts`). Ergebnis: statisch **15/0**, Unit-Suite grün |
+| B3 | **Reihenfolge-Falle:** `graceful-shutdown.test.ts` verlangt den Produktionsbuild; `npm run verify` führte Tests vor dem Build aus. | Testkommentar | ✅ **behoben 2026-09-26:** `verify` = Lint → Typecheck → **Build** → Tests (CI macht es genauso) |
+| B4 | **`startRun` aus `CREATED` warf** `invalid run transition CREATED -> RUNNING` (toter Zweig, inkonsistent zur Zustandsmaschine). | Sondiertest 2026-09-26 | ✅ **behoben 2026-09-26:** `CREATED` ist kein Startzustand mehr; saubere Verweigerung (`null`), Regressionstest in `tests/integration/queue-run-lifecycle.test.ts` |
+| B5 | **Zweiter `dispatchTask` desselben Tasks warf** statt idempotenter Antwort. | `dispatcher-worker.test.ts` | ✅ **behoben 2026-09-26:** vorhandene Bindung wird zurückgegeben (`created: false`, gleicher Run/Job/Sandbox, kein Doppel-Objekt, Observation `task.dispatch.deduplicated`); Regressionstest im selben File |
+| B6 | **Paralleler Arbeitszweig:** `fix/spec-compliance-computer-offline` mit roter CI (Typecheck, Produktionsbuild, Sabotageproben). | `gh run list` | ⚠️ offen — vor Merge abstimmen |
 
-## 14. Änderungsnachweis dieses Plans
+## 14. Zweite Durchführung — Freigegebene Korrekturen und kompletter Live-Nachweis (2026-09-26/27)
+
+Auf Anweisung „weiter fertig stellen" wurden die Befunde B2–B5 mit
+Regressionstests behoben (Commit folgt auf diesen Plan) und anschließend der
+**vollständige Live-Nachweis** gegen eine frische Instanz mit Kernel-Isolation
+(`NAMESPACES`, Rootfs selbst gebaut, ohne cgroup-Delegation) gefahren.
+Dabei wurde **keine Sicherheitsanforderung abgeschwächt** — das belegen die
+erneut ausgeführten Sabotageproben.
+
+| Nachweis | Ergebnis (gemessen) |
+|---|---|
+| Gesamtsuite (`npx vitest run`) | **462 / 463 grün** — einziger roter Test: `oci-runtime.test.ts` (kein Docker in dieser Umgebung; bleibt `NOT_VERIFIED`/`OCI-001`) |
+| `npx tsc --noEmit` / `npx eslint .` | 0 Fehler / 0 Fehler, 11 Warnungen |
+| `node scripts/acceptance.mjs` (statisch) | **15 / 0** |
+| `node scripts/sabotage.mjs` | **25 / 25 erkannt**, alle 17 Ankerdateien unverändert (sha256) |
+| `node scripts/fault-injection.mjs --cycles=1` | **18 / 18** (echter SIGKILL, Neustart, Session überlebt, kein Doppel-Job, Audit-Kette und Stores unversehrt) |
+| `scripts/verify-live.sh` (frische Instanz, `BOB_NS_ISOLATION=on`) | **171 / 0** — Isolation real gemessen: Capabilities 0, Rootfs read-only, nur Loopback, leere Routingtabelle, keine Host-Prozesse, `EFBIG` am 1-MiB-Dateilimit |
+| `scripts/audit-api.sh` | **248 / 0** |
+| `scripts/audit-ui.mjs` | **92 / 0** (inkl. „Discovery ≠ Autorisierung") |
+| `scripts/audit-actions.mjs` | **525 / 0** |
+| `node scripts/acceptance.mjs --live` | **84 / 0**, 68/68 Routen-Nachweise mit Creator-Session |
+| `scripts/verify-rate-limit.sh` (eigene frische Instanz, Standardbudget) | **6 / 0** — der 31. Anmeldeversuch → 429 + `retry-after`, DENY auditiert, Kette gültig |
+| `scripts/soak.mjs` (SOAK_COUNT=120, Nebenläufigkeit 4, Kernel-Isolation aktiv) | **120 autorisierte Ausführungen, 0 Fehler, `MEETS_BUDGET`**; danach Audit-Kette gültig, Store-Integrität ok, Isolation `NAMESPACES` |
+
+Betriebliche Anmerkungen (keine Code-Änderung): Die Audit-Suiten laufen mit
+angehobenem Prüfbudget (`BOB_RATE_LIMIT_MAX`, vom Skript-Header dokumentiert);
+der Standardbudget-Nachweis läuft separat auf frischer Instanz
+(`verify-rate-limit.sh`). `audit-ui` erwartet mindestens ein **unautorisiertes**
+gemeldetes Gerät — die Reihenfolge „erst melden (Discovery/Enrollment), dann
+prüfen" ist Teil des Nachweises, nicht ein Fehler.
+
+Damit sind **alle Phasen 0–2 und die Kategorie V (Verifikation) vollständig
+abgeschlossen**. Weiter offen: Phase 3 (Umgebung: Docker-Host für `OCI-001`,
+Browser für `UI-003`, Dauerlauf über Stunden für `LOAD-001`), Phase 4
+(Funktionsaufträge, freigabepflichtig) und Phase 5 (Scope-Entscheide).
+
+## 15. Änderungsnachweis dieses Plans
 
 - 2026-09-26: Erstfassung aus Matrix, STATUS, TODO, ABNAHMEPLAN,
   ABSCHLUSSBERICHT und SPEC_COMPLIANCE zusammengestellt. Es wurde dabei
@@ -286,3 +322,9 @@ Prüfer oder Matrix berührt.
   V/T/D): Baseline gemessen, 39 neue Tests ergänzt (alle grün),
   Dokumentations-Konsistenz hergestellt, Befunde B1–B6 dokumentiert.
   Phasen 3–5 bleiben unverändert offen (Umgebung, Freigaben, Entscheidungen).
+- 2026-09-26/27 (zweite Durchführung): Befunde B2–B5 mit Regressionstests
+  behoben (Funktionsänderungen auf Anweisung „weiter fertig stellen"),
+  kompletter Live-Nachweis gefahren (§14): Suite 462/463, Sabotage 25/25,
+  Fehlerinjektion 18/18, verify-live 171/0, audit-api 248/0, audit-ui 92/0,
+  audit-actions 525/0, acceptance-live 84/0, Rate-Limit-Grenznachweis 6/0,
+  Soak 120/0 `MEETS_BUDGET`.

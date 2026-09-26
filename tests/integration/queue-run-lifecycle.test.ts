@@ -213,6 +213,11 @@ describe("Run-Lifecycle: Zustandsmaschine", () => {
     expect(runs.heartbeatRun(run.runId)).toBeNull();
     expect(runs.canTransitionRun("SUCCEEDED", "RUNNING")).toBe(false);
     expect(runs.canTransitionRun("CREATED", "RUNNING")).toBe(false);
+    // Regression zu Befund B4 (behoben 2026-09-26): Ein Start direkt aus
+    // CREATED wirft nicht mehr, sondern verweigert sauber; der dokumentierte
+    // Weg führt über QUEUED und LEASED.
+    expect(runs.startRun(run.runId)).toBeNull();
+    expect(runs.getRun(run.runId)!.state).toBe("CREATED");
     // Abgebrochene Runs sind endgültig.
     runs.queueRun(run.runId);
     expect(runs.cancelRun(run.runId, "creator")!.state).toBe("CANCELLED");
