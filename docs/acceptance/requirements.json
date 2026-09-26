@@ -595,17 +595,28 @@
       "phase": "P0",
       "requirement": "OCI-Sandbox mit Härtungsflags, Snapshot/Restore und Quota-Durchsetzung.",
       "implementation": [
-        "lib/oci-runtime.ts"
+        "lib/oci-runtime.ts",
+        ".github/workflows/ci.yml"
       ],
-      "tests": [],
+      "tests": [
+        {
+          "file": "tests/integration/oci-runtime.test.ts",
+          "min": 1
+        }
+      ],
       "ui": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "script",
+          "script": "npm run test:oci"
+        }
+      ],
       "docs": [
         "docs/SANDBOX.md",
         "docs/RUNTIME.md"
       ],
       "status": "NOT_VERIFIED",
-      "note": "Kein Container-Daemon in der Umgebung (Docker/Podman-Downloads gesperrt); Flags sind definiert, aber nicht real ausgeführt."
+      "note": "Implementierung und realer Docker-Lifecycle-Test sind vorhanden; PASS wird erst nach einem erfolgreich ausgeführten OCI-CI-Run gesetzt. Der aktuelle Connector kann den neuen Workflow-Run noch nicht beobachten."
     },
     {
       "id": "Q-001",
