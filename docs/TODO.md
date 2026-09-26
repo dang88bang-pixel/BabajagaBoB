@@ -36,7 +36,7 @@ Smoke-Test laufen als SYSTEM-WORKER über Gate, Broker und Evidenz).
 | Egress-Allowlist | bewusst fail closed, bis ein kontrollierter Proxy existiert | Egress-Proxy + DNS-Pinning implementieren, dann `ALLOWLIST` freischalten |
 | Provider live verbinden | keine externen Verbindungen erlaubt (Netzwerk `DENY`) | mit Allowlist + Approval einen Adapter real anbinden und Telemetrie prüfen |
 | ~~Geräte-Discovery~~ | erledigt: `lib/device-enrollment.ts` + `scripts/discover-host.mjs` (Meldung mit Geheimnis, fail closed, nur Discovery/Heartbeat), Autorisierung bleibt Creator-Akt | offen: Netz-Scan (ARP/mDNS) und Attestierung sind `NOT_IMPLEMENTED`; Scheduling nach CPU/RAM/GPU/OS/Architektur/Capabilities ist jetzt implementiert und getestet |
-| Computer Use | kein Browser-/Desktop-Treiber angebunden | Playwright-/VNC-Treiber im Sandbox-Workspace, Aktionen über Broker |
+| Computer Use | Lifecycle + reale Driver-Grenze jetzt implementiert; konkrete Browser/Desktop-Treiber bleiben extern konfiguriert | `lib/computer-driver.ts` über expliziten Child-Process-Driver nutzen; Driver selbst in Sandbox bereitstellen und live verifizieren |
 | ~~Simulation/Visualisierung~~ | erledigt | Renderer `lib/visualization.ts` für alle sieben Arten (aus dem echten Zustand), Bildroute + Evidenzartefakt, `tests/integration/visualization.test.ts` |
 | Control-Center-UI | kein Browser in der Umgebung (geprüft: kein Chromium/Chrome/Firefox, kein Playwright-Cache; Download-Hosts gesperrt) | Browser-E2E bleibt `NOT_VERIFIED`; ersatzweise jsdom-Tests gegen echte Routen-Handler + `audit-ui.mjs` |
 | ~~Recovery-Tier-Ableitung~~ | erledigt | automatische, begründete Klassifikation in `lib/recovery-tier.ts` (Tests: `tests/unit/recovery-tier.test.ts`) |
@@ -44,14 +44,14 @@ Smoke-Test laufen als SYSTEM-WORKER über Gate, Broker und Evidenz).
 | ~~Backup-Automation~~ | erledigt: `lib/backup-policy.ts` (idempotenter geplanter Lauf, Aufbewahrungsgrenze je Store, Audit + Ereignis, UI-Panel) | offen bleibt ein echter Scheduler-Daemon (externer Auslöser, `NOT_VERIFIED`) |
 | ~~Last-/Soak-Tests~~ | erledigt: begrenzter Nachweis **mit definierten Schwellen** (`SOAK_SLO_P95_MS`, `SOAK_SLO_MIN_SUCCESS_RATIO`, Negativnachweis Exit 1) und betriebsweite SLO-Bewertung (`lib/slo.ts`, `/api/slo`, UI „Service-Level“) | offen bleibt ein **Dauerlauf** über Stunden/Lastkurve (`NOT_VERIFIED`) |
 
-## 3. Nicht implementiert (bewusst)
+## 3. Neu implementiert / nachzuziehende Verifikation\n\n- Offline-Fabric: `lib/offline-fabric.ts` + `/api/offline` + Control-Center-Abschnitt „Offline Fabric“; lokale Ressourcen werden persistent registriert, SHA-256-verifiziert und Sync bleibt bis zur Verifikation gesperrt.\n- Computer-Use-Ausführung: `lib/computer-driver.ts` + `POST /api/computer-use` mit echtem Child-Process-Driver, Shell-Verbot, Minimal-Environment, Timeout und Digest-Audit.\n\n## 4. Nicht implementiert (bewusst)
 
 - WebAuthn als Alternative zu TOTP (TOTP ist implementiert: `BOB_CREATOR_TOTP_SECRET`).
 - Automatisches Deployment (Promotion bleibt manuell und Creator-gebunden).
 - Vektor-/Embedding-Suche im Knowledge Graph.
 - Statistische Signifikanzprüfung in der Kausalvalidierung.
 
-## 4. Regeln für neue Einträge
+## 5. Regeln für neue Einträge
 
 - Kein Punkt gilt als erledigt ohne Implementierung + Integration + Persistenz
   (falls nötig) + Fehlerpfade + Security-Grenze + Test + Regressionstest +
