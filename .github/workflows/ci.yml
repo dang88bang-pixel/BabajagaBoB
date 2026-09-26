@@ -58,6 +58,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Der Integrationstest `graceful-shutdown` startet den echten Produktionsserver
+      # (`node server.mjs`) und braucht deshalb den Build. Fehlte er, schlug der Job
+      # mit "Produktionsbuild fehlt" fehl — laut und mit klarer Ursache statt Timeout.
+      - name: Produktionsbuild (Voraussetzung des Prozesstests)
+        run: npm run build
       - name: Unit-Tests (Authority, Policy, Governance, Persistenz, Knowledge, Science, Recovery)
         run: npm run test:unit
       - name: Integrationstests (Broker, Runtime, Sandbox, Queue, Runs, Error Intelligence)
@@ -78,6 +83,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Die Probe `SHUTDOWN_SIGNAL_NOT_HANDLED` führt den Prozesstest aus, der den
+      # echten Server startet — ohne Build wäre schon die Grundprobe rot.
+      - name: Produktionsbuild (Voraussetzung des Prozesstests)
+        run: npm run build
       - name: Katalog prüfen (jeder Anker genau einmal, jede Testdatei vorhanden)
         run: node scripts/sabotage.mjs --check
       - name: Sabotageproben (jede geschwächte Regel muss erkannt werden)

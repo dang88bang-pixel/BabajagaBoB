@@ -44,6 +44,8 @@ const CYCLES = Number(flag("cycles") ?? 2);
 const STORAGE = path.resolve(flag("storage") ?? process.env.BOB_STORAGE_DIR ?? path.join(ROOT, ".bob-data"));
 const REPORT = path.join(STORAGE, "fault-injection", "report.json");
 const BOOTSTRAP_SECRET = process.env.BOB_BOOTSTRAP_SECRET ?? `fault-injection-${crypto.randomUUID()}`;
+/** Produktion verlangt ein externalisiertes Sitzungsgeheimnis (>= 32 Zeichen). */
+const SESSION_SECRET = process.env.BOB_SESSION_SECRET ?? crypto.randomBytes(32).toString("hex");
 const READY_TIMEOUT_MS = Number(flag("timeoutMs") ?? 180_000);
 /** Die Standard-Lease des Dienstes beträgt 60 s — so lange darf die Probe warten. */
 const RECOVERY_TIMEOUT_MS = Number(flag("recoveryTimeoutMs") ?? 120_000);
@@ -116,8 +118,16 @@ const isOk = status => status === 200 || status === 201;
 
 const logs = [];
 
+/**
+ * Startet den **echten** Produktionsweg (`node server.mjs`, Abschnitt OPS-004),
+ * nicht `next start`. Zwei Gründe, beide durch einen roten CI-Lauf belegt:
+ * `next start` umgeht die Drainage-Logik des Betriebsservers, und seit der
+ * Externalisierung des Sitzungsgeheimnisses verweigert die Sitzungsschicht in
+ * Produktion ohne `BOB_SESSION_SECRET` fail closed — der Bootstrap antwortete
+ * hier früher mit HTTP 500, weil das Geheimnis nirgends gesetzt war.
+ */
 function startService() {
-  const child = spawn(process.execPath, [path.join(ROOT, "node_modules", "next", "dist", "bin", "next"), "start", "-p", String(PORT)], {
+  const child = spawn(process.execPath, [path.join(ROOT, "server.mjs")], {
     cwd: ROOT,
     env: {
       ...process.env,
@@ -125,6 +135,7 @@ function startService() {
       PORT: String(PORT),
       BOB_STORAGE_DIR: STORAGE,
       BOB_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET,
+      BOB_SESSION_SECRET: SESSION_SECRET,
       BOB_NS_ISOLATION: process.env.BOB_NS_ISOLATION ?? "off"
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -137,6 +148,13 @@ function startService() {
   child.stderr.pipe(stream);
   logs.push(logFile);
   return child;
+}
+
+/** Letzte Zeilen des jüngsten Dienstprotokolls — für diagnostizierbare Fehler. */
+function logTail(lines = 8) {
+  const newest = [...logs].sort().at(-1);
+  if (!newest || !fs.existsSync(newest)) return "";
+  return fs.readFileSync(newest, "utf8").trim().split("\n").slice(-lines).join("\n");
 }
 
 async function waitForService(label) {
@@ -226,7 +244,8 @@ async function main() {
     // Bootstrap der Erstinstanz (einmalig, danach existiert die Sitzung bereits).
     const auth = await request("POST", `${BASE}/api/auth`, {action: "bootstrap", secret: BOOTSTRAP_SECRET, creatorName: "Fehlerinjektion"});
     if (![200, 201, 409].includes(auth.status)) {
-      throw new Error(`Bootstrap fehlgeschlagen: HTTP ${auth.status} ${auth.text.slice(0, 200)}`);
+      // Ohne Logauszug ist ein 500 an dieser Stelle nicht diagnostizierbar.
+      throw new Error(`Bootstrap fehlgeschlagen: HTTP ${auth.status} ${auth.text.slice(0, 200)}\n${logTail()}`);
     }
     if (auth.status === 409) {
       const login = await request("POST", `${BASE}/api/auth`, {action: "login", secret: BOOTSTRAP_SECRET});

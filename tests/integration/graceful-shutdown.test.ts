@@ -47,6 +47,15 @@ type Started = {port: number; output: () => string};
 
 /** Startet den Produktionsserver und wartet auf die Bereitschaftsmeldung. */
 async function startServer(): Promise<Started> {
+  // Der Produktionsserver wird von Node direkt ausgeführt und braucht den
+  // Build (`.next`). Fehlt er, ist das ein Vorbereitungsfehler und kein
+  // Ergebnis — die Meldung muss das sagen, sonst sieht es wie ein Serverfehler
+  // aus (in CI genau so aufgetreten: Integrationstests ohne `npm run build`).
+  if (!fs.existsSync(path.join(process.cwd(), ".next", "BUILD_ID"))) {
+    throw new Error(
+      "Produktionsbuild fehlt: `npm run build` vor den Integrationstests ausführen (der Prozesstest startet den echten Server)."
+    );
+  }
   const port = await freePort();
   const storage = fs.mkdtempSync(path.join(root, "server-"));
   const process_ = spawn(process.execPath, [SERVER], {
