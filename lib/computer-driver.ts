@@ -34,6 +34,7 @@ export async function executeComputerAction(req: ComputerExecutionRequest): Prom
   if(!ALLOWED.has(req.action)) throw new Error("computer action is not allowed");
   if(!instance.capabilities.some(c=>c.kind===instance.kind && c.actions.includes(req.action as never))) throw new Error("computer capability does not permit action");
   const command=(process.env.BOB_COMPUTER_DRIVER ?? "").trim();
+  if (/\s/.test(command) || command.includes(";") || command.includes("|") || command.includes("&")) throw new Error("computer driver path is invalid");
   if(!command) {
     recordAudit({actor:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:"DENY"},{reason:"DRIVER_NOT_CONFIGURED",action:req.action});
     throw new Error("computer driver is not configured; execution remains fail closed");
@@ -41,7 +42,8 @@ export async function executeComputerAction(req: ComputerExecutionRequest): Prom
   const timeout=Math.min(Math.max(Number(req.timeoutMs??30000),1000),120000);
   const started=Date.now();
   const result=await new Promise<{code:number|null;stdout:string;stderr:string}>((resolve,reject)=>{
-    const child=spawn(command,[],{shell:false,stdio:["pipe","pipe","pipe"],env:{...process.env,BOB_COMPUTER_DRIVER:""}});
+    const safeEnv: NodeJS.ProcessEnv={PATH:process.env.PATH,LANG:process.env.LANG,LC_ALL:process.env.LC_ALL,TZ:process.env.TZ};
+    const child=spawn(command,[],{shell:false,stdio:["pipe","pipe","pipe"],env:safeEnv});
     let stdout="",stderr="",settled=false;
     const finish=(value:{code:number|null;stdout:string;stderr:string})=>{if(!settled){settled=true;resolve(value);}};
     const timer=setTimeout(()=>{child.kill("SIGKILL");finish({code:null,stdout,stderr:stderr+"timeout"});},timeout);
