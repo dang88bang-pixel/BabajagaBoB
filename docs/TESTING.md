@@ -370,6 +370,12 @@ Regression + UI, **Sabotageproben**, Security + E2E, Produktionsbuild **inklusiv
 laufenden Dienst**, Verification Gate) und blockiert die Promotion, wenn eine Stufe fehlschlägt.
 Die beiden Nachweisprüfer sind **Pflichtstufen**, keine Beiwerke: `SABOTAGE` läuft `--check` (Anker) und
 den vollen Sabotagelauf; der Build-Job führt nach `npm run build` den SIGKILL-Prüfer mit einem Zyklus aus.
+Der SIGKILL-Prüfer startet den **dokumentierten Betriebsweg** `node server.mjs` (nicht `next start`) und
+erzeugt bei Bedarf ein Sitzungsgeheimnis — in Produktion startet die Sitzungsschicht ohne
+`BOB_SESSION_SECRET` bewusst fail closed, und genau daran scheiterte der Job zuvor mit HTTP 500 beim
+Bootstrap. Die Jobs „Unit- und Integrationstests“ und „Sabotageproben“ bauen vorab (`npm run build`),
+weil der Prozesstest `tests/integration/graceful-shutdown.test.ts` den echten Server startet; fehlt der
+Build, meldet der Test das ausdrücklich als Vorbereitungsfehler (er wird nicht übersprungen).
 Beide laden ihren Bericht als Artefakt hoch (auch bei Fehlschlag) — ein nicht erkannter Angriff oder
 eine nicht überlebte Störung lässt die Pipeline rot werden. Der Job **Verification Gate** führt den Abnahmeprüfer
 `node scripts/acceptance.mjs` aus: er prüft maschinell, dass jede `PASS`-Anforderung in
