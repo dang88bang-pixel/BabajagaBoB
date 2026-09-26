@@ -1,7 +1,9 @@
 # Gesamtstatus BabajagaBoB
 
-**Stand:** 2026-09-25
-**Branch:** `arena/01a0d635-babajagabob`
+**Stand:** 2026-09-25 (Fortgeschrieben 2026-09-26: eigene Tests für Queue/Runs,
+Worker/Dispatcher und Experiment-Engine, Baseline-Ergebnis und Befunde im
+`docs/FERTIGSTELLUNGSPLAN.md`)
+**Branch:** `arena/01a0dfc9-babajagabob`
 
 ## Statuslegende
 
@@ -51,14 +53,14 @@ Produktionsreife:
 | Apps / App-Module | TESTED | Modul-Sandbox über die Fabric gebunden (Task+Agent), `tests/integration/app-module-sandbox.test.ts` |
 | argv-Policy (keine Shell-Strings) | TESTED | `lib/argv-policy.ts`, Broker-DENY + Runtime-Enforcement |
 | OCI Runtime (`REAL_OCI`) | UNVERIFIED | kein Docker/Podman in der Umgebung (apt-/Registry-/Release-Zugriff gesperrt); Härtungsflags ungeprüft. Ersatzweise **kernel-seitige** Isolation als `NAMESPACES` umgesetzt und gemessen — bewusst **nicht** als `CONTAINER` bezeichnet |
-| Task Queue / Runs | IMPLEMENTED | Lease/Retry/Dead-Letter, kein eigener Test |
-| Worker / Dispatcher | IMPLEMENTED | `worker.cycle` getestet indirekt nicht; kein eigener Test |
+| Task Queue / Runs | TESTED | Lease/Retry/Backoff/Dead-Letter, Lease-Ablauf, Ownership, Idempotenz; eigener Test `tests/integration/queue-run-lifecycle.test.ts` (18 Tests, 2026-09-26) |
+| Worker / Dispatcher | TESTED | `worker.cycle` (Fehlerpfad) in `tests/integration/worker-recovery.test.ts`; Dispatcher/`runOnce` und Job-Kapselung in `tests/integration/dispatcher-worker.test.ts` (10 Tests, 2026-09-26); Befund B5 (zweiter Dispatch wirft statt idempotenter Antwort) im Fertigstellungsplan |
 
 ## Lernen / Wissenschaft
 
 | Komponente | Reifegrad | Nachweis / Hinweis |
 |---|---|---|
-| Experiment Engine (Baseline/Control/Replikation) | IMPLEMENTED | Kausalvalidierung vorhanden, kein eigener Test |
+| Experiment Engine (Baseline/Control/Replikation) | TESTED | Kausalvalidierung in `tests/security/causal-integrity.test.ts`; Datenmodell/Validierung `tests/unit/science.test.ts` (8 Tests); Negativäste mit echten Läufen `tests/integration/science-replication.test.ts` (3 Tests, 2026-09-26) |
 | Evidence Store | TESTED | `tests/e2e/failure-recovery.test.ts` (Evidenzpflicht) |
 | Knowledge Graph (4 Schichten, negatives Wissen) | TESTED | Negatives Wissen nach Fehlerfall, `ESTABLISHED` verlangt Evidenz + Verifikation |
 | Error Intelligence (Lifecycle bis `REGRESSION_LOCKED`) | TESTED | vollständige Kette in `tests/e2e/failure-recovery.test.ts` |
@@ -111,6 +113,11 @@ Produktionsreife:
 10. Geschützte Daten gehen nicht implizit an externe Provider.
 
 ## Offene Restarbeiten (faktisch, ohne Wertung)
+
+> Ausführlicher To-do-Plan mit Phasen, Kategorien und Freigabepflichten:
+> `docs/FERTIGSTELLUNGSPLAN.md` (Stand 2026-09-26, inkl. Baseline-Ergebnis
+> und dokumentierter Befunde).
+
 
 - Aktionsspezifische `guardRequest`-Prüfungen für die restlichen, noch nicht verdrahteten Routen ergänzen
   (Kern- und Schreibpfade sind verdrahtet, übrige Routen sind über die Middleware fail closed).

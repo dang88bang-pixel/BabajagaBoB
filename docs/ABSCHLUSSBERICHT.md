@@ -1,7 +1,7 @@
 # Abschlussbericht (Abschnitt 50, Struktur A–L)
 
 **Stand:** 2026-09-25
-**Branch:** `arena/01a0d635-babajagabob`
+**Branch:** `arena/01a0dfc9-babajagabob`
 **Bewertungsmaßstab:** `PASS | PARTIAL | FAIL | NOT_IMPLEMENTED | NOT_VERIFIED`
 **Grundlage:** dieser Bericht beschreibt ausschließlich, was im Repository
 nachweisbar ist (Code, Tests, CI-Läufe, Live-Nachweis). Produktionsreife wird
@@ -105,14 +105,14 @@ VERIFY` behandelt; Tests wurden nie abgeschwächt, um grün zu werden.
 | Runtime-Registry | 3 Definitionen (Node 22, Python 3.13, Custom OCI), erweiterbar; kein automatisches Provisionieren |
 | Control Center UI | 42 Abschnitte, jeder an echte Serverdaten gebunden (kein Platzhalterzustand), jsdom-Renderingtests gegen echte Routen-Handler; Browser-E2E offen |
 | Metrik-Alarmierung | Export und Empfehlungen vorhanden; kein Scraper/Alertmanager im Repository |
-| Backup-Automation | Backup/Restore implementiert und geprüft; kein geplanter Job und keine Rotation |
+| Backup-Automation | Backup/Restore implementiert und geprüft; **Korrektur 2026-09-26:** geplanter Lauf und Aufbewahrung sind inzwischen umgesetzt (`lib/backup-policy.ts`, `tests/integration/backup-automation.test.ts`, 9 Tests); offen bleibt nur ein echter externer Scheduler-Daemon (`NOT_VERIFIED`) |
 | Legacy-Token | Standardmäßig deaktiviert; Aktivierung nur mit ausdrücklicher Freigabe (dokumentiert, nicht empfohlen) |
 
 ## E. Nicht implementiert (NOT_IMPLEMENTED)
 
 - WebAuthn/Multifaktor-Geräteverwaltung (TOTP ist implementiert, siehe Abschnitt B).
 - Automatisches Deployment/Produktionsfreigabe (Promotion ist bewusst manuell und Creator-gebunden).
-- Alarmierung/Scraping (Prometheus-Server, Alertmanager) und geplante Backups mit Aufbewahrungsregel.
+- Alarmierung/Scraping (Prometheus-Server, Alertmanager). **Korrektur 2026-09-26:** geplante Backup-Läufe mit Aufbewahrungsregel sind inzwischen implementiert und getestet (`lib/backup-policy.ts`); offen bleibt der externe Scheduler-Daemon.
 - Vektor-/Embedding-Suche im Knowledge Graph.
 - Statistische Signifikanzprüfung in der Kausalvalidierung (strukturell, nicht frequentistisch).
 
@@ -195,7 +195,7 @@ Details und Befehle: `docs/TESTING.md`.
 
 - `.github/workflows/ci.yml`, fünf Jobs: Lint/Typecheck → Unit/Integration/Regression,
   Security/E2E, Produktionsbuild → Verification Gate.
-- Letzte grüne Läufe (Branch `arena/01a0d635-babajagabob`): `36097024859`, `36097027228`, `36097375658`, `36097378964`.
+- Letzte grüne Läufe (Branch `arena/01a0dfc9-babajagabob`): `36097024859`, `36097027228`, `36097375658`, `36097378964`.
 - Arbeitsweise: Feature-Branch → Commit → CI → PR → Review → Merge; `main` bleibt unberührt.
 - Keine Secrets, keine `.bob-data`-Laufzeitdaten im Repository (`.gitignore`).
 - Supply Chain: Die Actions sind auf Commit-SHAs gepinnt (`actions/checkout@11d5960a…` v4.3.0, `actions/setup-node@49933ea5…` v4.4.0) statt auf bewegliche Tags.

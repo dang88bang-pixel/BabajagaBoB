@@ -7,7 +7,7 @@ BabajagaBoB ist als ausführungsorientierte Agent-Plattform aufgebaut: Missionen
 ## Gesamtstatus
 
 **Stand:** 2026-09-25
-**Arbeitsbranch:** `arena/01a0d635-babajagabob`
+**Arbeitsbranch:** `arena/01a0dfc9-babajagabob`
 
 Es werden **keine künstlichen Fortschrittswerte** geführt. Jede Komponente hat
 einen belegbaren Reifegrad:
@@ -37,7 +37,9 @@ Recovery`
   verifizierten Snapshot **und** bestandene Regression, `LEARNED` verlangt `fix.verify`.
 - Angriffe werden blockiert **und** auditiert (fremdes Token, Shell-Programm,
   Shell-Metazeichen, fremde Sandbox-Bindung, Lockdown).
-- Nachweis: **63 Testdateien / 422 Tests** sowie die Live-Prüfungen
+- Nachweis: **68 Testdateien / 462 Tests** (Stand 2026-09-26; davon 39 neu
+  hinzugekommene Tests für Queue/Runs, Dispatcher/Worker und Experiment-Engine,
+  siehe `docs/FERTIGSTELLUNGSPLAN.md`) sowie die Live-Prüfungen
   `scripts/verify-live.sh` (**174 / 0**), `scripts/audit-actions.mjs` (**525 / 0**),
   `scripts/audit-api.sh` (**248 / 0**), `scripts/audit-ui.mjs` (**92 / 0**) und der
   Grenznachweis `scripts/verify-rate-limit.sh` (**6 / 0**, Standardbudget, frische Instanz) — jeweils

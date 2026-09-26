@@ -64,9 +64,23 @@ Backup-Läufe, aktionsspezifische `guardRequest`-Prüfungen der restlichen
 Testbasis laut `docs/ABSCHLUSSBERICHT.md`: 63 Dateien / 422 Tests,
 dazu Live-Prüfer `verify-live.sh`, `audit-api.sh`, `audit-actions.mjs`,
 `audit-ui.mjs`, `acceptance.mjs --live`, `sabotage.mjs`,
-`fault-injection.mjs`, `soak.mjs`. Hinweis: In dieser Arbeitsumgebung sind
-aktuell **keine Abhängigkeiten installiert** (`node_modules` fehlt) — die
-Baseline (Phase 0) stellt den Prüfzustand erst wieder her.
+`fault-injection.mjs`, `soak.mjs`.
+
+**Baseline-Ergebnis (gemessen am 2026-09-26, Phase 0):**
+
+| Prüfung | Ergebnis |
+|---|---|
+| `npm ci` (Lockfile) | ✅ 219 Pakete, reproduzierbar |
+| `npx tsc --noEmit` | ✅ 0 Fehler |
+| `npx eslint .` | ✅ 0 Fehler, 11 Warnungen (unverändert zur Doku) |
+| `npx vitest run` (Gesamtsuite) | ⚠️ **460 / 462 grün** — die 2 roten Tests sind dokumentiert: `oci-runtime.test.ts` (kein Docker in dieser Umgebung, `OCI-001` bleibt `NOT_VERIFIED`) und `acceptance-matrix.test.ts` (Befund B2, siehe §13) |
+| `npm run build` | ✅ Produktionsbuild erfolgreich |
+| `node scripts/acceptance.mjs` (statisch) | ⚠️ **14 / 1** (Befund B2) |
+| CI-Zustand von `main` (Commit `d5ca4f4`) | ❌ rot — Befund B1 |
+
+Die roten Punkte widersprechen der Dokumentation („alle Läufe grün") und sind
+in §13 als Befunde festgehalten. **Es wurde dafür nichts abgeschwächt oder
+repariert** — die Behebung ist freigabepflichtig (Regel 1/5).
 
 ---
 
@@ -87,12 +101,12 @@ Baseline (Phase 0) stellt den Prüfzustand erst wieder her.
 
 Ziel: reproduzierbaren, dokumentierten Ausgangszustand ohne jede Änderung.
 
-| Nr. | To-do | Kat. | Nachweis |
+| Nr. | To-do | Kat. | Status (2026-09-26) |
 |---|---|---|---|
-| 0.1 | `npm ci` (Lockfile vorhanden), danach `npm run verify` = Lint + Typecheck + alle Testsuiten + Produktionsbuild; Ergebnis hier eintragen | V | Konsolenausgabe, Exit-Codes |
-| 0.2 | `node scripts/acceptance.mjs` (statisch) ausführen; Erwartung laut letztem Stand: 15 Prüfungen / 0 Verstöße | V | Prüferausgabe |
-| 0.3 | CI-Zustand des aktuellen Commits prüfen (letzte grüne Läufe in `docs/CI_CD.md` vermerken) | V | GitHub-Checks |
-| 0.4 | Abweichungen zwischen Dokumentation und Matrix erfassen (siehe 4.1–4.3), **nur listen**, noch nichts ändern | D | Liste in diesem Plan |
+| 0.1 | `npm ci` (Lockfile vorhanden), danach Lint + Typecheck + Testsuiten + Produktionsbuild | V | ✅ erledigt; Ergebnis in §1 (Baseline-Tabelle) |
+| 0.2 | `node scripts/acceptance.mjs` (statisch) ausführen | V | ✅ erledigt; **14/1** statt der dokumentierten 15/0 (Befund B2) |
+| 0.3 | CI-Zustand des aktuellen Commits prüfen | V | ✅ erledigt; `main` ist **rot** (Befund B1) — die in `docs/CI_CD.md` genannten grünen Läufe liegen vor dem Release-Commit |
+| 0.4 | Abweichungen zwischen Dokumentation und Matrix erfassen | D | ✅ erledigt; in §4 behoben bzw. befragt (B2), Befunde in §13 |
 
 **Abbruchkriterium:** Ist die Baseline nicht grün, wird zuerst der Befund
 dokumentiert und die Behebung freigegeben (Regel 5) — keine eigenmächtige
@@ -105,12 +119,12 @@ Reparatur.
 Nur Text-/Querverweisänderungen; **keine** Änderung an Code, Matrix-Status
 oder Prüfungen.
 
-| Nr. | To-do | Hinweis |
+| Nr. | To-do | Status (2026-09-26) |
 |---|---|---|
-| 4.1 | `docs/ACCEPTANCE.md` neu generieren (`node scripts/acceptance.mjs --write`) und die Erzählung in `docs/ABNAHMEPLAN.md` §2/§4 angleichen: Die Tabelle dort nennt noch „77 PASS / 3 PARTIAL (inkl. CH-04) / 2 NOT_IMPLEMENTED (inkl. OPS-004)"; die Matrix führt aktuell **79 PASS**, `CH-04` und `OPS-004` auf `PASS`, nur noch 2 PARTIAL / 3 NOT_VERIFIED / 1 NOT_IMPLEMENTED | Statuswerte der Matrix selbst bleiben unangetastet |
-| 4.2 | Veraltete Branch-Angaben aktualisieren: `README.md`, `docs/STATUS.md`, `docs/ABSCHLUSSBERICHT.md` nennen noch `arena/01a0d635-babajagabob`; aktueller Arbeitsbranch ist `arena/01a0dfc9-babajagabob` | nur Text |
-| 4.3 | Querverweise setzen: `docs/TODO.md` und `docs/STATUS.md` („Offene Restarbeiten") verweisen auf diesen Plan; dieser Plan verweist zurück auf die Belegstellen | kein Inhalt verloren gehen lassen |
-| 4.4 | `docs/ABSCHLUSSBERICHT.md` §D/§F/§L gegen die Matrix abgleichen (z. B. Betriebshärtung/Rate-Limit/Graceful-Shutdown ist heute belegt: `lib/api/rate-limit.ts`, `lib/shutdown.ts`, `tests/integration/graceful-shutdown.test.ts`, `scripts/verify-rate-limit.sh`) | nur Dokumentation des Ist-Zustands |
+| 4.1 | `docs/ACCEPTANCE.md` neu generieren und `docs/ABNAHMEPLAN.md` §4 an die Matrix angleichen (79 PASS; `CH-04`/`OPS-004` auf PASS) | ✅ erledigt — `ACCEPTANCE.md` neu erzeugt (dokumentiert jetzt ehrlich **1 Verstoß**, Befund B2), `ABNAHMEPLAN.md` §4 mit Nachtrag 2026-09-26; die Statuswerte der Matrix blieben unangetastet |
+| 4.2 | Veraltete Branch-Angaben (`arena/01a0d635-…`) auf den aktuellen Arbeitsbranch `arena/01a0dfc9-babajagabob` bringen | ✅ erledigt — `README.md`, `docs/STATUS.md`, `docs/ABSCHLUSSBERICHT.md`, dieses Dokument |
+| 4.3 | Querverweise setzen (`docs/TODO.md`, `docs/STATUS.md` „Offene Restarbeiten" → dieser Plan) | ✅ erledigt |
+| 4.4 | `docs/ABSCHLUSSBERICHT.md` §D/§E gegen den Ist-Zustand abgleichen | ✅ erledigt — Korrekturvermerke 2026-09-26 bei Backup-Automation (§D/§E); `docs/STATUS.md` führt Queue/Runs, Worker/Dispatcher und Experiment-Engine jetzt als `TESTED` mit den neuen Testdateien als Beleg |
 
 ---
 
@@ -120,12 +134,16 @@ Laut `docs/STATUS.md` sind drei Bereiche nur `IMPLEMENTED` (Code vorhanden,
 kein eigener Test). Neue Tests dürfen Verhalten **nur abbilden, nicht
 ändern**. Schlägt ein neuer Test fehl → Fundregel (Regel 5).
 
-| Nr. | To-do | Bezug |
+| Nr. | To-do | Status (2026-09-26) |
 |---|---|---|
-| 5.1 | Eigener Test für **Task Queue / Runs**: Lease, Retry/Backoff, Dead-Letter, Timeout, Abbruch, Idempotenz, abgelaufene Leases | STATUS-Zeile „Task Queue / Runs: IMPLEMENTED, kein eigener Test" |
-| 5.2 | Eigener Test für **Worker / Dispatcher** (`worker.cycle`): Job-Kapselung, Fehlerpfad, Zurückstellen statt Retry aus `VERIFYING` | STATUS-Zeile „Worker / Dispatcher" |
-| 5.3 | Eigener Test für die **Experiment Engine** (Baseline/Control/Replikation; Kausalvalidierung ist bisher nur über E2E mitabgedeckt) | STATUS-Zeile „Experiment Engine" |
-| 5.4 | Nebenläufigkeits-/Atomaritätsnachweis für **Multi-Worker-Leasing** und persistente Stores ergänzen, soweit noch Lücken bestehen | DEEP_VERIFICATION-Ziel 9; vorhanden: `load-broker.test.ts`, Store-Revision + `rename`-Sperre |
+| 5.1 | Eigener Test für **Task Queue / Runs**: Lease, Retry/Backoff, Dead-Letter, Abbruch, Idempotenz, abgelaufene Leases, Run-Zustandsmaschine inkl. Diagnose-/Recovery-/Rollback-Pfad | ✅ `tests/integration/queue-run-lifecycle.test.ts` (18 Tests, grün) |
+| 5.2 | Eigener Test für **Worker / Dispatcher** (`dispatchTask`, `runOnce`, `worker.cycle`): Verweigerung fail closed, Bindung, Erfolg/Fehlschlag, Job-Kapselung, Zurückstellung bei Behandlung | ✅ `tests/integration/dispatcher-worker.test.ts` (10 Tests, grün); dabei Befund B5 belegt |
+| 5.3 | Eigener Test für die **Experiment Engine** (Validierung/Datenmodell ohne Läufe; Negativäste der Kausalprüfung mit echten Läufen) | ✅ `tests/unit/science.test.ts` (8 Tests) + `tests/integration/science-replication.test.ts` (3 Tests), grün |
+| 5.4 | Nebenläufigkeits-/Atomaritätsnachweis für **Multi-Worker-Leasing** ergänzen | ✅ in 5.1 enthalten (kein Doppel-Lease über zwei Worker); tiefergehende Multi-Prozess-Nachweise bleiben bei den Sabotage-/Fehlerinjektionsstufen |
+
+Alle neuen Tests bilden ausschließlich **vorhandenes** Verhalten ab; keine
+Funktion wurde geändert. Neue Suite-Summe: **68 Dateien / 462 Tests**
+(460 grün; die 2 roten sind die dokumentierten Punkte aus §1/Befund B2).
 
 ---
 
@@ -222,12 +240,12 @@ Phasen 1, 2 und 5.
 
 | ID | Punkt | Kategorie | Matrix-Bezug | Zustand heute |
 |---|---|---|---|---|
-| 0.1–0.4 | Baseline | V | — | offen |
-| 4.1–4.4 | Doku-Konsistenz | D | — | offen |
-| 5.1 | Queue/Runs-Test | T | `Q-*` | offen |
-| 5.2 | Worker/Dispatcher-Test | T | `Q-*` | offen |
-| 5.3 | Experiment-Engine-Test | T | `EXP-001` | offen |
-| 5.4 | Multi-Worker-Leasing-Test | T | `LOAD-001` (Vorarbeit) | offen |
+| 0.1–0.4 | Baseline | V | — | ✅ erledigt 2026-09-26 (Ergebnis in §1) |
+| 4.1–4.4 | Doku-Konsistenz | D | — | ✅ erledigt 2026-09-26 |
+| 5.1 | Queue/Runs-Test | T | `Q-*` | ✅ `queue-run-lifecycle.test.ts` (18) |
+| 5.2 | Worker/Dispatcher-Test | T | `Q-*` | ✅ `dispatcher-worker.test.ts` (10) |
+| 5.3 | Experiment-Engine-Test | T | `EXP-001` | ✅ `science.test.ts` (8) + `science-replication.test.ts` (3) |
+| 5.4 | Multi-Worker-Leasing-Test | T | `LOAD-001` (Vorarbeit) | ✅ in 5.1 enthalten |
 | 6.1 | OCI verifizieren | U+V | `OCI-001` | NOT_VERIFIED |
 | 6.2 | Browser-E2E | U+V | `UI-003` | NOT_VERIFIED |
 | 6.3 | Dauerlauf | U+V | `LOAD-001` | PARTIAL |
@@ -244,8 +262,27 @@ Phasen 1, 2 und 5.
 
 ---
 
-## 12. Änderungsnachweis dieses Plans
+## 13. Befunde (2026-09-26, gemäß Fundregel — ohne Behebung)
+
+Bei Baseline und Testarbeit aufgefallen. Jeder Befund ist belegt; die
+**Behebung erfordert eine Creator-Freigabe** (Regel 1/5), weil sie Code,
+Prüfer oder Matrix berührt.
+
+| Nr. | Befund | Beleg | Einordnung |
+|---|---|---|---|
+| B1 | **CI auf `main` ist rot** (Lauf `36275065312` zum Release-Commit `d5ca4f4`): „Unit- und Integrationstests" scheitert im Unit-Schritt; „Real OCI Runtime" scheitert **obwohl der Docker-Daemon bereitstand** — die OCI-Lücke ist damit nicht mehr nur „kein Daemon", sondern ein realer Testfehlschlag gegen Docker. Die Doku („alle Läufe grün") bildet das nicht ab. Die zugehörigen Log-Archive waren aus dieser Umgebung nicht abrufbar (EOF). | `gh run view 36275065312` | Freigabe nötig: Ursachenanalyse des OCI-Laufs und des Unit-Fehlers |
+| B2 | **Statischer Abnahmeprüfer rot (14/1):** `OCI-001` führt als Skript-Nachweis das Kommando `npm run test:oci`; der Prüfer prüft Skript-Nachweise aber mit `existsSync` (Dateipfad). Dadurch sind `tests/unit/acceptance-matrix.test.ts` und `node scripts/acceptance.mjs` rot. | `node scripts/acceptance.mjs`, `scripts/acceptance.mjs` Z. 183–186 | Freigabe nötig: Nachweis-Eintrag oder Prüfer korrigieren (beides berührt den Abnahmerahmen) |
+| B3 | **Reihenfolge-Falle:** `tests/integration/graceful-shutdown.test.ts` verlangt den Produktionsbuild (`.next/BUILD_ID`); `npm run verify` führt Tests aber **vor** dem Build aus. In CI wird der Build vorangestellt, lokal läuft der Test ohne Build rot (Vorbereitungsfehler, kein Produktfehler — der Test meldet das korrekt). | Testkommentar in der Datei, Baseline-Lauf | Dokumentation/Bedienhinweis; optional Freigabe für ein `verify` mit Build zuerst |
+| B4 | **`startRun` aus `CREATED` wirft** `invalid run transition CREATED -> RUNNING`: Der `CREATED`-Zweig in `startRun` (`lib/runs.ts`) passt nicht zur Zustandsmaschine (`RUN_TRANSITIONS.CREATED = [QUEUED, CANCELLED]`). Heute nicht erreichbar (Worker und `/api/runs` leasen zuerst), aber ein direkter Aufruf wirft statt sauber zu verweigern. | Sondiertest 2026-09-26 (Ausgabe im Commit-Verlauf), `lib/runs.ts` | Freigabe nötig: toten Zweig entfernen oder Übergang erklären |
+| B5 | **Zweiter `dispatchTask` desselben Tasks wirft** `invalid run transition QUEUED -> QUEUED` statt einer idempotenten Antwort: `createRun`/`enqueueJob` deduplizieren, `dispatchTask` ruft danach erneut `queueRun` auf. Fail closed (nichts wird doppelt eingericht), aber keine saubere Idempotenz; MASTER §5 verlangt Idempotenz. | `tests/integration/dispatcher-worker.test.ts` („Befund B5", belegt das vorhandene Verhalten) | Freigabe nötig: Idempotenz-Antwort statt Wurf |
+| B6 | **Paralleler Arbeitszweig:** Auf GitHub existiert der Branch `fix/spec-compliance-computer-offline` mit ebenfalls roter CI (Typecheck, Produktionsbuild, Sabotageproben). Vor weiteren Arbeiten abstimmen, um keine Konflikte einzubauen. | `gh run list` (2026-09-26) | Koordination mit dem Creator |
+
+## 14. Änderungsnachweis dieses Plans
 
 - 2026-09-26: Erstfassung aus Matrix, STATUS, TODO, ABNAHMEPLAN,
   ABSCHLUSSBERICHT und SPEC_COMPLIANCE zusammengestellt. Es wurde dabei
   **keine** Funktion, **kein** Test und **kein** Status geändert.
+- 2026-09-26 (Durchführung): Phasen 0–2 vollständig ausgeführt (Kategorien
+  V/T/D): Baseline gemessen, 39 neue Tests ergänzt (alle grün),
+  Dokumentations-Konsistenz hergestellt, Befunde B1–B6 dokumentiert.
+  Phasen 3–5 bleiben unverändert offen (Umgebung, Freigaben, Entscheidungen).

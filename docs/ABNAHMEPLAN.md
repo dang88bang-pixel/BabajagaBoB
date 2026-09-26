@@ -82,15 +82,24 @@ Eine Anforderung ist `PASS` nur mit:
 
 Punkte 2, 6 und 9 werden **maschinell** geprüft; 1, 3–5, 7, 8 über die verlangten Verweise.
 
-## 4. Aktueller Abnahme-Zustand (2026-09-25)
+## 4. Aktueller Abnahme-Zustand (2026-09-25, fortgeschrieben 2026-09-26)
 
 | Status | Anzahl | Anteil | Bedeutung im Projekt |
 |---|---|---|---|
-| ✅ PASS | 77 | 91 % | mit Implementierung, Test, Nachweis — inkl. Fehlerinjektion und Sabotage |
-| 🟡 PARTIAL | 3 | 4 % | Lücke benannt (Computer-Use-Treiber `CU-001`, Dauerlauf `LOAD-001`, Checkpointing/Planer `CH-04`) |
+| ✅ PASS | 79 | 93 % | mit Implementierung, Test, Nachweis — inkl. Fehlerinjektion, Sabotage, Checkpointing/Planer (`CH-04`) und Betriebshärtung (`OPS-004`: Rate-Limits `lib/api/rate-limit.ts` + `scripts/verify-rate-limit.sh`, Graceful Shutdown `lib/shutdown.ts` + `tests/integration/graceful-shutdown.test.ts`) |
+| 🟡 PARTIAL | 2 | 2 % | Lücke benannt (Computer-Use-Treiber `CU-001`, Dauerlauf `LOAD-001`) |
 | 🔵 NOT_VERIFIED | 3 | 4 % | OCI-Runtime (`OCI-001`), Provider-Live-Verbindung (`PROVF-002`), Browser-E2E (`UI-003`) |
-| ⚪ NOT_IMPLEMENTED | 2 | 2 % | Offline Fabric (`OFF-001`), Betriebshärtung (`OPS-004`) |
+| ⚪ NOT_IMPLEMENTED | 1 | 1 % | Offline Fabric (`OFF-001`) |
 | ❌ FAIL / ⛔ BLOCKED | 0 | — | keine |
+
+Nachtrag 2026-09-26 (Fertigstellungsplan): Die Zahlen entsprechen der
+maschinenlesbaren Quelle `docs/acceptance/requirements.json` (85
+Anforderungen, am 2026-09-26 ausgelesen); `CH-04` und `OPS-004` stehen dort
+auf `PASS`. **Befund B2:** Die statische Matrix-Prüfung ist aktuell rot
+(14/1), weil der Skript-Nachweis von `OCI-001` als npm-Kommando
+(`npm run test:oci`) geführt wird, der Prüfer aber Dateipfade erwartet —
+siehe `docs/FERTIGSTELLUNGSPLAN.md` §Befunde; die Bereinigung ist
+freigabepflichtig.
 
 Nachtrag 2026-09-26: `TEST-003` ist zusätzlich auf **Prozessebene** belegt (echter SIGKILL mitten im
 Schreibvorgang, vier gleichzeitige Writer-Prozesse mit 240/240 Einträgen samt Gegenprobe,

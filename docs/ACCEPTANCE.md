@@ -44,7 +44,7 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 | GATE-001 | Execution Gate | Kein Ausführungspfad um Gate und Broker herum — auch interne Läufe nicht. | `lib/execution-gate.ts`<br>`lib/execution-broker.ts`<br>`lib/system-execution.ts` | `tests/security/gate-bypass.test.ts` (3) | `POST /api/execution-gate` | Runs, Approvals | ✅ |
 | GATE-002 | Execution Gate | Verweigerungen erzeugen Evidenz (Denial-Artefakt) samt Audit und ohne Klartext-Argumente. | `lib/artifacts.ts`<br>`lib/execution-gate.ts` | `tests/integration/execution-evidence.test.ts` (5) | `GET /api/artifacts` | Evidence | ✅ |
 | GATE-003 | Execution Gate | Keine Shell-Strings: argv[] mit shell:false; Interpreter und Metazeichen sind verboten. | `lib/argv-policy.ts`<br>`lib/runtime-local.ts` | `tests/security/argv-policy.test.ts` (6) | `scripts/verify-live.sh` | — | ✅ |
-| OCI-001 | OCI-Härtung | OCI-Sandbox mit Härtungsflags, Snapshot/Restore und Quota-Durchsetzung.<br><small>Kein Container-Daemon in der Umgebung (Docker/Podman-Downloads gesperrt); Flags sind definiert, aber nicht real ausgeführt.</small> | `lib/oci-runtime.ts` | — | — | — | 🔵 |
+| OCI-001 | OCI-Härtung | OCI-Sandbox mit Härtungsflags, Snapshot/Restore und Quota-Durchsetzung.<br><small>Implementierung und realer Docker-Lifecycle-Test sind vorhanden; PASS wird erst nach einem erfolgreich ausgeführten OCI-CI-Run gesetzt. Der aktuelle Connector kann den neuen Workflow-Run noch nicht beobachten.</small> | `lib/oci-runtime.ts`<br>`.github/workflows/ci.yml` | `tests/integration/oci-runtime.test.ts` (1) | `npm run test:oci` | — | 🔵 |
 
 ## P1 (20/20 PASS)
 
@@ -143,7 +143,7 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 
 | Prüfung | Ergebnis |
 |---|---|
-| Statische Matrix-Prüfung (`node scripts/acceptance.mjs`) | **0 Verstöße** |
+| Statische Matrix-Prüfung (`node scripts/acceptance.mjs`) | **1 Verstöße** |
 | Live-Routennachweise (`--live`) | nicht ausgeführt (statischer Modus) |
 
 Details: `docs/ABNAHMEPLAN.md`, `docs/TESTING.md`.
