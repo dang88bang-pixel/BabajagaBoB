@@ -46,8 +46,8 @@ Abnahmematrix `docs/acceptance/requirements.json` (**85 Anforderungen**):
 | Status | Anzahl | Anforderungen |
 |---|---|---|
 | ✅ PASS | 79 | — |
-| 🟡 PARTIAL | 2 | `CU-001` (Computer-Use-Treiber), `LOAD-001` (Dauerlauf) |
-| 🔵 NOT_VERIFIED | 3 | `OCI-001` (OCI-Runtime), `PROVF-002` (Provider live), `UI-003` (Browser-E2E) |
+| 🟡 PARTIAL | 3 | `CU-001` (Computer-Use-Treiber), `LOAD-001` (Dauerlauf), `OCI-001` (Lifecycle in CI nachgewiesen; Quota-Erzwingung nur auf unterstützenden Hosts) |
+| 🔵 NOT_VERIFIED | 2 | `PROVF-002` (Provider live), `UI-003` (Browser-E2E) |
 | ⚪ NOT_IMPLEMENTED | 1 | `OFF-001` (Offline Fabric) |
 
 Abschluss-Gate `docs/SPEC_COMPLIANCE.md` §18: Kriterium 1
@@ -246,7 +246,7 @@ Phasen 1, 2 und 5.
 | 5.2 | Worker/Dispatcher-Test | T | `Q-*` | ✅ `dispatcher-worker.test.ts` (10) |
 | 5.3 | Experiment-Engine-Test | T | `EXP-001` | ✅ `science.test.ts` (8) + `science-replication.test.ts` (3) |
 | 5.4 | Multi-Worker-Leasing-Test | T | `LOAD-001` (Vorarbeit) | ✅ in 5.1 enthalten |
-| 6.1 | OCI verifizieren | U+V | `OCI-001` | NOT_VERIFIED |
+| 6.1 | OCI verifizieren | U+V | `OCI-001` | PARTIAL — voller Lifecycle gegen echten Daemon in CI grün (Lauf `36278988500`, Job „Real OCI Runtime"); Quota wird auf unterstützenden Hosts erzwungen, sonst ehrlich als `UNAVAILABLE` gemeldet; für PASS fehlt der Erzwingungsnachweis auf einem pquota-fähigen Host |
 | 6.2 | Browser-E2E | U+V | `UI-003` | NOT_VERIFIED |
 | 6.3 | Dauerlauf | U+V | `LOAD-001` | PARTIAL |
 | 6.4 | Provider live | U+V | `PROVF-002` | NOT_VERIFIED |
@@ -270,7 +270,7 @@ Prüfer oder Matrix berührt.
 
 | Nr. | Befund | Beleg | Stand |
 |---|---|---|---|
-| B1 | **CI auf `main` ist rot** (Lauf `36275065312` zum Release-Commit `d5ca4f4`): „Unit- und Integrationstests" scheitert im Unit-Schritt; „Real OCI Runtime" scheitert **obwohl der Docker-Daemon bereitstand**. Die Doku („alle Läufe grün") bildete das nicht ab. | `gh run view 36275065312` | 🟡 behoben als Fallback (2026-09-27), CI-Verifikation ausstehend: Unit-Fehler war Befund B2 (behoben). **OCI-Ursache behoben:** `create()` versuchte bedingungslos `--storage-opt size=…m`; Daemons ohne pquota-Fähigkeit lehnen das ab. Jetzt gilt das cgroup-Muster: Quota wird durchgesetzt, wenn der Daemon es kann (`storageQuota: "ENFORCED"`); sonst startet die Sandbox mit allen übrigen Härtungsflags und meldet ausdrücklich `"UNAVAILABLE"` — niemals stillschweigend verworfen, niemals als durchgesetzt behauptet (`lib/oci-runtime.ts`, `RuntimeHandle.storageQuota`). Abgesichert durch `tests/integration/oci-storage-quota-fallback.test.ts` (deterministisch ohne Daemon, 2/2 grün) und eine erweiterte `oci-runtime.test.ts` (verlangt eine ehrliche Quota-Meldung). `OCI-001` bleibt **NOT_VERIFIED**, bis ein Lauf mit erzwungener Quota auf einem unterstützenden Host nachgewiesen ist. |
+| B1 | **CI auf `main` ist rot** (Lauf `36275065312` zum Release-Commit `d5ca4f4`): „Unit- und Integrationstests" scheitert im Unit-Schritt; „Real OCI Runtime" scheitert **obwohl der Docker-Daemon bereitstand**. Die Doku („alle Läufe grün") bildete das nicht ab. | `gh run view 36275065312` | ✅ behoben (2026-09-27), in CI verifiziert: Unit-Fehler war Befund B2 (behoben). **OCI-Ursache behoben:** `create()` versuchte bedingungslos `--storage-opt size=…m`; Daemons ohne pquota-Fähigkeit lehnen das ab. Jetzt gilt das cgroup-Muster: Quota wird durchgesetzt, wenn der Daemon es kann (`storageQuota: "ENFORCED"`); sonst startet die Sandbox mit allen übrigen Härtungsflags und meldet ausdrücklich `"UNAVAILABLE"` — niemals stillschweigend verworfen, niemals als durchgesetzt behauptet (`lib/oci-runtime.ts`, `RuntimeHandle.storageQuota`). Abgesichert durch `tests/integration/oci-storage-quota-fallback.test.ts` (deterministisch ohne Daemon, 2/2 grün) und eine erweiterte `oci-runtime.test.ts` (verlangt eine ehrliche Quota-Meldung). **Ergebnis:** CI-Lauf `36278988500` vollständig grün inkl. Job „Real OCI Runtime" (voller Lifecycle gegen echten Daemon) — die CI des Zweigs ist damit erstmals grün; `OCI-001` ist jetzt `PARTIAL` (für `PASS` fehlt nur der Erzwingungsnachweis der Quota auf einem pquota-fähigen Host). |
 | B2 | **Statischer Abnahmeprüfer rot (14/1):** `OCI-001` führt als Skript-Nachweis das Kommando `npm run test:oci`; der Prüfer prüfte Skript-Nachweise mit `existsSync` (Dateipfad). | `node scripts/acceptance.mjs` | ✅ **behoben 2026-09-26:** Der Prüfer löst `npm run <name>` jetzt gegen `package.json` auf (`scripts/acceptance.mjs`); ein erfundenes Skript bleibt ein Verstoß (neue Negativprobe in `tests/unit/acceptance-matrix.test.ts`). Ergebnis: statisch **15/0**, Unit-Suite grün |
 | B3 | **Reihenfolge-Falle:** `graceful-shutdown.test.ts` verlangt den Produktionsbuild; `npm run verify` führte Tests vor dem Build aus. | Testkommentar | ✅ **behoben 2026-09-26:** `verify` = Lint → Typecheck → **Build** → Tests (CI macht es genauso) |
 | B4 | **`startRun` aus `CREATED` warf** `invalid run transition CREATED -> RUNNING` (toter Zweig, inkonsistent zur Zustandsmaschine). | Sondiertest 2026-09-26 | ✅ **behoben 2026-09-26:** `CREATED` ist kein Startzustand mehr; saubere Verweigerung (`null`), Regressionstest in `tests/integration/queue-run-lifecycle.test.ts` |
@@ -333,4 +333,7 @@ Browser für `UI-003`, Dauerlauf über Stunden für `LOAD-001`), Phase 4
   umgesetzt (`ENFORCED`/`UNAVAILABLE`, niemals still), deterministischer
   Regressionstest ohne Daemon ergänzt (Suite jetzt 69 Dateien / 465 Tests,
   lokal 464 grün), Befund B8 dokumentiert (Sabotage-Werkzeug-Restauration).
-  Verifikation der CI-Wirkung erfolgt über den nächsten Workflow-Lauf.
+  CI-Lauf `36278988500` danach **vollständig grün** (alle 7 Jobs inkl.
+  „Real OCI Runtime"); `OCI-001` ehrlich von `NOT_VERIFIED` auf `PARTIAL`
+  gesetzt — der Erzwingungsnachweis der Quota auf einem pquota-fähigen Host
+  bleibt die einzige offene Bedingung für `PASS`.

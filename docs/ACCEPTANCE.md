@@ -12,10 +12,10 @@ Eingefroren: 2026-09-25. Quellen: GESAMTAUFTRAG (53 Punkte); docs/MASTER_COMPLET
 | Status | Anzahl | Bedeutung |
 |---|---|---|
 | ✅ PASS | 79 | Implementierung + Test + Nachweis vorhanden |
-| 🟡 PARTIAL | 2 | Teilweise umgesetzt, Lücke benannt |
+| 🟡 PARTIAL | 3 | Teilweise umgesetzt, Lücke benannt |
 | ❌ FAIL | 0 | Umgesetzt, aber Nachweis fehlgeschlagen |
 | ⚪ NOT_IMPLEMENTED | 1 | Bewusst nicht gebaut (Begründung) |
-| 🔵 NOT_VERIFIED | 3 | Vorhanden, aber Umgebung erlaubt keinen Nachweis |
+| 🔵 NOT_VERIFIED | 2 | Vorhanden, aber Umgebung erlaubt keinen Nachweis |
 | ⛔ BLOCKED | 0 | Durch äußere Abhängigkeit blockiert |
 
 ## Zielkette
@@ -44,7 +44,7 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 | GATE-001 | Execution Gate | Kein Ausführungspfad um Gate und Broker herum — auch interne Läufe nicht. | `lib/execution-gate.ts`<br>`lib/execution-broker.ts`<br>`lib/system-execution.ts` | `tests/security/gate-bypass.test.ts` (3) | `POST /api/execution-gate` | Runs, Approvals | ✅ |
 | GATE-002 | Execution Gate | Verweigerungen erzeugen Evidenz (Denial-Artefakt) samt Audit und ohne Klartext-Argumente. | `lib/artifacts.ts`<br>`lib/execution-gate.ts` | `tests/integration/execution-evidence.test.ts` (5) | `GET /api/artifacts` | Evidence | ✅ |
 | GATE-003 | Execution Gate | Keine Shell-Strings: argv[] mit shell:false; Interpreter und Metazeichen sind verboten. | `lib/argv-policy.ts`<br>`lib/runtime-local.ts` | `tests/security/argv-policy.test.ts` (6) | `scripts/verify-live.sh` | — | ✅ |
-| OCI-001 | OCI-Härtung | OCI-Sandbox mit Härtungsflags, Snapshot/Restore und Quota-Durchsetzung.<br><small>Implementierung und realer Docker-Lifecycle-Test sind vorhanden; PASS wird erst nach einem erfolgreich ausgeführten OCI-CI-Run gesetzt. Der aktuelle Connector kann den neuen Workflow-Run noch nicht beobachten.</small> | `lib/oci-runtime.ts`<br>`.github/workflows/ci.yml` | `tests/integration/oci-runtime.test.ts` (1) | `npm run test:oci` | — | 🔵 |
+| OCI-001 | OCI-Härtung | OCI-Sandbox mit Härtungsflags, Snapshot/Restore und Quota-Durchsetzung.<br><small>Vollständiger realer OCI-Lifecycle in CI grün nachgewiesen (Lauf 36278988500). Storage-Quota wird ehrlich gemeldet: ENFORCED, wenn der Daemon sie erzwingt, sonst ausdrücklich UNAVAILABLE (Fallback nach cgroup-Muster). Für PASS fehlt der Nachweis der erzwungenen Quota auf einem unterstützenden Host.</small> | `lib/oci-runtime.ts`<br>`.github/workflows/ci.yml` | `tests/integration/oci-runtime.test.ts` (1) | `npm run test:oci` | — | 🟡 |
 
 ## P1 (20/20 PASS)
 

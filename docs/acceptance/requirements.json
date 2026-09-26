@@ -615,8 +615,8 @@
         "docs/SANDBOX.md",
         "docs/RUNTIME.md"
       ],
-      "status": "NOT_VERIFIED",
-      "note": "Implementierung und realer Docker-Lifecycle-Test sind vorhanden. Seit 2026-09-27 meldet die Runtime die Storage-Quota ehrlich: ENFORCED, wenn der Daemon sie erzwingt, sonst ausdrücklich UNAVAILABLE (Fallback nach cgroup-Muster, abgesichert durch tests/integration/oci-storage-quota-fallback.test.ts). PASS wird erst gesetzt, wenn ein CI-Lauf den vollen Lifecycle belegt UND die erzwungene Quota auf einem unterstützenden Host (overlay2 über XFS mit pquota) nachgewiesen ist."
+      "status": "PARTIAL",
+      "note": "Vollständiger realer OCI-Lifecycle gegen echten Docker-Daemon (create/start/exec/snapshot/destroy/restore/restart) in CI grün nachgewiesen (Lauf 36278988500, Job 'Real OCI Runtime'). Seit 2026-09-27 meldet die Runtime die Storage-Quota ehrlich: ENFORCED, wenn der Daemon sie erzwingt, sonst ausdrücklich UNAVAILABLE (Fallback nach cgroup-Muster, abgesichert durch tests/integration/oci-storage-quota-fallback.test.ts). Für PASS fehlt der Nachweis der erzwungenen Quota auf einem unterstützenden Host (overlay2 über XFS mit pquota); auf den CI-Runnern gilt UNAVAILABLE."
     },
     {
       "id": "Q-001",

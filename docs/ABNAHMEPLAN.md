@@ -59,7 +59,7 @@ zuerst, keine Funktionalität „später füllen".
 
 | Phase | Inhalt | Anforderungen (Matrix) | Zustand |
 |---|---|---|---|
-| **P0** | Spezifikation einfrieren, Repository/CI, Authentifizierung/Autorisierung, Creator-Bootstrap, Event+Audit+Provenance, Execution Gate + Broker, OCI-Härtung | `SPEC-001`, `CI-001`, `AUTH-001…004`, `BOOT-001/002`, `EVT-001/002`, `AUD-001/002`, `PROV-001`, `GATE-001…003`, `OCI-001` | 16/17 PASS, OCI `NOT_VERIFIED` |
+| **P0** | Spezifikation einfrieren, Repository/CI, Authentifizierung/Autorisierung, Creator-Bootstrap, Event+Audit+Provenance, Execution Gate + Broker, OCI-Härtung | `SPEC-001`, `CI-001`, `AUTH-001…004`, `BOOT-001/002`, `EVT-001/002`, `AUD-001/002`, `PROV-001`, `GATE-001…003`, `OCI-001` | 16/17 PASS, OCI `PARTIAL` (Lifecycle in CI nachgewiesen; Quota-Durchsetzung auf CI-Hosts nicht verfügbar, ehrlich als `UNAVAILABLE` gemeldet) |
 | **P1** | Autonome Laufzeit: Queue/Worker/Run, Sandbox-Lebenszyklus, Snapshot/Restore, Fehlerintelligenz, Recovery-Verifikation, Experimente, Kausalvalidierung, Regression, Wissen, Status, Observatory, Timeline/Replay, Why, Approvals | `Q-001…003`, `SB-001…004`, `EXP-001`, `SCI-001`, `ERR-001`, `REC-001`, `REG-001`, `KNO-001`, `STA-001`, `OBS-001`, `TL-001`, `WHY-001`, `APR-001`, `INB-001`, `GOV-001` | **20/20 PASS** |
 | **P2** | Fabric: Runtime-Registry, Werkzeuge, Skills, Werkstatt, Provider, Geräte, Computer Use, Simulation, Offline, betriebliche Wiederherstellung | `RT-001`, `TOOL-001`, `SKILL-001`, `WS-001`, `PROVF-001/002`, `DEV-001/002`, `CU-001`, `SIM-001`, `OFF-001`, `OPR-001/002` | 9/13 PASS, Computer Use/Geräte `PARTIAL`, Provider live `NOT_VERIFIED`, Offline `NOT_IMPLEMENTED` |
 | **P3** | Control Center vollständig an echte Daten, Visualisierung, Status/Progress, Observability, Approvals, Security, Integrationen | `UI-001…003` | 2/3 PASS, Browser `NOT_VERIFIED` |
@@ -82,13 +82,13 @@ Eine Anforderung ist `PASS` nur mit:
 
 Punkte 2, 6 und 9 werden **maschinell** geprüft; 1, 3–5, 7, 8 über die verlangten Verweise.
 
-## 4. Aktueller Abnahme-Zustand (2026-09-25, fortgeschrieben 2026-09-26)
+## 4. Aktueller Abnahme-Zustand (2026-09-25, fortgeschrieben 2026-09-26/27)
 
 | Status | Anzahl | Anteil | Bedeutung im Projekt |
 |---|---|---|---|
 | ✅ PASS | 79 | 93 % | mit Implementierung, Test, Nachweis — inkl. Fehlerinjektion, Sabotage, Checkpointing/Planer (`CH-04`) und Betriebshärtung (`OPS-004`: Rate-Limits `lib/api/rate-limit.ts` + `scripts/verify-rate-limit.sh`, Graceful Shutdown `lib/shutdown.ts` + `tests/integration/graceful-shutdown.test.ts`) |
-| 🟡 PARTIAL | 2 | 2 % | Lücke benannt (Computer-Use-Treiber `CU-001`, Dauerlauf `LOAD-001`) |
-| 🔵 NOT_VERIFIED | 3 | 4 % | OCI-Runtime (`OCI-001`), Provider-Live-Verbindung (`PROVF-002`), Browser-E2E (`UI-003`) |
+| 🟡 PARTIAL | 3 | 4 % | Lücke benannt (Computer-Use-Treiber `CU-001`, Dauerlauf `LOAD-001`, OCI-Quota-Durchsetzung `OCI-001`: Lifecycle gegen echten Daemon in CI nachgewiesen, erzwungene Quota nur auf unterstützenden Hosts) |
+| 🔵 NOT_VERIFIED | 2 | 2 % | Provider-Live-Verbindung (`PROVF-002`), Browser-E2E (`UI-003`) |
 | ⚪ NOT_IMPLEMENTED | 1 | 1 % | Offline Fabric (`OFF-001`) |
 | ❌ FAIL / ⛔ BLOCKED | 0 | — | keine |
 

@@ -1,7 +1,8 @@
 # Gesamtstatus BabajagaBoB
 
 **Stand:** 2026-09-25 (Fortgeschrieben 2026-09-26/27: eigene Tests für Queue/Runs,
-Worker/Dispatcher und Experiment-Engine; Befunde B2–B5 behoben; kompletter
+Worker/Dispatcher und Experiment-Engine; Befunde B1–B5 behoben — B1 (OCI-Storage-Quota)
+mit ehrlichem Fallback, CI-Lauf `36278988500` vollständig grün; kompletter
 Live-Nachweis erneut gemessen — Details und Zahlen im
 `docs/FERTIGSTELLUNGSPLAN.md` §14: Suite 464/465, Sabotage 25/25,
 Fehlerinjektion 18/18, verify-live 171/0, audit-api 248/0, audit-ui 92/0,
@@ -55,7 +56,7 @@ Produktionsreife:
 | Lokale Runtime (`REAL_LOCAL`) | TESTED | echte Prozesse, `argv[]`, `shell:false`, Timeout-Kill |
 | Apps / App-Module | TESTED | Modul-Sandbox über die Fabric gebunden (Task+Agent), `tests/integration/app-module-sandbox.test.ts` |
 | argv-Policy (keine Shell-Strings) | TESTED | `lib/argv-policy.ts`, Broker-DENY + Runtime-Enforcement |
-| OCI Runtime (`REAL_OCI`) | UNVERIFIED | kein Docker/Podman in der Umgebung (apt-/Registry-/Release-Zugriff gesperrt); Härtungsflags ungeprüft. Ersatzweise **kernel-seitige** Isolation als `NAMESPACES` umgesetzt und gemessen — bewusst **nicht** als `CONTAINER` bezeichnet |
+| OCI Runtime (`REAL_OCI`) | TESTED (CI) / lokal UNVERIFIED | Voller OCI-Lifecycle gegen echten Docker-Daemon in CI grün nachgewiesen (Lauf `36278988500`, Job „Real OCI Runtime", 2026-09-27); Storage-Quota wird ehrlich gemeldet (`ENFORCED`, sonst ausdrücklich `UNAVAILABLE` — Fallback nach cgroup-Muster, Befund B1 behoben). Lokal bleibt der Nachweis `UNVERIFIED`: kein Docker/Podman in der Umgebung. Ersatzweise **kernel-seitige** Isolation als `NAMESPACES` umgesetzt und gemessen — bewusst **nicht** als `CONTAINER` bezeichnet |
 | Task Queue / Runs | TESTED | Lease/Retry/Backoff/Dead-Letter, Lease-Ablauf, Ownership, Idempotenz; eigener Test `tests/integration/queue-run-lifecycle.test.ts` (18 Tests, 2026-09-26) |
 | Worker / Dispatcher | TESTED | `worker.cycle` (Fehlerpfad) in `tests/integration/worker-recovery.test.ts`; Dispatcher/`runOnce` und Job-Kapselung in `tests/integration/dispatcher-worker.test.ts` (10 Tests, 2026-09-26); Befund B5 (zweiter Dispatch wirft statt idempotenter Antwort) im Fertigstellungsplan |
 
@@ -124,8 +125,10 @@ Produktionsreife:
 
 - Aktionsspezifische `guardRequest`-Prüfungen für die restlichen, noch nicht verdrahteten Routen ergänzen
   (Kern- und Schreibpfade sind verdrahtet, übrige Routen sind über die Middleware fail closed).
-- OCI-Runtime gegen einen echten Daemon verifizieren (`REAL_OCI`); solange das nicht möglich ist, gilt
-  die gemessene Stufe `NAMESPACES` (kein Image-Format, kein `runc`).
+- OCI-Runtime: voller Lifecycle gegen echten Daemon in CI nachgewiesen (Lauf `36278988500`,
+  Job „Real OCI Runtime", 2026-09-27); lokal ohne Daemon gilt weiterhin die gemessene Stufe
+  `NAMESPACES`. Für `OCI-001 = PASS` fehlt nur der Nachweis der erzwungenen Storage-Quota auf
+  einem pquota-fähigen Host (auf CI-Runnern wird sie ehrlich als `UNAVAILABLE` gemeldet).
 - Ressourcenlimits kernel-seitig: CPU-Zeit (`RLIMIT_CPU`) und Dateigröße (`RLIMIT_FSIZE`) sind immer
   aktiv; Speicher und Prozesse werden über einen delegierten cgroup-v2-Unterbaum (`BOB_CGROUP_DIR`)
   durchgesetzt und sind ohne ihn `UNAVAILABLE` (nicht behauptet). Beleg:
