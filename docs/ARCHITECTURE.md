@@ -1,55 +1,220 @@
-# BabajagaBoB — Control Plane Architecture
+# BabajagaBoB — Architektur (Deutsch)
 
-## Execution boundary
+## 1. Systemgrenze
 
-UI/Public → Control Plane API → Job Queue → Agent Worker → Sandbox Runtime → Artifacts/Events
+```text
+GUI / Control Center
+        |
+        v
+Control Plane API
+        |
+        +--> Authority / Governance / Approval
+        |
+        v
+Execution Broker
+        |
+        v
+Job Queue
+        |
+        v
+Agent Worker
+        |
+        v
+Sandbox Runtime
+   |             |
+ Mock        OCI/Docker
+```
 
-The browser never executes shell commands or receives raw secrets.
+Der Browser führt keine Shell-Kommandos aus und erhält keine Roh-Secrets.
 
-## Current foundation
+## 2. Autorisierung
 
-- Next.js App Router
-- Typed domain state
-- Node.js route handlers
-- Explicit lifecycle statuses
-- Event fabric
-- Emergency lockdown
-- Network DENY-by-default indicator
-- Server-side execution queue with job state, lease, retry budget and cancellation boundary
-- No analytics, tracking, advertising or third-party data sharing in the application foundation
+Eine operative Ausführung benötigt eine konsistente Kette:
 
-## Authority model
+`Creator/Delegation → Agent → Task → Sandbox → Capability → Execution Gate → Broker`
 
-Technical capability and delegated authority remain separate concerns. A future capability token must be scoped to project, agent, task, environment, resource and risk policy.
+Dabei werden Subject, Task, Sandbox, Capability und Risiko geprüft.
 
-## Lifecycle
+Der Agent kann keine höhere Autorität durch Selbstdelegation oder Selbst-Ausstellung erzeugen. Kill Switches und Policy-Gates können Ausführung fail-closed stoppen.
 
-Mission → Objective → Task → Run → Sandbox → Experiment/Test → Artifact → Deployment
+## 3. Sandbox
 
-Every execution transition should emit an append-only event and preserve provenance. The current event fabric is an in-memory foundation; durable storage is a separate persistence boundary and must not be simulated as durable until a real store is connected.
+Jede Sandbox besitzt:
 
-## Knowledge and causality
+- eindeutige ID
+- Typ
+- Task-Bindung
+- Agent-Bindung
+- Netzwerkpolicy
+- Ressourcenlimits
+- Runtime-Zustand
+- Audit-/Provenance-Bezug
 
-Structured records should use observable fields: objective, observation, assumption, hypothesis, action, expected result, observed result, evidence, conclusion and next action. Hidden model reasoning is not stored or exposed.
+Diagnostic-Sandboxes werden über das Control Plane registriert und nicht als freie Runtime-Ressourcen behandelt.
 
-## Safety boundary
+## 4. Runtime
 
-Lockdown is fail-closed. Discovery of external devices/services must never imply authorization. Network access is deny-by-default and future allowlists must be explicit.
+### Mock
+Die Mock Runtime dient Entwicklung und Tests. Sie modelliert Create/Clone/Reset/Snapshot/Restore/Destroy/Execute und erzwingt Netzwerk-DENY für typische Netzwerkbefehle.
 
-## Runtime, tools and authority boundaries
+### OCI
+Der OCI-Adapter nutzt Docker/OCI ohne Shell-Interpolation und mit restriktiven Container-Einstellungen. Snapshot/Restore, echte Storage-Quotas und kontrollierter Allowlist-Egress benötigen noch ein produktionsfähiges Backend.
 
-The runtime is exposed only through server-side Control Plane routes. The current adapter is a mock lifecycle implementation: it models create/clone/reset/snapshot/restore/destroy/execute semantics and enforces the declared network boundary, but it does not expose a host shell and is not a production container/VM runtime.
+## 5. Persistenz
 
-The Tool Registry is versioned and records input schema, required capabilities, allowed environments, risk, resource limits, network requirements, side effects, reversibility and approval requirements. A tool definition does not itself grant authority.
+Der Control Plane State wird über den kanonischen `DurableStore` (`lib/persistence/store.ts`) lokal persistiert. Jede Store-Datei besitzt Versionsfeld und SHA-256-Digest; Schreiben erfolgt atomar (temporäre Datei, `rename`, Rechte 0600), und ein Digest- oder Versionsfehler wird fail closed abgewiesen (`StoreIntegrityError`).
 
-Capability and Authority are separate graphs:
-- Capability Graph: technical operations available to an agent.
-- Authority Graph: explicit delegation from Creator/authorized issuer to agent, task, sandbox and capability.
-- Self-grant and self-delegation are rejected at the service boundary.
-- Capability tokens are scoped to task/sandbox/capabilities and have expiry.
+Zusätzlich existieren getrennte persistente Stores für u. a. Jobs/Queue, Runs, Events, Audit, Provenance, Authority, Governance, Bootstrap, Sessions, Approvals, Sandbox Snapshots, Verifikationen, Regression, Science, Reliability, Errors, Knowledge, Inbox, Devices, Simulation, Computer Use, Apps/Gallery und Provider.
 
-Artifacts are provenance records linking agent, task, run, sandbox and knowledge state to a content digest. The current artifact store is in-memory and therefore is not presented as durable storage.
+Die früheren Parallel-Stores (`lib/store.ts`, `lib/durable-store.ts`, `lib/execution-store.ts`, `lib/error-store.ts`, `lib/reliability-store.ts`, `lib/science-store.ts`, `lib/approval-store.ts`, `lib/authority-store.ts`) sowie die Legacy-Authentifizierung (`lib/control-auth.ts`) und der Broker-Umgehungspfad `/api/container` (`lib/container-runtime.ts`) sind entfernt; es gibt genau einen Schreibpfad pro Domäne.
 
-## Persistence boundary
+Die Architektur bleibt bewusst lokal-first. Für horizontale Mehrprozess-/Produktionslast sind transaktionale DB, Locking und objektbasierte Artifact-Speicherung erforderlich.
 
-ControlStore defines the persistence contract for control state, audit records and artifacts. InMemoryControlStore is the current implementation. A durable database adapter must implement this interface before the application claims restart-safe persistence.
+## 6. Causal / Provenance Fabric
+
+Ereignisse enthalten Actor, Zeit, Status, Ressource und optional einen kausalen Vorgänger. Provenance-Beziehungen modellieren unter anderem:
+
+- CAUSED_BY
+- EXECUTED_IN
+- AUTHORIZED_BY
+- DERIVED_FROM
+- TESTED_BY
+- PRODUCED
+
+Kausalität darf nicht allein aus zeitlicher Reihenfolge abgeleitet werden. Für wissenschaftliche Aussagen werden Baseline, Control, Replication, Evidence und alternative Erklärungen geführt.
+
+Verborgene Modellgedanken werden nicht gespeichert oder visualisiert.
+
+## 7. Science / Learning
+
+Experiment-Lifecycle:
+
+`Objective → Hypothesis → Baseline/Control → Experiment → Observation → Evidence → Validation → Knowledge`
+
+Knowledge States:
+
+`OBSERVED, SUPPORTED, ESTABLISHED, HYPOTHESIS, UNVERIFIED, CONTRADICTED, REJECTED, UNKNOWN`
+
+Fehler-Lifecycle:
+
+`DETECTED → CONTAINED → REPRODUCING → DIAGNOSING → ROOT_CAUSE_FOUND → RECOVERING → LEARNED → REGRESSION_LOCKED`
+
+Ein Root Cause darf nicht als etabliert gelten, wenn die erforderliche Evidenz fehlt.
+
+## 8. Recovery
+
+Recovery besteht aus:
+
+1. Fehler erfassen.
+2. Diagnose isolieren.
+3. bekannten Zustand/Checkpoint erzeugen.
+4. Recovery Plan vorbereiten.
+5. autorisiert ausführen.
+6. Regression/Smoke-Verifikation durchführen.
+7. Recovery als verifiziert oder fehlgeschlagen markieren.
+
+Der Mock Runtime kann Checkpoints simulieren. OCI Restore benötigt noch Image-/Volume-Infrastruktur.
+
+## 8a. Deployment (Auslieferung)
+
+Die Zielkette endet nicht bei „Tests grün", sondern bei einem nachweislich laufenden Stand:
+
+```
+Pipeline-Gates → Creator-Freigabe → Release-Slot (Digest) → Health-Checks
+              → Zeigerwechsel → Prozessneustart (Supervisor) → Build-ID-Messung → ACTIVE
+```
+
+- **Release** (`lib/release.ts`): Slot mit `release.json`, sha256-Digest über Pfade, Inhalte und
+  Symlink-Ziele; `current` als atomarer Symlink; `node_modules` symlinkt (`LINKED`).
+  Der Digest macht einen Slot später nachprüfbar (`verifyRelease`) — ein verändertes Verzeichnis
+  ist `DEFECTIVE`, nicht „ungefähr gleich".
+- **Deployment** (`lib/deployment.ts`): `planDeployment` prüft Kill-Switch, Lockdown,
+  Pipeline-Gates und Creator-Freigabe; `STAGING` fordert für `BROWSER`/`EVALUATION` eine
+  ausdrückliche Quittung mit Begründung (`acknowledgedGaps`), `PRODUCTION` fordert weiterhin
+  alle Prüfungen `PASSED`. `runHealthChecks` misst sieben Prüfungen, darunter **echte**
+  HTTP-Antworten. `deployRelease` schaltet erst nach grünen Health-Checks um.
+- **Ehrliche „aktiv"-Definition:** `ACTIVE` nur, wenn der laufende Prozess die Build-ID des Slots
+  ausliefert **und** aus dem Slot gestartet wurde. Sonst `STAGED` mit `restartRequired` und dem
+  konkreten Befehl. Ein umgestellter Zeiger allein ist kein Ausrollen.
+- **Rollback:** nur mit unversehrtem Vorgänger, danach Neumessung; `ROLLED_BACK` ist ein eigener
+  Zustand (Status-Modell §11), kein umbenanntes „fertig".
+- **Nachweise:** Artefakt (`kind=DEPLOYMENT`), Provenance-Knoten, Events
+  `deployment.{rejected,failed,active,staged,rolled_back,verified}`, Audit über die Route.
+- **Grenze:** Der Prozessneustart liegt bei `scripts/release-supervisor.sh` — bewusst außerhalb
+  der Anwendung, damit sich die Plattform nicht selbst neu startet. Kein Daemon, kein
+  Zero-Downtime, kein Multi-Knoten (siehe `docs/OPERATIONS.md` §7).
+
+## 9. Privacy
+
+Default:
+
+- Netzwerk DENY.
+- externe Verarbeitung DENY.
+- externe Speicherung DENY.
+- externes Training DENY.
+- Analytics/Tracking/Advertising deaktiviert.
+- geschützte Daten werden nicht implizit an Provider weitergegeben.
+
+Die Policy ist eine technische Boundary innerhalb der Anwendung. Absolute Nichtweitergabe muss zusätzlich auf Infrastruktur-, Hosting-, Backup-, Log- und Provider-Ebene gewährleistet werden.
+
+## 10. Agent / Provider / Device Fabric
+
+Agent-Rollen umfassen Supervisor, Planner, Builder, Research, Scientist, QA, Browser, Guardian, Operator, Recovery und Integrator.
+
+Provider und Devices sind Discovery-/Registry-/Autorisierungsmodelle. Discovery bedeutet ausdrücklich nicht Authorization.
+
+Reale externe Provider- oder Geräteausführung darf erst über explizite Adapter, Credentials, Policy und Capability-Gates erfolgen.
+
+## 11. UI / Observability
+
+Das Control Center zeigt:
+
+- Agenten
+- Missionen
+- Tasks
+- Queue
+- Approvals
+- Experimente
+- Sandboxes
+- Errors
+- Runtime
+- Security
+- Integrations
+- Devices
+- Knowledge
+- Simulation
+- Replay
+
+### Status-Modell (`lib/status.ts`)
+
+Es gibt genau eine Zuordnung von Zustand → Anzeigetext, Farbe, Gruppe und Ergebnis. Sie ist als
+`Record<Status, StatusMeta>` typisiert: Ein neuer Zustand in `lib/types.ts` ohne Eintrag ist ein
+Compile-Fehler, kein stilles „—" in der Oberfläche. 20 Zustände sind beschrieben, davon vier
+endgültig (`SUCCEEDED`, `FAILED`, `COMPLETED`, `CANCELLED`). Die Oberfläche rendert Zustände
+ausschließlich über `statusLabel`/`statusTone` (Badge und Tabellenspalten `status`/`state`); Werte
+außerhalb des Modells werden als Text gezeigt und nie eingefärbt. `statusModelReport()` meldet das
+Modell zur Laufzeit über `GET /api/observatory` (`statusModel`), damit die Vollständigkeit prüfbar ist.
+
+Produzenten der Zustände sind die echten Pfade: Laufzustände (`lib/runs.ts` — Abschluss `SUCCEEDED`,
+Fehlschlag `FAILED`, Verifikation `VALIDATING`), Messläufe (`lib/science.ts` — `OBSERVING`),
+Kausalprüfung (`SUCCEEDED`/`FAILED`) und die Defekt-Klassifikation der Fehlerintelligenz
+(`lib/error-intelligence.ts` — `BUG`, wenn der festgestellte Grund eigenen Code benennt; Umgebungs- und
+Datenfehler bleiben `ERROR`).
+
+### Agent Observatory und „Warum?“ (Abschnitt 11/12)
+
+`lib/observatory.ts` projiziert je Aktivität (Run, Experiment, Task) neun Felder aus dem Ereignis-Log
+und den Stores: Ziel, Beobachtung, Hypothese, Aktion, Erwartung, Ergebnis, Evidenz, Schlussfolgerung,
+nächster Schritt. Die Projektion schreibt nichts und erfindet nichts: Was fehlt, steht als `gaps` am
+Datensatz. `GET /api/events/[id]/why` beantwortet „warum?“ mit Zweck, Entscheidung, Referenzen und der
+Kausalkette bis zur Wurzel — strukturiert statt als Gedankenkette, mit ausdrücklich benannten Grenzen.
+
+Jeder operative Zustand ist sichtbar: `QUEUED`, `PLANNING`, `RUNNING`, `THINKING`, `EXECUTING`,
+`EXPERIMENT`, `TESTING`, `OBSERVING`, `VALIDATING`, `WAITING`, `BLOCKED`, `APPROVAL_REQUIRED`, `ERROR`,
+`BUG`, `RECOVERING`, `ROLLING_BACK`, `SUCCEEDED`, `FAILED`, `COMPLETED`, `CANCELLED`.
+
+## 12. Grundsatz
+
+`UI → Control Plane → Authorization → Execution Gate → Broker → Sandbox → Evidence/Audit/Provenance`
+
+Kein direkter GUI→Shell-Pfad und keine implizite Autorität durch technische Verfügbarkeit.

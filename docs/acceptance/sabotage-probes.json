@@ -1,0 +1,312 @@
+{
+  "_comment": "Sabotageproben (TEST-004). Jede Probe schwächt eine Sicherheits- oder Nachweisregel im Quellcode absichtlich ab und erwartet, dass die genannten Suiten das erkennen. Ein Anchor, der nicht genau einmal vorkommt, macht die Probe ungültig — sie wird dann als INVALID gemeldet, nicht als bestanden. Die Datei ist maschinenlesbare Quelle für scripts/sabotage.mjs und tests/unit/sabotage-plan.test.ts.",
+  "probes": [
+    {
+      "id": "ALLOWLIST_FAIL_CLOSED",
+      "title": "Egress-Allowlist wird nicht mehr verweigert",
+      "guard": "Netzwerk bleibt standardmäßig DENY; ALLOWLIST ist fail closed.",
+      "file": "lib/sandbox/fabric.ts",
+      "find": "if (request.network === \"ALLOWLIST\" || (request.allowlist?.length ?? 0) > 0) {",
+      "replace": "if (false) {",
+      "tests": [
+        "tests/security/route-guards.test.ts",
+        "tests/integration/fault-injection.test.ts"
+      ]
+    },
+    {
+      "id": "AUDIT_CHAIN_ALWAYS_VALID",
+      "title": "Manipulierte Audit-Kette gilt als gültig",
+      "guard": "Die Audit-Kette erkennt nachträgliche Änderungen.",
+      "file": "lib/audit.ts",
+      "find": "valid: issues.length === 0,",
+      "replace": "valid: true,",
+      "tests": [
+        "tests/unit/audit-retention.test.ts"
+      ]
+    },
+    {
+      "id": "TOKEN_REPLAY_ALLOWED",
+      "title": "Capability-Token darf mehrfach verwendet werden",
+      "guard": "Eine Autorisierung = eine Ausführung: Replay wird auf beiden Prüfebenen verweigert.",
+      "tests": [
+        "tests/security/token-replay.test.ts"
+      ],
+      "edits": [
+        {
+          "file": "lib/authority.ts",
+          "find": "if (checkUsage && (token.uses ?? 0) >= (token.maxUses ?? 1)) {",
+          "replace": "if (false) {"
+        },
+        {
+          "file": "lib/authority.ts",
+          "find": "if (uses >= maxUses) {",
+          "replace": "if (false) {"
+        }
+      ]
+    },
+    {
+      "id": "APPROVAL_ALWAYS_GRANTED",
+      "title": "Freigabe gilt ohne Entscheidung als erteilt",
+      "guard": "Kritische Wirkung verlangt eine gewährte Creator-Freigabe.",
+      "file": "lib/approvals.ts",
+      "find": "return store.read().requests.some(r => r.approvalId === approvalId && r.status === \"GRANTED\");",
+      "replace": "return true;",
+      "tests": [
+        "tests/security/promotion-gates.test.ts",
+        "tests/integration/deployment.test.ts"
+      ]
+    },
+    {
+      "id": "KILL_SWITCH_IGNORED",
+      "title": "Kill-Switch wird nicht mehr beachtet",
+      "guard": "Ein aktiver Kill-Switch blockiert Ausführung und Auslieferung.",
+      "file": "lib/governance.ts",
+      "find": "  const payload = store.read();\n  if (payload.switches.some(s => s.active && s.scope === \"SYSTEM\")) return true;\n  return payload.switches.some(s => s.active && s.scope === scope && s.targetId === targetId);",
+      "replace": "  const payload = store.read();\n  void payload;\n  return false;",
+      "tests": [
+        "tests/security/gate-bypass.test.ts",
+        "tests/security/promotion-gates.test.ts"
+      ]
+    },
+    {
+      "id": "ENROLLMENT_ACCEPTS_ANY_SECRET",
+      "title": "Geräte-Enrollment akzeptiert jedes Geheimnis",
+      "guard": "Discovery ist keine Autorisierung; ohne gültiges Geheimnis fail closed.",
+      "file": "lib/device-enrollment.ts",
+      "find": "if (typeof secret !== \"string\" || !matches(secret)) {",
+      "replace": "if (false) {",
+      "tests": [
+        "tests/security/device-enrollment.test.ts"
+      ]
+    },
+    {
+      "id": "REGISTRY_DIGEST_NOT_CHECKED",
+      "title": "Store-Envelope wird ohne Digest-Prüfung gelesen",
+      "guard": "Ein manipulierter Store wird erkannt (Digest, fail closed).",
+      "file": "lib/persistence/store.ts",
+      "find": "return envelope.digest === envelopeDigest(envelope.version, envelope.payload, envelope.store);",
+      "replace": "return true;",
+      "tests": [
+        "tests/unit/persistence.test.ts",
+        "tests/integration/fault-injection.test.ts"
+      ]
+    },
+    {
+      "id": "DEPLOYMENT_STAGING_GATE_OPEN",
+      "title": "Staging-Gate lässt fehlende Pflichtprüfungen durch",
+      "guard": "Ausrollen verlangt bestandene Pflichtprüfungen; Lücken müssen quittiert werden.",
+      "file": "lib/deployment.ts",
+      "find": "  if (![\"PREVIEW\", \"STAGING\", \"SMOKE\"].includes(pipeline.stage)) reasons.push(`staging requires a promoted stage (current: ${pipeline.stage})`);",
+      "replace": "  // Sabotage: Stufenprüfung entfernt",
+      "tests": [
+        "tests/security/promotion-gates.test.ts"
+      ]
+    },
+    {
+      "id": "STORE_REVISION_UNCHECKED",
+      "title": "Revisionsprüfung im Store entfernt (verlorene Aktualisierung)",
+      "guard": "Jeder Store-Schreibvorgang prüft die Revision des gelesenen Datensatzes; gleichzeitige Prozesse können fremde Änderungen nicht überschreiben.",
+      "file": "lib/persistence/store.ts",
+      "find": "      if (onDisk !== expectedRevision) {",
+      "replace": "      if (false) {",
+      "tests": [
+        "tests/integration/fault-injection-processes.test.ts",
+        "tests/unit/persistence.test.ts"
+      ]
+    },
+    {
+      "id": "STORE_WRITE_LOCK_OFF",
+      "title": "Schreibsperre des Stores entfernt (Prüfen und rename laufen auseinander)",
+      "guard": "Revisionsprüfung und Umbenennen liegen in derselben exklusiven Sperre; ohne Sperre ist die Prüfung keine Compare-and-Swap-Bedingung.",
+      "file": "lib/persistence/store.ts",
+      "find": "  private withWriteLock<R>(fn: () => R): R {",
+      "replace": "  private withWriteLock<R>(fn: () => R): R {\n    return fn();",
+      "tests": [
+        "tests/integration/fault-injection-processes.test.ts",
+        "tests/integration/load-broker.test.ts"
+      ]
+    },
+    {
+      "id": "LEASE_EXPIRY_OFF",
+      "title": "Lease-Ablauf abgeschaltet (verwaiste Jobs bleiben für immer RUNNING)",
+      "guard": "Abgelaufene Leases werden erkannt; der Job geht zurück in die Queue oder in Dead Letter.",
+      "file": "lib/queue.ts",
+      "find": "export function expireLeases(at = Date.now()): number {",
+      "replace": "export function expireLeases(at = Date.now()): number {\n  return 0;",
+      "tests": [
+        "tests/integration/fault-injection-processes.test.ts",
+        "tests/integration/worker-recovery.test.ts"
+      ]
+    },
+    {
+      "id": "BROKER_TOKEN_VALIDATION_SKIPPED",
+      "title": "Token-Validierung im Broker abgeschaltet (Angriffskette §49)",
+      "guard": "Der Broker führt nur mit einem gültigen, gedeckten Capability-Token aus; fehlende Fähigkeit oder abgelaufenes Token werden verweigert.",
+      "file": "lib/execution-broker.ts",
+      "find": "  if (!validation.valid) deny(request, \"TOKEN_VALIDATION\", validation.reason);",
+      "replace": "  if (false) deny(request, \"TOKEN_VALIDATION\", validation.reason);",
+      "tests": [
+        "tests/security/broker-scope.test.ts",
+        "tests/e2e/creator-flow.test.ts",
+        "tests/security/token-replay.test.ts"
+      ]
+    },
+    {
+      "id": "BROKER_AGENT_BINDING_SKIPPED",
+      "title": "Agenten-/Task-Bindung im Broker abgeschaltet (Fremdausführung)",
+      "guard": "Nur der der Task zugeordnete Agent darf sie ausführen; die Bindung wird im Broker erzwungen, nicht nur dokumentiert.",
+      "file": "lib/execution-broker.ts",
+      "find": "  if (task.assignedAgent !== request.agentId) deny(",
+      "replace": "  if (false) deny(",
+      "tests": [
+        "tests/integration/load-broker.test.ts",
+        "tests/integration/execution-evidence.test.ts"
+      ]
+    },
+    {
+      "id": "BROKER_SHELL_GUARD_SKIPPED",
+      "title": "Shell-Prüfung im Broker abgeschaltet (Shell-Programm erlaubt)",
+      "guard": "Ausgeführt wird ausschließlich argv[] ohne Shell; Shell-Interpreter und Metazeichen werden vor jeder weiteren Prüfung verweigert.",
+      "file": "lib/execution-broker.ts",
+      "find": "  if (isShellInterpreter(request.argv[0])) deny(",
+      "replace": "  if (false) deny(",
+      "tests": [
+        "tests/security/argv-policy.test.ts"
+      ]
+    },
+    {
+      "id": "BROKER_RISK_SCOPE_SKIPPED",
+      "title": "Risk-Scope des Tokens an beiden Prüfstellen entfernt",
+      "guard": "Der Risk-Umfang des Tokens muss die Task decken; geprüft wird in der Token-Validierung und nochmals im Broker.",
+      "edits": [
+        {
+          "file": "lib/execution-broker.ts",
+          "find": "  if (riskRank[token.risk] < riskRank[task.risk]) deny(",
+          "replace": "  if (false) deny("
+        },
+        {
+          "file": "lib/authority.ts",
+          "find": "  if (context?.risk && riskRank[token.risk] < riskRank[context.risk]) return {valid: false, reason: \"token risk scope is insufficient\"};",
+          "replace": ""
+        }
+      ],
+      "tests": [
+        "tests/security/broker-scope.test.ts",
+        "tests/security/authority.test.ts"
+      ]
+    },
+    {
+      "id": "EVIDENCE_DIGEST_ALWAYS_OK",
+      "title": "Digest-Prüfung der Evidenz abgeschaltet (Manipulation bleibt unentdeckt)",
+      "guard": "Evidenz ist digest-gebunden; eine nachträgliche Änderung des Inhalts wird bei der Prüfung erkannt.",
+      "file": "lib/artifacts.ts",
+      "find": "  return {ok: actual === artifact.digest, artifactId: id, expected: artifact.digest, actual};",
+      "replace": "  return {ok: true, artifactId: id, expected: artifact.digest, actual};",
+      "tests": [
+        "tests/integration/execution-evidence.test.ts"
+      ]
+    },
+    {
+      "id": "CAPABILITY_SELF_GRANT_SKIPPED",
+      "title": "Selbstvergabe von Capabilities abgeschaltet",
+      "guard": "Ein Agent kann sich keine Capability selbst ausstellen; die Selbstvergabe wird mit dem eigenen Prüfcode verweigert.",
+      "file": "lib/authority.ts",
+      "find": "  if (input.issuedBy === input.subject) deny(",
+      "replace": "  if (false) deny(",
+      "tests": [
+        "tests/security/authority.test.ts",
+        "tests/e2e/creator-flow.test.ts"
+      ]
+    },
+    {
+      "id": "CAPABILITY_WILDCARD_SKIPPED",
+      "title": "Wildcard-Capabilities abgeschaltet",
+      "guard": "`*` als Capability wird verweigert; Rechte sind einzeln und begrenzt.",
+      "file": "lib/authority.ts",
+      "find": "  if (input.capabilities.includes(\"*\")) deny(",
+      "replace": "  if (false) deny(",
+      "tests": [
+        "tests/security/authority.test.ts"
+      ]
+    },
+    {
+      "id": "CAUSAL_CHAIN_UNKNOWN_REFERENCE_IGNORED",
+      "title": "Prüfung erfundener Kausalverweise abgeschaltet (Ereigniskette)",
+      "guard": "Verweise auf unbekannte oder nicht ältere Ereignisse machen die Ereigniskette ungültig.",
+      "file": "lib/events/log.ts",
+      "find": "      if (!antecedent) issues.push(\"unknown causedBy reference \" + cause + \" in \" + event.eventId);",
+      "replace": "      if (false) issues.push(\"unknown causedBy reference \" + cause + \" in \" + event.eventId);",
+      "tests": [
+        "tests/integration/event-audit-linkage.test.ts"
+      ]
+    },
+    {
+      "id": "RATE_LIMIT_NOT_ENFORCED",
+      "title": "Rate-Limit wird an der API-Grenze nicht mehr durchgesetzt",
+      "guard": "Über dem Budget verweigert die Grenze mit 429 und Retry-After und auditiert die Verweigerung.",
+      "file": "lib/api/api-gate.ts",
+      "find": "  if (!limited.allowed) {",
+      "replace": "  if (false) {",
+      "tests": [
+        "tests/security/ops-enforcement.test.ts"
+      ]
+    },
+    {
+      "id": "SHUTDOWN_DRAIN_IGNORED",
+      "title": "Drainage-Zustand wird an der Grenze ignoriert (neue Arbeit während des Herunterfahrens)",
+      "guard": "Während der Drainage nimmt die Control Plane keine neue Arbeit an (503 mit Retry-After).",
+      "file": "lib/api/api-gate.ts",
+      "find": "  if (isShuttingDown()) {",
+      "replace": "  if (false) {",
+      "tests": [
+        "tests/security/ops-enforcement.test.ts"
+      ]
+    },
+    {
+      "id": "SESSION_SECRET_REQUIRED_IN_PRODUCTION",
+      "title": "Produktionspflicht für das externalisierte Sitzungsgeheimnis entfällt",
+      "guard": "In Produktion verlangt die Sitzungssignatur ein externalisiertes Geheimnis (`BOB_SESSION_SECRET`); ohne es wird der Start verweigert.",
+      "file": "lib/session-secret.ts",
+      "find": "  if (process.env.NODE_ENV === \"production\") {",
+      "replace": "  if (false) {",
+      "tests": [
+        "tests/security/ops-enforcement.test.ts",
+        "tests/unit/ops-hardening.test.ts"
+      ]
+    },
+    {
+      "id": "SHUTDOWN_SIGNAL_NOT_HANDLED",
+      "title": "SIGTERM-Handler entfernt (Server stirbt hart statt geordnet)",
+      "guard": "Der Produktionsserver nimmt SIGTERM/SIGINT an, drainiert und beendet sich mit Exit-Code 0.",
+      "file": "server.mjs",
+      "find": "process.once(\"SIGTERM\", () => void shutdown(\"SIGTERM\"));",
+      "replace": "",
+      "tests": [
+        "tests/integration/graceful-shutdown.test.ts"
+      ]
+    },
+    {
+      "id": "RATE_LIMIT_IDENTITY_NOT_SESSION_SCOPED",
+      "title": "Sitzungsgebundene Begrenzung faellt still auf den User-Agent zurueck",
+      "guard": "Die Betriebsgrenze identifiziert eine Sitzung ueber ihr Cookie; nur ohne Cookie wird auf User-Agent/IP ausgewichen.",
+      "file": "lib/api/rate-limit.ts",
+      "find": "  if (match) return \"session:\" + match[1].split(\".\")[0];",
+      "replace": "  if (false) return \"session:\" + match[1].split(\".\")[0];",
+      "tests": [
+        "tests/unit/ops-hardening.test.ts"
+      ]
+    },
+    {
+      "id": "AUTH_RATE_LIMIT_DENY_NOT_AUDITED",
+      "title": "Begrenzter Anmeldeversuch wird nicht mehr auditiert",
+      "guard": "Ein durch das Anmeldelimit abgewiesener Versuch steht als DENY in der Audit-Kette (blockierte Aktion -> Nachweis).",
+      "file": "app/api/auth/route.ts",
+      "find": "    recordAudit({actor:\"ANONYMOUS\", action:\"rate-limit\", decision:\"DENY\"}, {",
+      "replace": "    if (false) recordAudit({actor:\"ANONYMOUS\", action:\"rate-limit\", decision:\"DENY\"}, {",
+      "tests": [
+        "tests/security/ops-enforcement.test.ts"
+      ]
+    }
+  ],
+  "_changes": "Proben müssen die wirksame Schutzregel entfernen. Proben mit mehreren Änderungen (edits) entfernen redundante Ebenen gemeinsam; eine Probe, die nur eine von zwei Ebenen schwächt, belegt nichts."
+}

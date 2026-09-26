@@ -1,0 +1,149 @@
+# Autorisierung — Abschnitt 12/13/17/38
+
+Diese Datei beschreibt die **aktuelle Implementierung** der Autorisierungsstrecke.
+Enforced ist ausschließlich:
+
+```
+Intent → Policy → Authorization → Execution Gate → Broker → Isolierte Runtime → Evidence
+```
+
+Verboten (und im Code nicht vorhanden): `Agent → beliebiges Tool → System`.
+
+## 1. Reihung der Prüfungen
+
+| # | Stufe | Datei | Wirkung |
+|---|---|---|---|
+| 1 | Server-Authentifizierung (Gate) | `lib/api/api-gate.ts`, `middleware.ts` | jede `/api/*`-Route außer `/api/auth` verlangt gültige HttpOnly-Session; Agenten zusätzlich `Authorization: Bobcap <tokenId>.<secret>` auf `/api/runtime` |
+| 2 | Aktion/Subjekt (Guard) | `lib/api/guard.ts` | `guardRequest(request, {action, taskId, sandboxId, environment, creatorOnly, requireAgentCapability})` — fail closed, jede Verweigerung wird auditiert |
+| 3 | Policy | `lib/policy.ts`, `lib/execution-gate.ts` | Risiko, Umgebung, Kill Switches (System/Agent/Task/Sandbox/Experiment), Approval-Pflicht |
+| 4 | Autorisierung (Token) | `lib/authority.ts` | Capability-Token mit Subjekt-, Task-, Sandbox-, Risiko- und Umgebungsbindung, TTL, Widerruf |
+| 5 | Broker | `lib/execution-broker.ts` | 18 Bedingungen; keine Ausführung ohne vollständige Bindung |
+| 6 | Runtime | `lib/runtime-local.ts`, `lib/oci-runtime.ts` | `argv[]` + `shell: false`, Netzwerk `DENY`, Limits |
+| 7 | Evidenz | `lib/artifacts.ts`, `lib/audit.ts`, `lib/provenance.ts` | digestgebundener Nachweis, Audit-Kette, Provenance-Graph |
+
+## 2. Capability-Token (`lib/authority.ts`)
+
+Verbote, die beim **Ausstellen** geprüft werden (Verstoß = Denial + Audit):
+
+- `SELF_GRANT` — ein Agent darf sich **kein** Token selbst ausstellen (Subjekt = Aussteller ist verboten).
+- `WILDCARD_CAPABILITY` — `*` ist nie zulässig.
+- `EMPTY_CAPABILITIES`, `TOKEN_EXPIRED` (bereits abgelaufen), `TOKEN_TTL`.
+- `TOKEN_USES_LIMIT` — `maxUses` muss eine ganze Zahl zwischen 1 und `MAX_TOKEN_USES` (25) sein.
+  Standard ist **1**: eine Autorisierung ist eine Ausführung.
+- Für nicht-`CREATOR`-Aussteller: `TOKEN_DELEGATION` (nur Fähigkeiten, die die eigene Delegationskante abdeckt) und `TOKEN_RISK_ESCALATION` (kein höheres Risiko als die eigene Kante).
+
+Bei der **Nutzung** prüft `validateCapabilityToken(tokenId, capabilities, {subject, taskId, sandboxId, risk, environment})`:
+
+- Widerruf, Ablauf, Fähigkeitenumfang, Subjekt, Task, Sandbox, Risiko, Umgebung, **Verbrauch**.
+- Der Vergleich des Secrets läuft über `timingSafeEqual` (`verifyCapabilitySecret`).
+- **Eine Autorisierung = eine Ausführung.** `consumeCapabilityToken` erhöht `uses` atomar **vor** dem
+  Ausführen. Ein zweiter Lauf mit demselben Token ist ein Replay: `409`, Audit-DENY und
+  Verweigerungsevidenz (`TOKEN_REPLAY` bzw. `token exhausted … replay is refused`). Ein Absturz nach dem
+  Verbrauch führt zu einer Verweigerung, nicht zu einer zweiten Ausführung.
+- **Eine Entscheidungsstelle:** Gate, Route-Guard und `requireCapability` nutzen
+  `precheckCapabilityToken` (Authentizität, Scope, Ablauf, Widerruf — ohne Verbrauch). Den Verbrauch
+  setzt ausschließlich der Execution Broker durch, damit die Verweigerungsevidenz dort entsteht, wo
+  entschieden wird. Nicht-ausführende Aktionen (Statusmeldungen) verbrauchen kein Token.
+
+Belegte Grenzen live (HTTP, `scripts/verify-live.sh`, Schritt „Agentenweg"):
+
+| Versuch | Ergebnis |
+|---|---|
+| gültiges Token, **ohne** Browser-Session, `POST /api/runtime` | `200 accepted:true`, echter Prozess, Evidenz erzeugt |
+| falsches Secret | `403 TOKEN_SECRET` |
+| Token ohne `sandbox:run` | `403 CAPABILITY_DENIED` |
+| Token einer `test`-Sandbox auf `development`-Sandbox | `403 CAPABILITY_DENIED` (Umgebungs-/Sandboxbindung) |
+| Token auf fremder Sandbox | Denial (Sandbox nicht vorhanden/gebunden) |
+| Token auf Verwaltungsroute (`/api/missions`) | `401 SESSION_REQUIRED` |
+| Subjekt-Spoofing (`agentId` ≠ Token-Subjekt) | `409 AGENT_TASK_BINDING` |
+| Shell-Interpreter (`/bin/sh -c`) | `409 SHELL_PROGRAM` |
+| Widerrufenes Token | `403 CAPABILITY_DENIED` („token revoked") |
+| System-Lockdown aktiv | `409 EXECUTION_GATE` („System lockdown is active") |
+| **Zweiter Lauf mit demselben Token (Replay)** | `409` („token exhausted … replay is refused") + `kind: "DENIAL"`-Evidenz mit Replay-Grund |
+| Token nach Verbrauch erneut auf `/api/runtime` | Verweigerung im Broker (nicht im Gate) — genau eine Entscheidungsstelle |
+
+Jede weitere Ausführung braucht ein **eigenes** Token; `scripts/verify-live.sh` stellt dafür je Prüfung
+ein frisches Token aus (`issue_task_token`, `issue_agent_token`). Tests:
+`tests/security/token-replay.test.ts` (5 Tests).
+
+## 3. Rollen der Agent Fabric (11 Rollen)
+
+`lib/control-plane.ts` legt elf Agenten an; `lib/agent-fabric.ts` ergänzt je Rolle ein
+Autonomieprofil. Kein Profil erlaubt Selbstautorisierung, Governance-Bypass,
+Produktionsfreigabe oder geheime Datenabflüsse — diese Felder sind für **alle**
+Rollen `false`.
+
+| Rolle | Aufgabe | Autonomie (Auszug) |
+|---|---|---|
+| `SUPERVISOR` | Orchestrierung, Dispatching | mittlere Autonomie, keine Authority-Änderung |
+| `PLANNER` | Missionszerlegung | Planung, keine Ausführung |
+| `BUILDER` | Code/Artefakte im Sandbox | höchste Ausführungsautonomie, aber ohne Netz/Prod |
+| `RESEARCHER` | Recherche in Materialsammlung | Workspace-read, kein externes Netz |
+| `SCIENTIST` | Experimente/Hypothesen | Experimente über `lib/science.ts` |
+| `QA` | Verifikation, Regression | Verifikationsläufe, Report |
+| `BROWSER` | Computer Use (Bildschirm) | nur registrierte/autoritisierte Geräte |
+| `GUARDIAN` | Policy, Reviewer | Review-Pflicht, keine Ausführung |
+| `OPS` | Runtime/Sandbox-Betrieb | Lifecycle, keine Codeänderung |
+| `RECOVERY` | Fehlerbehebung, Rollback | arbeitet Pläne ab, Stufe 4/5 nur mit Creator-Freigabe |
+| `INTEGRATOR` | Integration, Promotion-Vorschlag | Vorschlag, Freigabe bleibt beim Creator |
+
+### 3a. Interne Läufe (System-Worker)
+
+Nicht jede Ausführung stammt von einem Agenten: Regressionstests (`lib/regression.ts`) und der
+Smoke-Test der Verifikation (`lib/verification.ts`) führen echte Prozesse aus, besitzen aber selbst
+keine Session. Sie dürfen den Broker **nicht** umgehen — sonst hätte ein Kill Switch sie nicht
+blockiert und es gäbe keine Evidenz. Deshalb gilt für sie derselbe Weg
+(`lib/system-execution.ts`):
+
+```
+SYSTEM-WORKER → Capability (delegiert von CREATOR) → Execution Gate → Broker → Runtime → Evidenz
+```
+
+- Die Capability wird je Lauf neu ausgestellt: Subjekt = Besitzer der Sandbox, Task/Sandbox/Umgebung =
+  Bindung der Sandbox, Fähigkeiten `task:execute`, `sandbox:run` und der Zweck
+  (`regression:run`), genau eine Verwendung, TTL 2 Minuten.
+- Grundlage ist die Bootstrap-Kante `CREATOR → SYSTEM-WORKER`
+  (`capabilities: task:execute, sandbox:run, sandbox:snapshot, regression:run`). Fehlt sie, schlägt die
+  Ausstellung fehl und es wird nichts ausgeführt (fail closed).
+- Der Zweck erscheint im Domänenereignis (`purpose: "REGRESSION" | "SMOKE_TEST"`), damit im
+  Ereignisstrom nachvollziehbar ist, **warum** ausgeführt wurde.
+- Rollen, die eigene Sandboxes betreiben, tragen `task:execute`: `BUILDER`, `SCIENTIST`, `QA`,
+  `RECOVERY` (zuletzt ergänzt, weil der Broker die Fähigkeit sonst bei jedem legitimen Test-,
+  Experiment- und Recovery-Lauf verweigert hätte). Die Broker-Prüfung selbst bleibt unverändert streng.
+
+## 4. Approval-Pflicht (`lib/approvals.ts`, `lib/execution-gate.ts`)
+
+- Tasks können `requiresApproval` tragen; der Broker verlangt dann ein `approvalId`,
+  dessen Status `GRANTED` ist und dessen `taskId` zur Task passt (`APPROVAL`,
+  `APPROVAL_BINDING`).
+- Freigaben werden nur über `POST /api/control {action:"approval"}` (Creator-only) erteilt.
+- Der Guardian (`POST /api/control {action:"guardian"}`) kann Freigaben anfordern.
+
+## 5. Kill Switches (`lib/governance.ts`)
+
+`setKillSwitch(scope, targetId, reason, actor)` mit Scope `SYSTEM | AGENT | TASK | SANDBOX | EXPERIMENT | DEPLOYMENT`.
+`isKilled(scope, id)` wird im Execution Gate geprüft. `engageSystemLockdown()` /
+`releaseSystemLockdown()` sperrt bzw. entsperrt global; jede Änderung wird auditiert
+(`control.lockdown`, `control.unlock`).
+
+## 6. Rollen der Oberfläche
+
+Alle `/api/*`-Routen sind durch das Gate geschlossen. Zusätzlich gilt:
+
+- **CREATOR-only**: Missionen/Objectives anlegen, Tasks anlegen/zuweisen, Sandbox-Snapshots,
+  Authority-Ausstellung/-Widerruf, Approvals, Kill Switch, Persistenz-Backup, Runtime-Reconcile.
+- **Agent (Capability)**: ausschließlich `POST /api/runtime` mit gebundenem Token.
+- **Session + Aktion**: alle übrigen Lesezugriffe (`*:read`).
+
+Der strukturelle Nachweis „keine Route ohne Guard" läuft als Test
+(`tests/security/api-route-contract.test.ts`) und ist damit Teil der CI.
+
+## 7. Grenzen / offene Punkte
+
+- `ALLOWLIST`-Netzwerk ist **fail closed** (`NETWORK_POLICY`): es gibt keine kontrollierte
+  Egress-Schicht, also wird nicht freigegeben. Klassifikation: `NOT_IMPLEMENTED` (bewusst).
+- Externe Identitätsanbieter (OIDC) gibt es nicht; die Creator-Anmeldung erfolgt über
+  Server-Secret (`BOB_CREATOR_LOGIN_SECRET`) plus optionalem TOTP (`BOB_CREATOR_TOTP_SECRET`).
+- Der zweite Faktor wird in `docs/BOOTSTRAP.md` beschrieben.
+- Token-Wiederholung ist gesperrt (siehe Abschnitt 2). Offen bleibt: kurzlebige, automatisch rotierende
+  Tokens je Ausführungsschritt sowie ein externer Schlüsseldienst — beides ist hier `NOT_IMPLEMENTED`.
