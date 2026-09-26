@@ -2,24 +2,14 @@ import {ApiDenied, guardRequest, parseCapabilityHeader} from "./guard";
 import {precheckCapabilityToken, verifyCapabilitySecret} from "../authority";
 import {SESSION_COOKIE, resolveSession} from "../session";
 import {recordAudit} from "../audit";
+import {consumeRateLimit} from "./rate-limit";
+import {isShuttingDown} from "../shutdown";
 
 /**
- * API-Gate für die gesamte Control-Plane-Oberfläche (Abschnitt 37.13 / 38).
- *
- * Standard: jede `/api/*`-Route außer der Authentifizierungsstrecke selbst
- * verlangt eine gültige Server-Session (HttpOnly-Cookie). Damit ist die
- * Oberfläche standardmäßig geschlossen: neue Routen sind automatisch
- * geschützt, auch wenn eine Route ihren eigenen `guardRequest`-Aufruf (noch)
- * nicht hat.
- *
- * Ausnahme (explizite Allowlist): `POST /api/runtime` ist der Agentenweg für
- * autorisierte Ausführung. Dort ist entweder eine Browser-Session oder ein
- * gültiges Capability-Token (`Authorization: Bobcap <tokenId>.<secret>`)
- * zulässig. Das Gate prüft dabei nur Authentizität und Gültigkeit; die
- * vollständige Autorisierung (Subjekt, Task, Sandbox, Risiko, Umgebung,
- * Kill Switch, Approval) macht der Execution Broker in der Route selbst.
+ * API-Gate für die gesamte Control-Plane-Oberfläche.
+ * Neue Routen bleiben standardmäßig geschlossen und werden zusätzlich
+ * durch das serverseitige Rate-Limit sowie den Shutdown-Drain geschützt.
  */
-
 export type ApiGateDecision = {allow: true} | {allow: false; status: number; code: string; message: string};
 
 export const API_GATE_ACTION = "control-plane:access";
@@ -30,7 +20,6 @@ export function isAuthPath(pathname: string): boolean {
   return pathname === AUTH_PATH || pathname.startsWith(`${AUTH_PATH}/`);
 }
 
-/** Agentenweg: ausschließlich Ausführung über den Broker (keine Verwaltung). */
 export function isAgentExecutionPath(method: string, pathname: string): boolean {
   return method.toUpperCase() === "POST" && pathname === AGENT_EXECUTION_PATH;
 }
@@ -49,10 +38,13 @@ function deny(status: number, code: string, message: string): ApiGateDecision {
   return {allow: false, status, code, message};
 }
 
-/**
- * Authentifizierung des Agentenwegs: Session des Creators ODER gültiges
- * Capability-Token. Bindungen (Task/Sandbox/Risiko) prüft der Broker.
- */
+function rateDecision(request: Request): ApiGateDecision {
+  const result = consumeRateLimit(request, "api");
+  if (result.allowed) return {allow: true};
+  recordAudit({actor: "ANONYMOUS", action: "rate-limit", decision: "DENY"}, {bucket:"api", retryAfterSeconds:result.retryAfterSeconds});
+  return deny(429, "RATE_LIMITED", "request rate limit exceeded");
+}
+
 function agentExecutionDecision(request: Request): ApiGateDecision {
   const sessionToken = cookieValue(request, SESSION_COOKIE);
   const session = sessionToken ? resolveSession(sessionToken) : null;
@@ -67,12 +59,6 @@ function agentExecutionDecision(request: Request): ApiGateDecision {
     recordAudit({actor: "UNKNOWN-AGENT", action: API_GATE_ACTION, decision: "DENY"}, {code: "TOKEN_SECRET", tokenId: capability.tokenId});
     return deny(403, "TOKEN_SECRET", "capability token secret is invalid");
   }
-  // Bewusst ohne Umgebungs-/Ressourcenbindung: Die Bindung an Task, Sandbox,
-  // Risiko und Umgebung kennt das Gate nicht und darf sie nicht raten. Sie
-  // wird in der Route (`guardRequest`) und im Broker vollständig geprüft.
-  // Ebenso bewusst als Vorprüfung: Der Verbrauch des Tokens (eine Autorisierung
-  // = eine Ausführung) wird ausschließlich im Execution Broker durchgesetzt,
-  // damit genau eine Stelle entscheidet und dort die Evidenz entsteht.
   const validation = precheckCapabilityToken(capability.tokenId, ["sandbox:run"], {});
   if (!validation.valid) {
     recordAudit({actor: "UNKNOWN-AGENT", action: API_GATE_ACTION, decision: "DENY"}, {code: "CAPABILITY_DENIED", tokenId: capability.tokenId, reason: validation.reason});
@@ -91,6 +77,9 @@ export function apiGateDecision(request: Request): ApiGateDecision {
     return deny(400, "BAD_REQUEST_URL", "request URL is not parseable");
   }
   if (isAuthPath(pathname)) return {allow: true};
+  if (isShuttingDown()) return deny(503, "SHUTTING_DOWN", "server is draining and accepts no new control-plane work");
+  const limited = rateDecision(request);
+  if (!limited.allow) return limited;
   if (isAgentExecutionPath(method, pathname)) return agentExecutionDecision(request);
 
   try {
@@ -98,30 +87,34 @@ export function apiGateDecision(request: Request): ApiGateDecision {
     return {allow: true};
   } catch (error) {
     if (error instanceof ApiDenied) return deny(error.status, error.code, error.message);
-    // Unerwartete Fehler dürfen die Grenze nicht öffnen.
     return deny(500, "GATE_ERROR", error instanceof Error ? error.message : "api gate failed");
   }
 }
 
-/**
- * Bequeme Variante für Routen: gibt bei Verweigerung eine fertige JSON-Antwort
- * zurück (statt zu werfen), damit jede Route die korrekte Fehlersemantik
- * (401/403/423) liefert und die Grenze trotzdem geschlossen bleibt.
- */
 export function guardOrDeny(request: Request, spec: Parameters<typeof guardRequest>[1]): Response | null {
+  if (isShuttingDown()) {
+    return new Response(JSON.stringify({error:"SHUTTING_DOWN", message:"server is draining and accepts no new control-plane work"}), {
+      status:503, headers:{"content-type":"application/json","cache-control":"no-store","retry-after":"5"}
+    });
+  }
+  const limited = consumeRateLimit(request, "api");
+  if (!limited.allowed) {
+    recordAudit({actor:"ANONYMOUS", action:"rate-limit", decision:"DENY"}, {bucket:"api", retryAfterSeconds:limited.retryAfterSeconds});
+    return new Response(JSON.stringify({error:"RATE_LIMITED", message:"request rate limit exceeded"}), {
+      status:429, headers:{"content-type":"application/json","cache-control":"no-store","retry-after":String(limited.retryAfterSeconds)}
+    });
+  }
   try {
     guardRequest(request, spec);
     return null;
   } catch (error) {
     if (error instanceof ApiDenied) {
       return new Response(JSON.stringify({error: error.code, message: error.message}), {
-        status: error.status,
-        headers: {"content-type": "application/json", "cache-control": "no-store"}
+        status: error.status, headers:{"content-type":"application/json","cache-control":"no-store"}
       });
     }
-    return new Response(JSON.stringify({error: "GATE_ERROR", message: error instanceof Error ? error.message : "gate failed"}), {
-      status: 500,
-      headers: {"content-type": "application/json"}
+    return new Response(JSON.stringify({error:"GATE_ERROR", message:error instanceof Error ? error.message : "gate failed"}), {
+      status:500, headers:{"content-type":"application/json"}
     });
   }
 }
