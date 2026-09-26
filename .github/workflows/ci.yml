@@ -142,10 +142,29 @@ jobs:
           path: ${{ runner.temp }}/bob-crash/fault-injection/report.json
           if-no-files-found: warn
 
+  oci-runtime:
+    name: Real OCI Runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Docker daemon
+        run: docker version
+      - name: OCI lifecycle against real Docker
+        run: npm run test:oci
+        env:
+          BOB_STORAGE_DIR: ${{ runner.temp }}/bob-oci
+          BOB_OCI_IMAGE: alpine:3.20
+
   verification-gate:
     name: Verification Gate
     runs-on: ubuntu-latest
-    needs: [lint-and-typecheck, unit-integration, sabotage, security, build]
+    needs: [lint-and-typecheck, unit-integration, sabotage, security, build, oci-runtime]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.3.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
