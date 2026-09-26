@@ -48,6 +48,38 @@ describe("DurableStore (Persistenz)", () => {
     expect(() => store.read()).toThrow(storeModule.StoreIntegrityError);
   });
 
+  /**
+   * Regression: Ein nicht lesbarer Store wurde als „store file is not valid
+   * JSON" gemeldet — also als Datenbeschädigung statt als Lese-/Rechteproblem.
+   * Ein Verzeichnis am Store-Dateipfad erzeugt deterministisch einen Lesefehler
+   * (EISDIR), unabhängig davon, ob die Tests als root laufen.
+   */
+  it("meldet einen nicht lesbaren Store als Lesefehler, nicht als Beschädigung", () => {
+    const unreadableFile = path.join(root, "unit-unreadable.json");
+    fs.mkdirSync(unreadableFile, {recursive: true});
+    const store = storeModule.createStore("unit-unreadable", 1, () => ({items: [] as string[]}));
+    try {
+      expect(() => store.read()).toThrow(/store file is not readable \(EISDIR\)/);
+      expect(() => store.read()).not.toThrow(/not valid JSON/);
+      const report = store.integrity();
+      expect(report.ok).toBe(false);
+      expect(report.error).toMatch(/not readable \(EISDIR\)/);
+      expect(report.error).not.toMatch(/not valid JSON/);
+    } finally {
+      fs.rmSync(unreadableFile, {recursive: true, force: true});
+    }
+  });
+
+  it("unterscheidet nicht vorhandene von beschädigten Stores", () => {
+    const missing = storeModule.createStore("unit-missing", 1, () => ({items: [] as string[]}));
+    expect(missing.integrity()).toMatchObject({ok: true, exists: false, error: "store not created yet"});
+    const broken = path.join(root, "unit-broken.json");
+    fs.writeFileSync(broken, "{ kaputt");
+    const store = storeModule.createStore("unit-broken", 1, () => ({items: [] as string[]}));
+    expect(() => store.read()).toThrow(/not valid JSON/);
+    expect(store.integrity()).toMatchObject({ok: false, error: "[unit-broken] store file is not valid JSON"});
+  });
+
   it("führt registrierte Stores mit Version und Datei", () => {
     const registry = storeModule.storeRegistry();
     expect(registry.some(entry => entry.store === "unit-basic")).toBe(true);

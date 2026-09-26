@@ -148,9 +148,28 @@ export class DurableStore<T> {
 
   private readRaw(): StoreEnvelope<T> | null {
     if (!fs.existsSync(this.file)) return null;
+    /**
+     * Lese- und Parsefehler werden ausdrücklich unterschieden. Ein nicht
+     * lesbarer Store (fehlende Rechte, Verzeichnis am Dateipfad, E/A-Fehler)
+     * ist **keine** Beschädigung: Wer beides gleich meldet, diagnostiziert ein
+     * Rechteproblem als Datenverlust und greift im Zweifel zur falschen
+     * Reparatur. Beide Fälle bleiben fail closed.
+     */
+    let raw: string;
+    try {
+      raw = fs.readFileSync(this.file, "utf8");
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? "unknown";
+      // Zwischen existsSync und read entfernt: kein Fehler, Store gilt als nicht angelegt.
+      if (code === "ENOENT") return null;
+      throw new StoreIntegrityError(
+        this.name,
+        `store file is not readable (${code}); integrity cannot be verified`
+      );
+    }
     let parsed: unknown;
     try {
-      parsed = JSON.parse(fs.readFileSync(this.file, "utf8"));
+      parsed = JSON.parse(raw);
     } catch {
       throw new StoreIntegrityError(this.name, "store file is not valid JSON");
     }
