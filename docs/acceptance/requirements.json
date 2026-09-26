@@ -2159,12 +2159,13 @@
       "implementation": [
         "lib/api/rate-limit.ts",
         "lib/shutdown.ts",
-        "server.mjs"
+        "server.mjs",
+        "lib/session-secret.ts"
       ],
       "tests": [
         {
           "file": "tests/unit/ops-hardening.test.ts",
-          "min": 5
+          "min": 6
         }
       ],
       "ui": [
@@ -2188,13 +2189,18 @@
         {
           "kind": "file",
           "path": "server.mjs"
+        },
+        {
+          "kind": "file",
+          "path": "lib/session-secret.ts"
         }
       ],
       "docs": [
-        "docs/OPERATIONS.md"
+        "docs/OPERATIONS.md",
+        "docs/SECURITY.md"
       ],
-      "status": "PARTIAL",
-      "note": "Rate-Limits und Graceful Shutdown sind implementiert und durch Tests abgesichert. Offen bleibt die vollständige Externalisierung des Session-Schlüssels/Peppers; Creator-Login-Secrets sind bereits ENV/0600-Datei."
+      "status": "PASS",
+      "note": "Rate-Limits, Graceful Shutdown und Externalisierung des Session-HMAC-Schlüssels sind implementiert. In Produktion ist BOB_SESSION_SECRET verpflichtend; bei fehlender Konfiguration startet die Session-Schicht fail closed. Der Creator-Login bleibt ENV/0600-Datei."
     },
     {
       "id": "ACC-001",
