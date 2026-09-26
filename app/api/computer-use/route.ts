@@ -2,6 +2,7 @@ import {NextResponse} from "next/server";
 import {allocateComputer, authorizeComputer, listComputers, registerComputer, releaseComputer, startComputer} from "@/lib/computer-use";
 import {guardOrDeny} from "@/lib/api/api-gate";
 import {objectField} from "@/lib/request-validation";
+import {executeComputerAction} from "@/lib/computer-driver";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +27,12 @@ export async function POST(request: Request) {
       const denied = guardOrDeny(request, {action: "computer:register", creatorOnly: true});
       if (denied) return denied;
       return NextResponse.json({computer: registerComputer(objectField(body,"computer") as never)}, {status: 201});
+    }
+    if (body.action === "execute") {
+      const denied = guardOrDeny(request, {action: "computer:execute", taskId: body.taskId, sandboxId: body.sandboxId});
+      if (denied) return denied;
+      if (typeof body.id !== "string" || typeof body.computerAction !== "string") return NextResponse.json({error:"id and computerAction required"},{status:400});
+      return NextResponse.json({result: await executeComputerAction({computerId:body.id,action:body.computerAction,input:body.input && typeof body.input==="object" ? body.input : {},timeoutMs:body.timeoutMs})});
     }
     if (body.action === "allocate") {
       const denied = guardOrDeny(request, {action: "computer:allocate", taskId: body.taskId, sandboxId: body.sandboxId});
