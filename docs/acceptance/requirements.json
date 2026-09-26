@@ -2416,36 +2416,34 @@
       "phase": "P4",
       "requirement": "Plan: Aufgabenplanung durch den Planner (Objective → Tasks), nachvollziehbar",
       "implementation": [
-        "lib/control-plane.ts",
+        "lib/plans.ts",
         "lib/dispatcher.ts"
       ],
       "tests": [
         {
-          "file": "tests/unit/control-plane.test.ts",
-          "min": 7
+          "file": "tests/unit/plans.test.ts",
+          "min": 6
         }
       ],
       "ui": [
-        "Objectives",
-        "Tasks"
+        "Plans"
       ],
       "evidence": [
         {
           "kind": "route",
           "method": "GET",
-          "path": "/api/tasks",
+          "path": "/api/plans",
           "expect": [
-            200,
-            400,
-            404
+            200
           ]
         }
       ],
       "docs": [
-        "docs/ABNAHMEPLAN.md"
+        "docs/ABNAHMEPLAN.md",
+        "docs/ARCHITECTURE.md"
       ],
-      "status": "PARTIAL",
-      "note": "Planung erfolgt über Objective/Task-Zerlegung und Dispatcher; ein versionsgebundener, expliziter Plan-Datensatz (Schritte, erwartete Wirkung, Abbruchkriterien) fehlt."
+      "status": "PASS",
+      "note": "Versionierter, persistenter Plan-Datensatz je Objective mit gebundenen Tasks, erwarteter Wirkung und expliziten Abbruchkriterien; Aktivierung ist Creator-gebunden und wird über den kanonischen Event-/Audit-Pfad beobachtet."
     },
     {
       "id": "CH-05",
