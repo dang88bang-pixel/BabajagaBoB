@@ -40,7 +40,7 @@ Recovery`
 - Nachweis: **63 Testdateien / 422 Tests** sowie die Live-Prüfungen
   `scripts/verify-live.sh` (**174 / 0**), `scripts/audit-actions.mjs` (**525 / 0**),
   `scripts/audit-api.sh` (**248 / 0**), `scripts/audit-ui.mjs` (**92 / 0**) und der
-  Grenznachweis `scripts/verify-rate-limit.sh` (**6 / 0**, Standardbudget) — jeweils
+  Grenznachweis `scripts/verify-rate-limit.sh` (**6 / 0**, Standardbudget, frische Instanz) — jeweils
   auf der Instanz `:3100` mit Kernel-Isolation und cgroup-Limits; dazu der Abnahmeprüfer
   `node scripts/acceptance.mjs --live` (**82 / 0**, 66/66 Routennachweise).
 

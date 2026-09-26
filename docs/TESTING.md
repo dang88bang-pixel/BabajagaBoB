@@ -18,7 +18,8 @@ Zusätzlich live gegen den Produktionsserver geprüft (`BOB_NS_ISOLATION=on` mit
 `scripts/audit-actions.mjs` → **525 / 0**, `scripts/audit-api.sh` → **248 / 0**, `scripts/audit-ui.mjs`
 → **92 / 0** (47 Datenabrufe, 29 Abschnitte mit echten Zeilen), `node scripts/acceptance.mjs --live`
 → **84 / 0** (68/68 Routen-Nachweise). Zusätzlich der Nachweis der Betriebsgrenze mit **Standardbudget**
-(`bash scripts/verify-rate-limit.sh` gegen eine zweite Instanz **ohne** `BOB_RATE_LIMIT_MAX`) → **6 / 0**:
+(`BASE=… BOOTSTRAP_SECRET=… CREATOR_SECRET=… bash scripts/verify-rate-limit.sh` gegen eine zweite,
+**frische** Instanz **ohne** `BOB_RATE_LIMIT_MAX`; die Geheimnisse kommen aus der Umgebung) → **6 / 0**:
 30 erlaubte Anmeldeversuche, der 31. wird mit `429` + `retry-after: 60` abgewiesen, der Fehlercode ist
 `RATE_LIMITED`, die Abweisung steht als `DENY` in der Audit-Kette und die Kette bleibt gültig.
 

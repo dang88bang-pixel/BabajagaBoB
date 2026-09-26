@@ -16,13 +16,21 @@
 # Die Anmeldung selbst löst sonst die Kontosperre (`CREATOR_LOCKED`) aus, die
 # zusätzlich zur Betriebsgrenze greift und den Nachweis verhindern würde.
 #
-# Aufruf:  BASE=http://localhost:3200 bash scripts/verify-rate-limit.sh
+# Aufruf:  BASE=http://localhost:3200 BOOTSTRAP_SECRET=... CREATOR_SECRET=... \
+#          bash scripts/verify-rate-limit.sh
 # Voraussetzung: `jq`, frischer Storage (Standardbudget, kein aufgebrauchtes Fenster).
 set -uo pipefail
 
 BASE="${BASE:-http://localhost:3200}"
-BOOTSTRAP_SECRET="${BOOTSTRAP_SECRET:-ratelimit-bootstrap}"
-CREATOR_SECRET="${CREATOR_SECRET:-ratelimit-creator}"
+# Geheimnisse gehören nicht in das Repository: Das Skript verlangt sie als Umgebung
+# und bricht ohne sie ab (fail closed), statt mit einem Beispielwert weiterzulaufen.
+BOOTSTRAP_SECRET="${BOOTSTRAP_SECRET:-}"
+CREATOR_SECRET="${CREATOR_SECRET:-}"
+if [ -z "$BOOTSTRAP_SECRET" ] || [ -z "$CREATOR_SECRET" ]; then
+  echo "BOOTSTRAP_SECRET und CREATOR_SECRET müssen gesetzt sein (keine Beispielwerte im Repository)." >&2
+  exit 2
+fi
+
 PASS=0; FAIL=0
 # Eigene Kennung je Lauf: das Budgetfenster ist identitätsgebunden, ein zweiter
 # Lauf darf nicht auf dem Verbrauch des ersten aufsetzen.
@@ -38,13 +46,20 @@ echo "Live-Nachweis der Betriebsgrenze (Standardbudget) gegen $BASE (Kennung $TA
 # 1) Vorbereitung: Bootstrap (frische Instanz) und Anmeldung für die Audit-Prüfung.
 curl -s -o /dev/null -H 'content-type: application/json' -H "user-agent: $SESSION_UA" \
   -X POST "$BASE/api/auth" -d "{\"action\":\"bootstrap\",\"secret\":\"$BOOTSTRAP_SECRET\",\"creatorName\":\"Grenznachweis\"}" || true
-token="$(curl -s -D - -o /dev/null -H 'content-type: application/json' -H "user-agent: $SESSION_UA" \
-  -X POST "$BASE/api/auth" -d "{\"action\":\"login\",\"secret\":\"$CREATOR_SECRET\"}" \
-  | tr -d '\r' | awk 'tolower($1)=="set-cookie:"{print $2}' | cut -d';' -f1)"
+login_headers="$(curl -s -D - -o /tmp/ratelimit-login.json -H 'content-type: application/json' -H "user-agent: $SESSION_UA" \
+  -X POST "$BASE/api/auth" -d "{\"action\":\"login\",\"secret\":\"$CREATOR_SECRET\"}" | tr -d '\r')"
+login_status="$(printf '%s' "$login_headers" | head -1 | awk '{print $2}')"
+token="$(printf '%s' "$login_headers" | awk 'tolower($1)=="set-cookie:"{print $2}' | cut -d';' -f1)"
 if [ -n "$token" ]; then
   ok "Anmeldung für die Audit-Prüfung erhalten"
+elif [ "$login_status" = "423" ] || grep -q "CREATOR_LOCKED" /tmp/ratelimit-login.json 2>/dev/null; then
+  # Der Flut-Teil dieses Skripts löst absichtlich die Kontosperre aus. Ein erneuter
+  # Lauf auf **derselben** Instanz trifft sie noch an — das ist erwartetes Verhalten
+  # und kein Fehler der Betriebsgrenze, aber der Nachweis braucht eine frische Instanz.
+  bad "Creator ist aus einem früheren Lauf gesperrt (CREATOR_LOCKED)" \
+      "Nachweis auf einer frischen Instanz wiederholen (Standardbudget, leerer Storage)"
 else
-  bad "keine Sitzung erhalten" "Login gegen $BASE/api/auth fehlgeschlagen (läuft die Instanz mit Standardbudget und frischem Storage?)"
+  bad "keine Sitzung erhalten" "Login gegen $BASE/api/auth: Status ${login_status:-?} — läuft die Instanz mit Standardbudget?"
 fi
 
 # 2) Flut mit einer eigenen Kennung bis zur Abweisung.

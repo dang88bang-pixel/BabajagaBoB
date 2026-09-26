@@ -476,9 +476,11 @@ Es gibt **zwei** Budgetklassen (`lib/api/rate-limit.ts`):
   vertrauenswürdige Zustandsquelle.
 - Belegt durch `tests/security/ops-enforcement.test.ts` (7 Tests: 429 + `retry-after` + Audit-DENY,
   Drainage-503, Produktionspflicht des Sitzungsgeheimnisses) und **live mit Standardbudget**:
-  `BASE=http://localhost:3200 bash scripts/verify-rate-limit.sh` → 6/0 (30 Versuche erlaubt, der 31. wird
-  abgewiesen, `retry-after: 60` und `RATE_LIMITED`, die Abweisung steht als `DENY` im Audit, die Kette
-  bleibt gültig).
+  `BASE=http://localhost:3200 BOOTSTRAP_SECRET=… CREATOR_SECRET=… bash scripts/verify-rate-limit.sh` → 6/0 auf einer **frischen** Instanz (30 Versuche erlaubt, der 31. wird abgewiesen,
+  `retry-after: 60` und `RATE_LIMITED`, die Abweisung steht als `DENY` im Audit, die Kette bleibt gültig).
+  Die Geheimnisse kommen aus der Umgebung (keine Beispielwerte im Repository); ein zweiter Lauf auf
+  derselben Instanz meldet bewusst `CREATOR_LOCKED` aus dem vorigen Flut-Lauf und verlangt eine frische
+  Instanz.
 
 Der Produktionsstart verwendet server.mjs statt next start. Bei SIGTERM/SIGINT beginnt ein Drain:
 

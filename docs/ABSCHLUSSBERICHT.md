@@ -183,8 +183,8 @@ Keine Erfolgsaussage stützt sich auf Mock-Verhalten; Simulationen
   `scripts/audit-actions.mjs` (**525 / 0**, inkl. Ketten „Alarmierung/Backup" und Service-Level),
   `scripts/audit-api.sh` (**248 / 0**, inkl. Abschnitt 8: Observatory, Warum-Record, Status-Modell),
   `scripts/audit-ui.mjs` (**92 / 0**, 47 Datenabrufe, 29 Abschnitte mit echten Zeilen),
-  `bash scripts/verify-rate-limit.sh` (**6 / 0**: Standardbudget 30, der 31. Anmeldeversuch → 429 +
-  `retry-after`, Abweisung als `DENY` im Audit, Kette gültig),
+  `scripts/verify-rate-limit.sh` (**6 / 0** auf einer frischen Instanz: Standardbudget 30, der 31.
+  Anmeldeversuch → 429 + `retry-after`, Abweisung als `DENY` im Audit, Kette gültig),
   `scripts/soak.mjs` (40 autorisierte Ausführungen, p95 2,22 s, Budget 5 s) **`MEETS_BUDGET`**.
 - Gesamt: **63 Dateien / 422 Tests grün** (Unit 126, Security 135, Integration 122, Regression 15, UI 13,
   E2E 11); `tsc --noEmit` fehlerfrei, `eslint .` 0 Fehler / 11 Warnungen, `npm run build` erfolgreich.
