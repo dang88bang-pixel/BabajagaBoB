@@ -17,7 +17,7 @@ export class IsolatedContainerRuntimeAdapter implements ContainerRuntimeAdapter{
  async execute(sandboxId:string,command:string[],timeoutMs:number){
   if(timeoutMs<=0)return {accepted:false,message:"timeout must be positive",timedOut:true};
   const operation=command.join(" ");
-  const result=await sandboxRuntime.execute(sandboxId,operation);
+  const result=await sandboxRuntime.execute(sandboxId,command);
   return {...result,timedOut:false};
  }
  async destroy(sandboxId:string){return sandboxRuntime.destroy(sandboxId)}

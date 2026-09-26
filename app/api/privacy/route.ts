@@ -1,6 +1,6 @@
 import {NextResponse} from "next/server";
-import {privacySnapshot} from "../../../../lib/privacy";
-import {dataBoundarySnapshot} from "../../../../lib/data-boundary";
+import {privacySnapshot} from "../../../lib/privacy";
+import {dataBoundarySnapshot} from "../../../lib/data-boundary";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 export async function GET(){

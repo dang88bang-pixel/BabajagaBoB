@@ -5,7 +5,7 @@ export type ResourceLimits={cpuMillicores:number;memoryMb:number;storageMb:numbe
 export type SandboxSpec={id:string;type:string;network:NetworkPolicy;limits:ResourceLimits;risk:Risk};
 export type RuntimeSnapshot={id:string;sandboxId:string;createdAt:string;state:SandboxRuntimeState;digest:string};
 export type RuntimeHandle={sandboxId:string;state:SandboxRuntimeState;network:NetworkPolicy;limits:ResourceLimits};
-export interface SandboxRuntime{start(sandboxId:string):Promise<RuntimeHandle>;pause(sandboxId:string):Promise<RuntimeHandle>;create(spec:SandboxSpec):Promise<RuntimeHandle>;clone(sourceSandboxId:string,target:SandboxSpec):Promise<RuntimeHandle>;reset(sandboxId:string):Promise<RuntimeHandle>;snapshot(sandboxId:string):Promise<RuntimeSnapshot>;restore(sandboxId:string,snapshotId:string):Promise<RuntimeHandle>;destroy(sandboxId:string):Promise<void>;execute(sandboxId:string,operation:string):Promise<{accepted:boolean;message:string}>}
+export interface SandboxRuntime{start(sandboxId:string):Promise<RuntimeHandle>;pause(sandboxId:string):Promise<RuntimeHandle>;create(spec:SandboxSpec):Promise<RuntimeHandle>;clone(sourceSandboxId:string,target:SandboxSpec):Promise<RuntimeHandle>;reset(sandboxId:string):Promise<RuntimeHandle>;snapshot(sandboxId:string):Promise<RuntimeSnapshot>;restore(sandboxId:string,snapshotId:string):Promise<RuntimeHandle>;destroy(sandboxId:string):Promise<void>;execute(sandboxId:string,operation:string[]):Promise<{accepted:boolean;message:string}>}
 const handles=new Map<string,RuntimeHandle>(), snapshots=new Map<string,RuntimeSnapshot>();
 const digest=(value:unknown)=>Buffer.from(JSON.stringify(value)).toString("base64url");
 export class MockSandboxRuntime implements SandboxRuntime{
@@ -17,6 +17,6 @@ export class MockSandboxRuntime implements SandboxRuntime{
  async destroy(sandboxId:string){handles.delete(sandboxId)}
  async start(sandboxId:string){const h=handles.get(sandboxId);if(!h)throw new Error("sandbox not found");h.state="RUNNING";return structuredClone(h)}
  async pause(sandboxId:string){const h=handles.get(sandboxId);if(!h)throw new Error("sandbox not found");h.state="PAUSED";return structuredClone(h)}
- async execute(sandboxId:string,operation:string){const h=handles.get(sandboxId);if(!h)throw new Error("sandbox not found");if(h.network.mode==="DENY"&&/^(curl|wget|nc|ssh|scp|ftp)\b/i.test(operation.trim()))return {accepted:false,message:"Network operation rejected by sandbox policy"};h.state="RUNNING";return {accepted:true,message:"Operation accepted by runtime adapter; no host shell is exposed by this adapter"}}
+ async execute(sandboxId:string,operation:string[]){const h=handles.get(sandboxId);if(!h)throw new Error("sandbox not found");if(h.network.mode==="DENY"&&/^(curl|wget|nc|ssh|scp|ftp)\b/i.test(operation[0]??""))return {accepted:false,message:"Network operation rejected by sandbox policy"};h.state="RUNNING";return {accepted:true,message:"Operation accepted by runtime adapter; no host shell is exposed by this adapter"}}
 }
 export const sandboxRuntime=new MockSandboxRuntime();
