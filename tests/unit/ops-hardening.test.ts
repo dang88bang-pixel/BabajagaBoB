@@ -43,6 +43,35 @@ describe("Betriebshärtung", () => {
     expect(consumeRateLimit(b, "api").allowed).toBe(false);
   });
 
+  /**
+   * Regression: Das Session-Cookie wurde nur als **erstes** Cookie erkannt —
+   * das Muster forderte nach dem Semikolon einen literalen Backslash statt
+   * Leerraum. Stand vor `bob_session` ein anderes Cookie, fiel die Identität
+   * still auf den User-Agent-Hash zurück: Alle Sessions desselben Browsers
+   * teilten sich ein Budget, und ein Client konnte das Budget der anderen
+   * aufbrauchen (falsche 429).
+   */
+  it("erkennt das Session-Cookie auch hinter weiteren Cookies", () => {
+    process.env.BOB_RATE_LIMIT_MAX = "1";
+    const first = new Request("http://localhost/api/control", {
+      headers: {cookie: "theme=dark; bob_session=SES-A.secret", "user-agent": "gleich"}
+    });
+    const second = new Request("http://localhost/api/control", {
+      headers: {cookie: "theme=light; bob_session=SES-A.anderes", "user-agent": "gleich"}
+    });
+    expect(consumeRateLimit(first, "api").allowed).toBe(true);
+    // Gleiche Session-ID (nur anderes Secret-Suffix) => gleicher Zähler.
+    expect(consumeRateLimit(second, "api").allowed).toBe(false);
+  });
+
+  it("gibt verschiedenen Sessions desselben User-Agents getrennte Budgets", () => {
+    process.env.BOB_RATE_LIMIT_MAX = "1";
+    const a = new Request("http://localhost/api/control", {headers: {cookie: "bob_session=SES-A.secret", "user-agent": "gleich"}});
+    const b = new Request("http://localhost/api/control", {headers: {cookie: "bob_session=SES-B.secret", "user-agent": "gleich"}});
+    expect(consumeRateLimit(a, "api").allowed).toBe(true);
+    expect(consumeRateLimit(b, "api").allowed).toBe(true);
+  });
+
   it("setzt beim Shutdown einen persistenten Drain-Zustand", () => {
     expect(isShuttingDown()).toBe(false);
     beginShutdown("TEST");

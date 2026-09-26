@@ -239,6 +239,73 @@
       "tests": [
         "tests/integration/event-audit-linkage.test.ts"
       ]
+    },
+    {
+      "id": "RATE_LIMIT_NOT_ENFORCED",
+      "title": "Rate-Limit wird an der API-Grenze nicht mehr durchgesetzt",
+      "guard": "Über dem Budget verweigert die Grenze mit 429 und Retry-After und auditiert die Verweigerung.",
+      "file": "lib/api/api-gate.ts",
+      "find": "  if (!limited.allowed) {",
+      "replace": "  if (false) {",
+      "tests": [
+        "tests/security/ops-enforcement.test.ts"
+      ]
+    },
+    {
+      "id": "SHUTDOWN_DRAIN_IGNORED",
+      "title": "Drainage-Zustand wird an der Grenze ignoriert (neue Arbeit während des Herunterfahrens)",
+      "guard": "Während der Drainage nimmt die Control Plane keine neue Arbeit an (503 mit Retry-After).",
+      "file": "lib/api/api-gate.ts",
+      "find": "  if (isShuttingDown()) {",
+      "replace": "  if (false) {",
+      "tests": [
+        "tests/security/ops-enforcement.test.ts"
+      ]
+    },
+    {
+      "id": "SESSION_SECRET_REQUIRED_IN_PRODUCTION",
+      "title": "Produktionspflicht für das externalisierte Sitzungsgeheimnis entfällt",
+      "guard": "In Produktion verlangt die Sitzungssignatur ein externalisiertes Geheimnis (`BOB_SESSION_SECRET`); ohne es wird der Start verweigert.",
+      "file": "lib/session-secret.ts",
+      "find": "  if (process.env.NODE_ENV === \"production\") {",
+      "replace": "  if (false) {",
+      "tests": [
+        "tests/security/ops-enforcement.test.ts",
+        "tests/unit/ops-hardening.test.ts"
+      ]
+    },
+    {
+      "id": "SHUTDOWN_SIGNAL_NOT_HANDLED",
+      "title": "SIGTERM-Handler entfernt (Server stirbt hart statt geordnet)",
+      "guard": "Der Produktionsserver nimmt SIGTERM/SIGINT an, drainiert und beendet sich mit Exit-Code 0.",
+      "file": "server.mjs",
+      "find": "process.once(\"SIGTERM\", () => void shutdown(\"SIGTERM\"));",
+      "replace": "",
+      "tests": [
+        "tests/integration/graceful-shutdown.test.ts"
+      ]
+    },
+    {
+      "id": "RATE_LIMIT_IDENTITY_NOT_SESSION_SCOPED",
+      "title": "Sitzungsgebundene Begrenzung faellt still auf den User-Agent zurueck",
+      "guard": "Die Betriebsgrenze identifiziert eine Sitzung ueber ihr Cookie; nur ohne Cookie wird auf User-Agent/IP ausgewichen.",
+      "file": "lib/api/rate-limit.ts",
+      "find": "  if (match) return \"session:\" + match[1].split(\".\")[0];",
+      "replace": "  if (false) return \"session:\" + match[1].split(\".\")[0];",
+      "tests": [
+        "tests/unit/ops-hardening.test.ts"
+      ]
+    },
+    {
+      "id": "AUTH_RATE_LIMIT_DENY_NOT_AUDITED",
+      "title": "Begrenzter Anmeldeversuch wird nicht mehr auditiert",
+      "guard": "Ein durch das Anmeldelimit abgewiesener Versuch steht als DENY in der Audit-Kette (blockierte Aktion -> Nachweis).",
+      "file": "app/api/auth/route.ts",
+      "find": "    recordAudit({actor:\"ANONYMOUS\", action:\"rate-limit\", decision:\"DENY\"}, {",
+      "replace": "    if (false) recordAudit({actor:\"ANONYMOUS\", action:\"rate-limit\", decision:\"DENY\"}, {",
+      "tests": [
+        "tests/security/ops-enforcement.test.ts"
+      ]
     }
   ],
   "_changes": "Proben müssen die wirksame Schutzregel entfernen. Proben mit mehreren Änderungen (edits) entfernen redundante Ebenen gemeinsam; eine Probe, die nur eine von zwei Ebenen schwächt, belegt nichts."

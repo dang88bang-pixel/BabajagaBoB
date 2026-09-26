@@ -3,7 +3,8 @@ import {BootstrapError, bootstrapStatus, completeBootstrap} from "../../../lib/b
 import {CreatorAuthError, creatorLoginAvailable, creatorLockState, creatorSecretSource, verifyCreatorLogin} from "../../../lib/creator-auth";
 import {totpConfigured} from "../../../lib/totp";
 import {observe} from "../../../lib/observability";
-import {consumeRateLimit} from "../../../lib/api/rate-limit";
+import {consumeRateLimit, rateLimitIdentityDigest} from "../../../lib/api/rate-limit";
+import {recordAudit} from "../../../lib/audit";
 import {isShuttingDown} from "../../../lib/shutdown";
 
 const DEFAULT_TTL_MS = 8 * 3600_000;
@@ -60,7 +61,19 @@ export function GET(request: Request): Response {
 export async function POST(request: Request): Promise<Response> {
   if (isShuttingDown()) return json({error:"SHUTTING_DOWN",message:"server is draining and accepts no new authentication"},503);
   const limited=consumeRateLimit(request,"auth");
-  if (!limited.allowed) return json({error:"RATE_LIMITED",message:"authentication rate limit exceeded"},429,undefined,limited.retryAfterSeconds);
+  if (!limited.allowed) {
+    /**
+     * Ein begrenzter Anmeldeversuch ist ein Sicherheitsereignis (Credential
+     * Stuffing) und muss im Audit stehen — „blockiert" ohne Nachweis wäre eine
+     * unsichtbare Abwehr. Die Kennung geht nur als Digest hinein.
+     */
+    recordAudit({actor:"ANONYMOUS", action:"rate-limit", decision:"DENY"}, {
+      bucket:"auth",
+      retryAfterSeconds:limited.retryAfterSeconds,
+      identityDigest:rateLimitIdentityDigest(request)
+    });
+    return json({error:"RATE_LIMITED",message:"authentication rate limit exceeded"},429,undefined,limited.retryAfterSeconds);
+  }
   const {action,secret,creatorName,totpCode}=await readAction(request);
   const status=bootstrapStatus();
 
