@@ -9,7 +9,7 @@ const lock=path.join(root,"events.lock");
 const digest=(v:unknown)=>crypto.createHash("sha256").update(JSON.stringify(v)).digest("hex");
 type Envelope={version:1;events:Event[];digest:string};
 const clone=<T,>(v:T):T=>structuredClone(v);
-const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
+const wait=(ms:number)=>Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,ms);
 
 function read():Envelope{
  fs.mkdirSync(root,{recursive:true});
@@ -30,7 +30,7 @@ function read():Envelope{
  }
 }
 
-async function acquireLock(timeoutMs=5000){
+function acquireLock(timeoutMs=5000){
  fs.mkdirSync(root,{recursive:true});
  const started=Date.now();
  while(true){
@@ -45,7 +45,7 @@ async function acquireLock(timeoutMs=5000){
     if(Date.now()-stat.mtimeMs>30_000)fs.rmSync(lock,{recursive:true,force:true});
    }catch{}
    if(Date.now()-started>=timeoutMs)throw new Error("Event store lock acquisition timed out");
-   await sleep(25);
+   wait(25);
   }
  }
 }
@@ -66,8 +66,8 @@ function write(events:Event[]){
 
 export function loadEvents(){return clone(read().events);}
 
-export async function appendEventPersistent(event:Event){
- await acquireLock();
+export function appendEventPersistent(event:Event){
+ acquireLock();
  try{
   const e=read();
   e.events.unshift(clone(event));
