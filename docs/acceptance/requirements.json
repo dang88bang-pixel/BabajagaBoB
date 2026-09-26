@@ -3041,8 +3041,8 @@
       "docs": [
         "docs/COMPUTER_USE.md"
       ],
-      "status": "PASS",
-      "note": "Driver ist real ausführbar, aber nur über explizit konfigurierte BOB_COMPUTER_DRIVER-Grenze; ohne Driver bleibt die Aktion fail closed."
+      "status": "PARTIAL",
+      "note": "Reale Child-Process-Driver-Grenze, Timeout, Minimal-Environment und Digest-Audit sind implementiert und getestet. Die konkrete Computer-Aktion muss noch als eigener zentraler Broker-/Capability-Verbrauchspfad in die kanonische Execution-Broker-Kette integriert und live verifiziert werden."
     },
     {
       "id": "OFF-001",
