@@ -2156,15 +2156,45 @@
       "area": "Betrieb",
       "phase": "P5",
       "requirement": "Produktionshärtung: Rate Limits, Graceful Shutdown, Upgrade-/Rollback-Pfad, Externalisierung der Sitzungsgeheimnisse.",
-      "implementation": [],
-      "tests": [],
-      "ui": [],
-      "evidence": [],
+      "implementation": [
+        "lib/api/rate-limit.ts",
+        "lib/shutdown.ts",
+        "server.mjs"
+      ],
+      "tests": [
+        {
+          "file": "tests/unit/ops-hardening.test.ts",
+          "min": 5
+        }
+      ],
+      "ui": [
+        "Operations"
+      ],
+      "evidence": [
+        {
+          "kind": "route",
+          "method": "POST",
+          "path": "/api/auth",
+          "expect": [
+            400,
+            401,
+            403,
+            409,
+            423,
+            428,
+            429
+          ]
+        },
+        {
+          "kind": "file",
+          "path": "server.mjs"
+        }
+      ],
       "docs": [
         "docs/OPERATIONS.md"
       ],
-      "status": "NOT_IMPLEMENTED",
-      "note": "Offen: Rate-Limits, Graceful Shutdown und Externalisierung der Sitzungsgeheimnisse. Der Upgrade-/Rollback-Pfad ist seit der P5-Runde vorhanden (lib/release.ts, lib/deployment.ts, scripts/release-supervisor.sh) und unter OPS-003 belegt."
+      "status": "PARTIAL",
+      "note": "Rate-Limits und Graceful Shutdown sind implementiert und durch Tests abgesichert. Offen bleibt die vollständige Externalisierung des Session-Schlüssels/Peppers; Creator-Login-Secrets sind bereits ENV/0600-Datei."
     },
     {
       "id": "ACC-001",
