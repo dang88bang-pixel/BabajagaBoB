@@ -1,6 +1,8 @@
 # Offene Punkte
 
 **Stand:** 2026-09-25
+**Ausführlicher To-do-Plan zur Fertigstellung:** `docs/FERTIGSTELLUNGSPLAN.md`
+(Phasen, Kategorien, Freigabepflichten; Stand 2026-09-26).
 **Hinweis:** Die ursprüngliche Roadmap-Fassung dieser Datei (246 Zeilen mit 132
 unbearbeiteten Checkboxen) war ein Planungsdokument aus der Startphase und hat
 den Umsetzungsstand nicht mehr korrekt abgebildet. Sie wurde durch diese
