@@ -1,9 +1,16 @@
 import {NextResponse} from "next/server";
 import {bindProvider,connectProvider,disconnectProvider,heartbeatProvider,providerSnapshot,revokeProvider,setProviderState} from "@/lib/provider-fabric";
+import {guardOrDeny} from "@/lib/api/api-gate";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
-export async function GET(){return NextResponse.json(providerSnapshot(),{headers:{"Cache-Control":"no-store"}})}
+export async function GET(request:Request){const denied=guardOrDeny(request,{action:"provider:read"});if(denied)return denied;return NextResponse.json(providerSnapshot(),{headers:{"Cache-Control":"no-store"}})}
 export async function POST(req:Request){
+ const gate = await import("@/lib/api/api-gate");
+ const body = (await req.clone().json().catch(() => ({}))) as {action?:string};
+ const creatorOnly = ["connect","revoke","disconnect"].includes(String(body.action));
+ const denied = gate.guardOrDeny(req, {action: creatorOnly ? "provider:connect" : "provider:manage", creatorOnly});
+ if (denied) return denied;
+
  try{const b=await req.json();
  if(b.action==="connect")return NextResponse.json({provider:connectProvider(b.id,b.endpoint,b.credentialRef,b.approvalId)});
  if(b.action==="disconnect")return NextResponse.json({provider:disconnectProvider(b.id)});

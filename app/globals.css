@@ -1,1 +1,56 @@
 *{box-sizing:border-box}body{margin:0;background:#0b0d12;color:#eef1f5;font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}.shell{display:flex;min-height:100vh}aside{width:248px;background:#10131a;border-right:1px solid #252a34;padding:22px 14px;display:flex;flex-direction:column}.brand{display:flex;gap:11px;align-items:center;padding:4px 10px 26px}.brand>span{font-size:27px}.brand b{display:block;font-size:15px}.brand small{font-size:9px;letter-spacing:1.7px;color:#737c8c}nav{display:grid;gap:4px}nav button{display:flex;justify-content:space-between;padding:11px 12px;border-radius:8px;text-align:left;color:#8f98a8;font-size:13px}nav button.active,nav button:hover{background:#1b202a;color:#fff}.sideStatus{margin-top:auto;border:1px solid #292f3a;border-radius:10px;padding:12px}.sideStatus small{display:block;color:#697385;font-size:9px;letter-spacing:1.5px;margin-bottom:9px}.sideStatus p{font-size:11px;color:#7e8796;margin:9px 0 0}.content{flex:1;padding:28px 34px;max-width:1500px;margin:auto;width:100%}header{display:flex;justify-content:space-between;align-items:center;margin-bottom:26px}header small,.panel small,.metric small{color:#697384;font-size:9px;letter-spacing:1.6px}h1{font-size:28px;margin:5px 0 0}h2{font-size:16px;margin:4px 0 0}.headerActions{display:flex;gap:10px;align-items:center}.privacy{font-size:10px;color:#8f9aab;border:1px solid #2a303b;padding:8px 10px;border-radius:6px}.lock,.danger{font-size:10px;padding:9px 12px;border:1px solid #4a3035;border-radius:6px;color:#ef9aa5}.alert{padding:12px 15px;border:1px solid #6a3038;background:#26151a;color:#f1a5ad;border-radius:8px;margin-bottom:18px;font-size:12px}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}.metric,.panel{background:#11151c;border:1px solid #242a35;border-radius:10px}.metric{padding:16px}.metric strong{display:block;font-size:27px;margin:7px 0 3px}.metric span{font-size:11px;color:#7f8999}.grid{display:grid;grid-template-columns:1.35fr 1fr;gap:14px}.panel{padding:17px}.panelHead{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px}.live{font-size:9px;color:#79d5a4}.panelHead button{font-size:10px;border:1px solid #303744;border-radius:6px;padding:7px 9px}.agent{display:flex;gap:12px;padding:12px 0;border-top:1px solid #202630}.agent:first-child{border-top:0;padding-top:0}.avatar{width:32px;height:32px;border-radius:7px;background:#202631;display:grid;place-items:center;font-size:12px}.agentMain{flex:1}.agentTitle{display:flex;gap:9px;align-items:center;margin-bottom:8px}.agentTitle b{font-size:12px}.agentTitle>span{font-size:10px;color:#70798a}.badge{display:inline-flex;align-items:center;gap:5px;font-size:8px;letter-spacing:.7px;padding:4px 6px;border:1px solid #303743;border-radius:5px;margin-left:auto}.badge i{width:5px;height:5px;border-radius:50%;background:#7f8997}.running i,.experiment i{background:#6fd39a}.error i{background:#ed737d}.completed i{background:#8793a5}.bar,.miniBar{height:4px;background:#252b35;border-radius:4px;overflow:hidden}.bar i,.miniBar i{display:block;height:100%;background:#7b8798}.agentMain>small{display:block;margin-top:7px;font-size:9px;color:#606a7b}.task{padding:12px 0;border-top:1px solid #202630;display:grid;grid-template-columns:55px 1fr auto;gap:7px;align-items:center;font-size:11px}.task:first-of-type{border-top:0}.task span{color:#9ba3b0}.experiment{border-top:1px solid #202630;padding:12px 0}.experiment>div{display:flex;justify-content:space-between}.experiment b{font-size:10px}.experiment span{font-size:10px;color:#8c96a6}.experiment small{display:block;margin-top:7px;letter-spacing:0}.miniBar{margin-top:9px}.timeline{border-top:1px solid #202630}.event{display:grid;grid-template-columns:10px 1fr auto;gap:10px;align-items:center;padding:11px 0;border-bottom:1px solid #1d232c;font-size:11px}.event i{width:6px;height:6px;border-radius:50%;background:#707b8d}.event small{letter-spacing:0}footer{display:flex;gap:24px;padding:20px 0 0;color:#596373;font-size:8px;letter-spacing:1.1px}@media(max-width:900px){aside{width:72px}.brand div,nav button{font-size:0}.brand{padding:4px 8px 26px}.sideStatus{display:none}.content{padding:20px}.metrics{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.headerActions .privacy{display:none}}\n.sectionPanel{min-height:420px}.sectionPanel>p{color:#7e8796;font-size:12px;max-width:760px;line-height:1.7}.moduleGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.moduleCard{border:1px solid #252b35;background:#0d1117;border-radius:8px;padding:14px;display:grid;gap:7px}.moduleCard b{font-size:12px}.moduleCard>span{font-size:10px;color:#778191}.moduleCard small{font-size:9px;color:#606a7a}.moduleCard .badge{margin-left:0;width:max-content}button:disabled{opacity:.45;cursor:not-allowed}@media(max-width:900px){.moduleGrid{grid-template-columns:1fr}}
+
+/* --- Formulare (Creator-Anmeldung) --- */
+form{display:grid;gap:12px;max-width:430px;margin-top:16px}
+form label{display:grid;gap:6px;font-size:10px;letter-spacing:1.2px;color:#8b95a5}
+form input{background:#0d1117;border:1px solid #2a313d;border-radius:7px;padding:10px 12px;color:#eef1f5;font-size:13px}
+form input:focus{outline-color:#3d5b7a}
+form button{justify-self:start;font-size:11px;padding:10px 14px;border:1px solid #2f3f52;border-radius:7px;color:#cfe3f5;background:#141c26}
+/* --- Datentabellen (Modulansichten) --- */
+.dataTable{margin-top:14px;border:1px solid #212733;border-radius:9px;overflow:hidden}
+.dataRow{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;padding:10px 12px;border-top:1px solid #1b212b;font-size:11px;color:#a9b3c1;align-items:center}
+.dataRow:first-child{border-top:0}
+.dataRow.head{background:#141922;color:#6f7a8c;font-size:9px;letter-spacing:1.3px;text-transform:uppercase}
+.dataRow .state{color:#8fd6ac}
+.dataRow span{overflow-wrap:anywhere}
+.dataRow button{font-size:9px;border:1px solid #303744;border-radius:5px;padding:5px 7px}
+.emptyNote{margin-top:12px;font-size:11px;color:#79828f}
+.integrity{margin-top:14px;border:1px solid #26303c;border-radius:8px;padding:12px;display:grid;gap:5px;background:#0e131a}
+.integrity strong{font-size:10px;letter-spacing:1.4px;color:#8fa2b8}
+.integrity span{font-size:11px;color:#96a0ae}
+/* --- Metriktext (Prometheus) --- */
+.metricsText{margin-top:14px;max-height:460px;overflow:auto;background:#0d1117;border:1px solid #212733;border-radius:9px;padding:12px;font-size:11px;line-height:1.55;color:#9fb0c4;white-space:pre-wrap}
+
+
+/* Visualisierung: SVG-Render aus dem echten Plattformzustand. */
+.visualization {
+  display: block;
+  width: 100%;
+  max-width: 960px;
+  height: auto;
+  margin: 12px 0 0;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+/* Status-Modell (lib/status.ts): jede Zustandsfarbe kommt aus einem Tone-Namen.
+   Neue Zustände erhalten hier ihre Farbe — es gibt keine zweite Farbquelle. */
+.badge.queued i,.badge.planning i{background:#8d97a8}
+.badge.running i,.badge.experiment i,.badge.executing i,.badge.succeeded i{background:#6fd39a}
+.badge.thinking i,.badge.observing i,.badge.validating i,.badge.testing i{background:#6fb8d3}
+.badge.waiting i,.badge.approval-required i{background:#e0b168}
+.badge.blocked i,.badge.recovering i,.badge.rolling-back i{background:#c58ce0}
+.badge.error i,.badge.bug i,.badge.failed i{background:#ed737d}
+.badge.completed i,.badge.cancelled i,.badge.unknown i{background:#8793a5}
+.badge{background:#141922}
+
+.whyButton{font-size:9px;border:1px solid #303744;border-radius:6px;padding:5px 8px}
+.whyPanel{margin:0 0 10px 22px;padding:11px 13px;border-left:2px solid #2b3444;background:#0d1117;border-radius:0 8px 8px 0;font-size:11px}
+.whyPanel small{display:block;margin:9px 0 4px;color:#697384;font-size:9px;letter-spacing:1.4px;text-transform:uppercase}
+.whyGrid{display:grid;grid-template-columns:170px 1fr;gap:5px 12px;font-size:11px;color:#a9b3c1}
+.whyGrid span{color:#6f7a8c}
+.whyChain{margin:0;padding-left:17px;color:#9aa4b2;line-height:1.65}
+.whyChain code{color:#8fd6ac}
+.whyLimits{color:#c39a6a}
+.whyError{color:#ef9aa5}
