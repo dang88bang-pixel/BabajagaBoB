@@ -54,7 +54,7 @@ describe("offline fabric",()=>{
     item.sha256=crypto.createHash("sha256").update("changed").digest("hex");
     manifest.manifestSha256=crypto.createHash("sha256").update(JSON.stringify(((m)=>{const {manifestSha256:_ignored,...base}=m;return base})(manifest))).digest("hex");
     fs.writeFileSync(path.join(bundle,"manifest.json"),JSON.stringify(manifest));
-    await expect(importOfflineBundle(bundle)).rejects.toThrow(/merge conflict/);
+    expect(()=>importOfflineBundle(bundle)).toThrow(/merge conflict/);
     expect(listOfflineConflicts().length).toBeGreaterThan(0);
   });
 
