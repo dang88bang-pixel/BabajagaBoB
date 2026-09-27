@@ -37,7 +37,7 @@ export async function executeComputerAction(req: ComputerExecutionRequest): Prom
   if(!instance.capabilities.some(c=>c.kind===instance.kind && c.actions.includes(req.action as never))) throw new Error("computer capability does not permit action");
   const timeout=Math.min(Math.max(Number(req.timeoutMs??30000),1000),120000);
   const started=Date.now();
-  if (instance.kind === "BROWSER" && process.env.BOB_BROWSER_EXECUTABLE) {
+  if (instance.kind === "BROWSER") {
     const started = Date.now();
     try {
       const browserResult = await executeBrowserAction(req.action, req.input, req.timeoutMs);
