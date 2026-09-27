@@ -139,7 +139,8 @@
         "tests/security/store-lock-sabotage.test.ts",
         "tests/integration/store-lock.test.ts",
         "tests/integration/fault-injection-processes.test.ts",
-        "tests/integration/load-broker.test.ts"
+        "tests/integration/load-broker.test.ts",
+        "tests/security/store-lock-sabotage-contract.test.ts"
       ]
     },
     {
