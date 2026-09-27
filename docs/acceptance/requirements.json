@@ -2106,7 +2106,7 @@
         "docs/OPERATIONS.md"
       ],
       "status": "PARTIAL",
-      "note": "Der begrenzte Lauf hat Schwellen und einen Negativnachweis; ein Dauerlauf über Stunden (Lastkurve, SLO-Zusage) fehlt."
+      "note": "Begrenzter Lastnachweis mit Schwellen (SOAK_SLO_P95_MS, SOAK_SLO_MIN_SUCCESS_RATIO) und Negativpfad ist umgesetzt; Skriptfix 2026-09-28: Token-Ablauf wird je Ausfuehrung frisch berechnet (Commit 9111418), damit Dauerlaeufe nicht nach 10 Minuten abbrechen. Ehrliche Grenze der Sandbox: Mehrstuendige Dauerlaeufe sind hier nicht belastbar moeglich (beobachtete Umgebungs-Resets waehrend der Sitzung beenden Hintergrundprozesse; ein 20000er-Lauf wurde dadurch vernichtet). Runbook fuer einen stabilen Host: node server.mjs mit BOB_STORAGE_DIR/BOB_BOOTSTRAP_SECRET/BOB_CREATOR_LOGIN_SECRET/BOB_RATE_LIMIT_MAX, danach BASE=... SOAK_COUNT=20000+ SOAK_CONCURRENCY=4 node scripts/soak.mjs; Bericht inkl. Lastkurve/SLO/Zustand danach liegt in SOAK_REPORT."
     },
     {
       "id": "OPS-001",
