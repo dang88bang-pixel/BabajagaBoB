@@ -1,0 +1,54 @@
+{
+  "schema": "bob-agent-completion/1",
+  "purpose": "Allow any fresh capable coding agent to reconstruct, implement, verify and hand off BabajagaBoB without hidden conversational context.",
+  "canonical_sources": [
+    "docs/APP_VOLLSTAENDIGE_SPEZIFIKATION_DE.md",
+    "docs/acceptance/requirements.json",
+    "docs/STATUS.md",
+    "docs/TODO.md"
+  ],
+  "completion_rule": "READY_TO_USE only when mandatory target-environment requirements are implemented, integrated, security-bounded, tested, reproducibly verified, documented, observable and recoverable/deployable where applicable.",
+  "fresh_agent_sequence": [
+    "inspect repository identity",
+    "read canonical specification",
+    "read acceptance matrix",
+    "read status and TODO",
+    "run typecheck lint build",
+    "run unit integration security regression",
+    "run available live/API/UI/E2E/runtime verification",
+    "build evidence-backed gap table",
+    "repair root causes",
+    "rerun affected and full suites",
+    "update evidence and documentation",
+    "recompute acceptance",
+    "release only when gates pass"
+  ],
+  "hard_boundaries": [
+    "no self-grant",
+    "no permission escalation",
+    "no approval bypass",
+    "no execution-gate bypass",
+    "network default deny",
+    "external processing/storage/training default deny",
+    "scoped credential access only",
+    "unauthorized device control forbidden",
+    "audit/provenance manipulation forbidden",
+    "verification without evidence forbidden",
+    "recovery without verification forbidden",
+    "production readiness without acceptance forbidden"
+  ],
+  "status_semantics": {
+    "IMPLEMENTED": "code exists and compiles",
+    "INTEGRATED": "connected to intended runtime path",
+    "TESTED": "automated test evidence exists",
+    "VERIFIED": "reproducible executable evidence proves requirement",
+    "PRODUCTION_READY": "verified plus operational/security/recovery/rollback prerequisites",
+    "DONE": "requirement satisfied and documented"
+  },
+  "stop_conditions": [
+    "all mandatory requirements complete",
+    "real external blocker",
+    "Creator approval required",
+    "required hardware/provider genuinely unavailable"
+  ]
+}
