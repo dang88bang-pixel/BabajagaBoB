@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import {recordAudit} from "./audit";
 import {observe} from "./observability";
 import {listComputers} from "./computer-use";
+import {executeBrowserAction} from "./browser-driver";
 
 export type ComputerExecutionRequest = {
   computerId: string;
@@ -41,6 +42,18 @@ export async function executeComputerAction(req: ComputerExecutionRequest): Prom
   }
   const timeout=Math.min(Math.max(Number(req.timeoutMs??30000),1000),120000);
   const started=Date.now();
+  if (instance.kind === "BROWSER" && process.env.BOB_BROWSER_EXECUTABLE) {
+    const timeout=Math.min(Math.max(Number(req.timeoutMs??30000),1000),120000);
+    const browserResult=await executeBrowserAction(req.action,req.input,timeout);
+    const stdout=JSON.stringify(browserResult);
+    const out:ComputerExecutionResult={
+      computerId:req.computerId,action:req.action,status:"SUCCEEDED",exitCode:0,
+      stdoutDigest:digest(stdout),stderrDigest:digest(""),stdoutLength:stdout.length,stderrLength:0,durationMs:Date.now()-started
+    };
+    recordAudit({actor:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:"ALLOW"},{action:req.action,exitCode:0,stdoutDigest:out.stdoutDigest,stderrDigest:out.stderrDigest,durationMs:out.durationMs,driver:"CDP"});
+    observe({type:"computer.executed",message:`Browser ${req.computerId} ${req.action} -> SUCCEEDED`,status:"COMPLETED",actor:"AG-BROWSER",agentId:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:"ALLOW",argumentsValue:{action:req.action,driver:"CDP"}});
+    return out;
+  }
   const result=await new Promise<{code:number|null;stdout:string;stderr:string}>((resolve)=>{
     const safeEnv: NodeJS.ProcessEnv={NODE_ENV:process.env.NODE_ENV ?? "production",PATH:process.env.PATH,LANG:process.env.LANG,LC_ALL:process.env.LC_ALL,TZ:process.env.TZ};
     const child=spawn(command,[],{shell:false,stdio:["pipe","pipe","pipe"],env:safeEnv});
