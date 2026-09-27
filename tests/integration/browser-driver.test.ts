@@ -1,4 +1,8 @@
 import {describe,expect,it} from "vitest";
+import {spawn} from "node:child_process";
+import {mkdtempSync} from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 describe("CDP browser driver",()=>{
   it("fails closed when no browser executable is configured",async()=>{
@@ -44,6 +48,25 @@ describe("CDP browser driver",()=>{
     expect(result.stdoutDigest).toMatch(/^[a-f0-9]{64}$/);
   });
 
+  it("loads the real Control Center in Chromium and verifies the rendered page",async()=>{
+    if(!process.env.BOB_BROWSER_EXECUTABLE) return;
+    const root=mkdtempSync(path.join(os.tmpdir(),"bob-browser-ui-"));
+    const port=3210;
+    const child=spawn(process.execPath,["server.mjs"],{env:{...process.env,NODE_ENV:"production",PORT:String(port),BOB_SESSION_SECRET:"browser-e2e-session-secret-0123456789",BOB_STORAGE_DIR:root},stdio:["ignore","pipe","pipe"]});
+    try {
+      const deadline=Date.now()+15000;
+      let ready=false;
+      while(Date.now()<deadline){try{const response=await fetch("http://127.0.0.1:"+port+"/");if(response.ok){ready=true;break;}}catch{} await new Promise(r=>setTimeout(r,100));}
+      expect(ready).toBe(true);
+      const {executeBrowserAction}=await import("../../lib/browser-driver");
+      const result=await executeBrowserAction("NAVIGATE",{url:"http://127.0.0.1:"+port+"/"});
+      expect(result.ok).toBe(true);
+      expect(result.title).toContain("BabajagaBoB");
+    } finally {
+      if(child.exitCode===null) child.kill("SIGTERM");
+      await new Promise(resolve=>{if(child.exitCode!==null)return resolve(undefined);child.once("exit",()=>resolve(undefined));setTimeout(()=>resolve(undefined),3000);});
+    }
+  });
   it("rejects unsupported or unsafe navigation input before browser launch",async()=>{
     const old=process.env.BOB_BROWSER_EXECUTABLE;
     process.env.BOB_BROWSER_EXECUTABLE="/usr/bin/chromium";
