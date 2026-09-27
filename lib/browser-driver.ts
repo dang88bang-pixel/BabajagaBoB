@@ -8,7 +8,24 @@ type Input = Record<string, unknown>;
 type CdpResult = {result?: {value?: unknown;data?: string};error?: {message?: string}};
 
 const digest=(v:string)=>crypto.createHash("sha256").update(v).digest("hex");
-const executable=()=> (process.env.BOB_BROWSER_EXECUTABLE ?? "").trim();
+const executable=()=>{
+  const configured=(process.env.BOB_BROWSER_EXECUTABLE ?? "").trim();
+  if(configured) return configured;
+  const candidates=[
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/opt/google/chrome/chrome"
+  ];
+  for(const candidate of candidates){
+    try {
+      const stat=require("node:fs").statSync(candidate);
+      if(stat.isFile()) return candidate;
+    } catch { /* candidate unavailable */ }
+  }
+  return "";
+};
 
 function command(browser: WebSocket, id:number, method:string, params:Record<string,unknown>={}):Promise<CdpResult>{
   return new Promise((resolve,reject)=>{
