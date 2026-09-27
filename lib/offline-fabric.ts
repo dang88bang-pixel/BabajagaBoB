@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import path from "node:path";
 import {createStore, storageRoot} from "./persistence/store";
 import {recordAudit} from "./audit";
 import {observe} from "./observability";
@@ -143,12 +144,12 @@ export function exportOfflineBundle(resourceIds: string[], destination: string):
   const resources = selected.map(resource => {
     const verified = verifyOfflineResource(resource!.id);
     const file = `${safeId(verified.id)}.resource`;
-    fs.copyFileSync(verified.location, pathJoin(target, file));
+    fs.copyFileSync(verified.location, path.join(target, file));
     return {id:verified.id,kind:verified.kind,name:verified.name,version:verified.version,sha256:verified.sha256,sizeBytes:verified.sizeBytes,source:verified.source,metadata:verified.metadata,file};
   });
   const base: Omit<OfflineBundleManifest,"manifestSha256"> = {schemaVersion:1,bundleId:`BND-${crypto.randomUUID().slice(0,10).toUpperCase()}`,createdAt:new Date().toISOString(),resources};
   const manifest: OfflineBundleManifest = {...base,manifestSha256:manifestDigest(base)};
-  fs.writeFileSync(pathJoin(target,"manifest.json"),JSON.stringify(manifest,null,2)+"\n",{mode:0o600});
+  fs.writeFileSync(path.join(target,"manifest.json"),JSON.stringify(manifest,null,2)+"\n",{mode:0o600});
   store.update(p => p.bundles.push(manifest.bundleId));
   recordAudit({actor:"CREATOR",action:"offline.bundle.export",resource:manifest.bundleId,decision:"ALLOW"},{resourceIds,manifestSha256:manifest.manifestSha256});
   observe({type:"offline.bundle.exported",message:`Offline-Bundle ${manifest.bundleId} erstellt`,status:"COMPLETED",actor:"CREATOR",action:"offline.bundle.export",resource:manifest.bundleId});
@@ -156,21 +157,21 @@ export function exportOfflineBundle(resourceIds: string[], destination: string):
 }
 
 export function importOfflineBundle(bundleDirectory: string): {bundleId:string; imported:string[]} {
-  const manifestPath = pathJoin(bundleDirectory,"manifest.json");
+  const manifestPath = path.join(bundleDirectory,"manifest.json");
   const manifest = JSON.parse(fs.readFileSync(manifestPath,"utf8")) as OfflineBundleManifest;
   if (manifest.schemaVersion !== 1 || !manifest.bundleId || !Array.isArray(manifest.resources)) throw new Error("invalid offline bundle manifest");
   const {manifestSha256,...base} = manifest;
   if (manifestDigest(base) !== manifestSha256) throw new Error("offline bundle manifest digest mismatch");
   const imported:string[]=[];
-  const destinationRoot=pathJoin(storageRoot(),"offline-imports",safeId(manifest.bundleId));
+  const destinationRoot=path.join(storageRoot(),"offline-imports",safeId(manifest.bundleId));
   fs.mkdirSync(destinationRoot,{recursive:true,mode:0o700});
   for (const item of manifest.resources) {
     if (!item.id || !item.file || !/^[A-Za-z0-9._-]+$/.test(item.file)) throw new Error("invalid offline bundle file name");
-    const sourceFile=pathJoin(bundleDirectory,item.file);
+    const sourceFile=path.join(bundleDirectory,item.file);
     if (!fs.statSync(sourceFile).isFile()) throw new Error(`offline bundle file missing: ${item.file}`);
     const digest=sha256File(sourceFile);
     if (digest !== item.sha256) throw new Error(`offline bundle digest mismatch: ${item.id}`);
-    const destination=pathJoin(destinationRoot,safeId(item.id));
+    const destination=path.join(destinationRoot,safeId(item.id));
     fs.copyFileSync(sourceFile,destination);
     const now=new Date().toISOString();
     store.update(p=>{
@@ -185,8 +186,5 @@ export function importOfflineBundle(bundleDirectory: string): {bundleId:string; 
   observe({type:"offline.bundle.imported",message:`Offline-Bundle ${manifest.bundleId} importiert`,status:"COMPLETED",actor:"CREATOR",action:"offline.bundle.import",resource:manifest.bundleId});
   return {bundleId:manifest.bundleId,imported};
 }
-
-function pathJoin(...parts:string[]):string { return requirePath().join(...parts); }
-function requirePath(){ return require("node:path") as typeof import("node:path"); }
 
 export function offlineStoreReport() { return {...store.integrity(),bundles:store.read().bundles.length}; }
