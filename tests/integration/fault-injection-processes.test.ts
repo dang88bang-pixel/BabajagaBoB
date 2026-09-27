@@ -16,7 +16,7 @@ import {isolatedStorageRoot, TEST_BOOTSTRAP_SECRET} from "../helpers/runtime";
  *
  *  1. Harter Abbruch (SIGKILL) mitten im Schreibvorgang: Der Datensatz muss
  *     integer bleiben, der Store weiter beschreibbar und frei von Resten.
- *  2. Vier gleichzeitige Writer-Prozesse auf denselben Store: keine
+ *  2. Acht gleichzeitige Writer-Prozesse auf denselben Store: keine
  *     Aktualisierung darf verloren gehen (plus Gegenprobe, die den Verlust
  *     bei unbedingtem Überschreiben belegt — sonst wäre der Test wertlos).
  *  3. Worker-Verlust: Lease läuft ab, der Job geht zurück in die Queue und wird
@@ -133,26 +133,29 @@ describe("Fehlerinjektion: Prozessabbruch", () => {
 });
 
 describe("Fehlerinjektion: konkurrierende Schreibvorgänge", () => {
-  it("verliert bei vier echten Writer-Prozessen keine Aktualisierung", async () => {
+  it("verliert bei acht echten Writer-Prozessen keine Aktualisierung", async () => {
     const concurrentRoot = fs.mkdtempSync(path.join(root, "concurrent-"));
-    const perWriter = 60;
-    // Start-Barriere: erst wenn alle vier Writer-Prozesse bereitstehen, werden
-    // sie gleichzeitig losgelassen — sonst könnten sie durch unterschiedliche
+    // Acht Writer mit hoher Iterationszahl erzeugen so viel Kollisionsdruck,
+    // dass eine entfernte Schreibsperre zuverlässig auffällt (Revisions-
+    // Konflikte übersteigen das Retry-Budget, ein Writer scheitert).
+    const perWriter = 80;
+    // Start-Barriere: erst wenn alle Writer-Prozesse bereitstehen, werden sie
+    // gleichzeitig losgelassen — sonst könnten sie durch unterschiedliche
     // Startzeiten zufällig nacheinander laufen und die Probe wäre keine echte.
     const barrier = path.join(root, `barrier-concurrent-${crypto.randomUUID()}.start`);
-    const done = spawnWriters(concurrentRoot, 4, perWriter, "update", barrier);
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    const done = spawnWriters(concurrentRoot, 8, perWriter, "update", barrier);
+    await new Promise(resolve => setTimeout(resolve, 2500));
     fs.writeFileSync(barrier, "start");
     const codes = await done;
-    expect(codes).toEqual([0, 0, 0, 0]);
+    expect(codes).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
 
     const result = readCounter(concurrentRoot);
-    expect(result.payload.writers).toHaveLength(4 * perWriter);
-    expect(new Set(result.payload.writers).size).toBe(4 * perWriter);
-    expect(result.payload.counter).toBe(4 * perWriter);
+    expect(result.payload.writers).toHaveLength(8 * perWriter);
+    expect(new Set(result.payload.writers).size).toBe(8 * perWriter);
+    expect(result.payload.counter).toBe(8 * perWriter);
     // Die Revision zählt die Schreibvorgänge: sie muss mindestens der Anzahl
     // erfolgreicher Aktualisierungen entsprechen (Retries zählen mit).
-    expect(result.revision ?? 0).toBeGreaterThanOrEqual(4 * perWriter);
+    expect(result.revision ?? 0).toBeGreaterThanOrEqual(8 * perWriter);
   });
 
   it("erkennt den Verlust bei unbedingtem Überschreiben (Gegenprobe)", async () => {
@@ -161,15 +164,15 @@ describe("Fehlerinjektion: konkurrierende Schreibvorgänge", () => {
     // Beweis: Er könnte auch grün sein, weil die Prozesse zufällig nacheinander
     // liefen.
     const lossyRoot = fs.mkdtempSync(path.join(root, "lossy-"));
-    const perWriter = 60;
+    const perWriter = 80;
     const barrier = path.join(root, `barrier-lossy-${crypto.randomUUID()}.start`);
-    const done = spawnWriters(lossyRoot, 4, perWriter, "write", barrier);
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    const done = spawnWriters(lossyRoot, 8, perWriter, "write", barrier);
+    await new Promise(resolve => setTimeout(resolve, 2500));
     fs.writeFileSync(barrier, "start");
     const codes = await done;
-    expect(codes).toEqual([0, 0, 0, 0]);
+    expect(codes).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
     const result = readCounter(lossyRoot);
-    expect(result.payload.writers.length).toBeLessThan(4 * perWriter);
+    expect(result.payload.writers.length).toBeLessThan(8 * perWriter);
   });
 });
 
