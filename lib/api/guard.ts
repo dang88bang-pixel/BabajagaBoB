@@ -5,6 +5,7 @@ import {abacAllows, getCapabilityToken, precheckCapabilityToken, roleAllows, ver
 import {isKilled} from "../governance";
 import {recordAudit} from "../audit";
 import {observe} from "../observability";
+import {effectiveHost} from "./proxy";
 import type {Risk} from "../types";
 
 /**
@@ -88,7 +89,10 @@ function assertSameOrigin(request: Request, method: string) {
   if (method === "GET" || method === "HEAD") return;
   const origin = request.headers.get("origin");
   if (!origin) return; // Nicht-Browser-Clients (curl, Tests) senden kein Origin.
-  const host = request.headers.get("host");
+  // Hinter einem Reverse Proxy ist nur der öffentliche Host maßgeblich
+  // (`X-Forwarded-Host`), sonst wird jede Mutation abgelehnt, weil `Origin`
+  // (öffentlich) und `Host` (intern) auseinanderfallen. Siehe lib/api/proxy.ts.
+  const host = effectiveHost(request);
   try {
     const originHost = new URL(origin).host;
     if (host && originHost !== host) {

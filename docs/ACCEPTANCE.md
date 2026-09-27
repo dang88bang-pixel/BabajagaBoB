@@ -11,8 +11,8 @@ Eingefroren: 2026-09-25. Quellen: GESAMTAUFTRAG (53 Punkte); docs/MASTER_COMPLET
 
 | Status | Anzahl | Bedeutung |
 |---|---|---|
-| ✅ PASS | 79 | Implementierung + Test + Nachweis vorhanden |
-| 🟡 PARTIAL | 2 | Teilweise umgesetzt, Lücke benannt |
+| ✅ PASS | 80 | Implementierung + Test + Nachweis vorhanden |
+| 🟡 PARTIAL | 3 | Teilweise umgesetzt, Lücke benannt |
 | ❌ FAIL | 0 | Umgesetzt, aber Nachweis fehlgeschlagen |
 | ⚪ NOT_IMPLEMENTED | 1 | Bewusst nicht gebaut (Begründung) |
 | 🔵 NOT_VERIFIED | 3 | Vorhanden, aber Umgebung erlaubt keinen Nachweis |
@@ -44,7 +44,7 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 | GATE-001 | Execution Gate | Kein Ausführungspfad um Gate und Broker herum — auch interne Läufe nicht. | `lib/execution-gate.ts`<br>`lib/execution-broker.ts`<br>`lib/system-execution.ts` | `tests/security/gate-bypass.test.ts` (3) | `POST /api/execution-gate` | Runs, Approvals | ✅ |
 | GATE-002 | Execution Gate | Verweigerungen erzeugen Evidenz (Denial-Artefakt) samt Audit und ohne Klartext-Argumente. | `lib/artifacts.ts`<br>`lib/execution-gate.ts` | `tests/integration/execution-evidence.test.ts` (5) | `GET /api/artifacts` | Evidence | ✅ |
 | GATE-003 | Execution Gate | Keine Shell-Strings: argv[] mit shell:false; Interpreter und Metazeichen sind verboten. | `lib/argv-policy.ts`<br>`lib/runtime-local.ts` | `tests/security/argv-policy.test.ts` (6) | `scripts/verify-live.sh` | — | ✅ |
-| OCI-001 | OCI-Härtung | OCI-Sandbox mit Härtungsflags, Snapshot/Restore und Quota-Durchsetzung.<br><small>Kein Container-Daemon in der Umgebung (Docker/Podman-Downloads gesperrt); Flags sind definiert, aber nicht real ausgeführt.</small> | `lib/oci-runtime.ts` | — | — | — | 🔵 |
+| OCI-001 | OCI-Härtung | OCI-Sandbox mit Härtungsflags, Snapshot/Restore und Quota-Durchsetzung.<br><small>Implementierung und realer Docker-Lifecycle-Test sind vorhanden; PASS wird erst nach einem erfolgreich ausgeführten OCI-CI-Run gesetzt. Der aktuelle Connector kann den neuen Workflow-Run noch nicht beobachten.</small> | `lib/oci-runtime.ts`<br>`.github/workflows/ci.yml` | `tests/integration/oci-runtime.test.ts` (1) | `npm run test:oci` | — | 🔵 |
 
 ## P1 (20/20 PASS)
 
@@ -130,7 +130,7 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 | CH-17 | Zielkette | Recovery: Recovery mit Checkpoint, Tier und Verifikation; Restore verifiziert | `lib/recovery-orchestrator.ts`<br>`lib/reliability.ts` | `tests/unit/recovery-tier.test.ts` (6) | `GET /api/reliability` | Recovery | ✅ |
 | CH-18 | Zielkette | Lernen: Negatives Wissen („Never Again“) aus verifiziertem Fix | `lib/knowledge.ts` | `tests/e2e/failure-recovery.test.ts` (2) | `GET /api/knowledge` | Knowledge | ✅ |
 
-## P5 (4/4 PASS)
+## P5 (5/6 PASS)
 
 | ID | Bereich | Anforderung | Implementierung | Test | Nachweis | UI | Status |
 |---|---|---|---|---|---|---|---|
@@ -138,6 +138,8 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 | OPS-002 | Betrieb | Bereitschaft und Lockdown sind maschinell abfragbar; blockierte Aufgaben sind sichtbar. | `lib/recovery-orchestrator.ts` | `tests/security/api-route-contract.test.ts` (5) | `GET /api/readiness` | Overview | ✅ |
 | OPS-003 | Betrieb | Deployment-Ausführung mit Rollback und Upgrade-Pfad.<br><small>Ausrollen ist real ausgeführt und gemessen: Release-Slots mit sha256-Digest, Gates (Staging mit quittierten Lücken, PRODUCTION weiter gesperrt), Health-Checks vor dem Zeigerwechsel, Build-ID-Messung gegen den laufenden Prozess; Rückroll nur mit unversehrtem Vorgänger und anschließender Neumessung. Live belegt: Vorgang STAGED → Supervisor startet aus dem Slot → Datensatz ACTIVE. Grenzen bleiben offen: kein Supervisor-Daemon/Watchdog, kein Zero-Downtime-Blau/Grün, und der Produktions-Rollout bleibt blockiert, solange BROWSER/EVALUATION nicht real bestanden sind.</small> | `lib/release.ts`<br>`lib/deployment.ts`<br>`lib/cicd.ts`<br>`lib/promotion.ts`<br>`app/api/deployment/route.ts`<br>`scripts/release-supervisor.sh` | `tests/integration/deployment.test.ts` (7)<br>`tests/e2e/deployment-release.test.ts` (3)<br>`tests/unit/release.test.ts` (6)<br>`tests/security/route-guards.test.ts` (12) | `GET /api/deployment`<br>`scripts/release-supervisor.sh` | Deployment | ✅ |
 | OPS-004 | Betrieb | Produktionshärtung: Rate Limits, Graceful Shutdown, Upgrade-/Rollback-Pfad, Externalisierung der Sitzungsgeheimnisse.<br><small>Rate-Limits (zwei Budgetklassen: `api` 120, `auth` 30 je 60-s-Fenster), Graceful Shutdown und Externalisierung des Session-HMAC-Schlüssels sind implementiert und live belegt. In Produktion ist BOB_SESSION_SECRET verpflichtend; fehlt es, startet die Session-Schicht fail closed. Abweisungen über dem Budget liefern 429 mit Retry-After und werden als DENY auditiert — an der API-Grenze und am Anmeldeendpunkt (Kennung nur als Digest). Live gegen eine zweite Instanz mit Standardbudget (`bash scripts/verify-rate-limit.sh`): 30 Versuche erlaubt, der 31. wird abgewiesen, `retry-after: 60`, Audit-DENY vorhanden, Kette unversehrt (6/0). Der Drain ist durch einen echten Prozesstest belegt (`tests/integration/graceful-shutdown.test.ts`: SIGTERM -> draining -> Exit 0). Ein nicht lesbarer Store wird als Lesefehler und nicht als Beschädigung gemeldet.</small> | `lib/api/rate-limit.ts`<br>`lib/shutdown.ts`<br>`server.mjs`<br>`lib/session-secret.ts` | `tests/unit/ops-hardening.test.ts` (8)<br>`tests/security/ops-enforcement.test.ts` (7)<br>`tests/integration/graceful-shutdown.test.ts` (2) | `POST /api/auth`<br>`server.mjs`<br>`lib/session-secret.ts`<br>`scripts/verify-rate-limit.sh` | Operations | ✅ |
+| DEPLOY-001 | Betrieb | Betrieb hinter Reverse Proxy: weitergeleitete Header gelten nur mit ausdrücklicher Freigabe; Session-Cookie mit SameSite-Stufen. | `lib/api/proxy.ts`<br>`lib/api/guard.ts`<br>`app/api/auth/route.ts` | `tests/security/proxy-deployment.test.ts` (9) | `npm run test:security`<br>`docs/DEPLOYMENT.md` | — | ✅ |
+| DEPLOY-002 | Betrieb | Schlüsselfertige Bereitstellung: Quickstart-Skript, Container-Image mit Compose und Gesamtprüfung aller Live-Suiten in einem Schritt.<br><small>Quickstart und Gesamtprüfung sind real ausgeführt (verify-all.sh: alle Suiten 0 Fehler, quickstart.sh: produktive :3100-Instanz); ein automatisierter Regressionstest für die Startskripte selbst fehlt, Containerstart ohne Daemon nicht ausgeführt.</small> | `scripts/quickstart.sh`<br>`scripts/verify-all.sh`<br>`Dockerfile`<br>`docker-compose.yml`<br>`scripts/docker-entrypoint.sh`<br>`scripts/ensure-build.mjs` | — | `docs/DEPLOYMENT.md` | — | 🟡 |
 
 ## Prüfer
 

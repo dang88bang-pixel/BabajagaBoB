@@ -77,6 +77,19 @@ function uiSections() {
   return new Set([...text.matchAll(/\{id:\s*"([A-Za-z]+)",\s*label:/g)].map(match => match[1]));
 }
 
+/** npm-Skripte aus `package.json` (Grundlage für `npm run <name>`-Nachweise). */
+let cachedScripts = null;
+function packageScripts() {
+  if (cachedScripts) return cachedScripts;
+  try {
+    const manifest = JSON.parse(readFileSync("package.json", "utf8"));
+    cachedScripts = new Set(Object.keys(manifest.scripts ?? {}));
+  } catch {
+    cachedScripts = new Set();
+  }
+  return cachedScripts;
+}
+
 /** Route-Datei zu `/api/x/y` — `app/api/x/y/route.ts` (oder Index). */
 function routeFile(path) {
   const clean = path.replace(/^\//, "").split("?")[0];
@@ -180,8 +193,21 @@ step("2. Nachweisregel (kein DONE ohne Nachweis)");
   if (brokenRoutes.length === 0) ok("Jeder Routen-Nachweis zeigt auf eine existierende Route", `${routeEvidence.length} Routen`);
   else bad("Jeder Routen-Nachweis zeigt auf eine existierende Route", brokenRoutes.join(", "));
 
+  /**
+   * Skript-Nachweise kommen in zwei Formen vor:
+   *   - `npm run <name>` → der Eintrag muss als npm-Skript in `package.json`
+   *     existieren (früher wurde jede Angabe als Dateipfad gelesen; damit war
+   *     `npm run test:oci` strukturell immer „fehlend\", obwohl das Skript
+   *     existiert — der Prüfer meldete dann einen Preisverstoß ohne Ursache),
+   *   - alles andere → Dateipfad, der existieren muss.
+   */
   const scriptEvidence = requirements.flatMap(entry => (entry.evidence ?? []).filter(item => item.kind === "script").map(item => item.script));
-  const missingScripts = [...new Set(scriptEvidence)].filter(script => !existsSync(script) && script !== "scripts/acceptance.mjs");
+  const npmRunPattern = /^npm run ([^\s]+)$/;
+  const missingScripts = [...new Set(scriptEvidence)].filter(script => {
+    const npmRun = npmRunPattern.exec(script);
+    if (npmRun) return !packageScripts().has(npmRun[1]);
+    return !existsSync(script) && script !== "scripts/acceptance.mjs";
+  });
   if (missingScripts.length === 0) ok("Jeder Skript-Nachweis existiert", `${new Set(scriptEvidence).size} Skripte`);
   else bad("Jeder Skript-Nachweis existiert", missingScripts.join(", "));
 

@@ -160,6 +160,10 @@ jobs:
         env:
           BOB_STORAGE_DIR: ${{ runner.temp }}/bob-oci
           BOB_OCI_IMAGE: alpine:3.20
+          # Ohne diesen Schalter würde ein fehlender Daemon nur die
+          # Fail-closed-Verweigerung belegen — hier ist der echte Lifecycle
+          # Pflicht, deshalb muss er hart fehlschlagen.
+          BOB_OCI_REQUIRED: "1"
 
   verification-gate:
     name: Verification Gate

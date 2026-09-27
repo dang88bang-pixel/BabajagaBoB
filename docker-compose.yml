@@ -1,0 +1,60 @@
+# =============================================================================
+# BabajagaBoB — Betrieb mit Container-Compose
+# =============================================================================
+#   cp .env.example .env      # Werte eintragen (mindestens die Secrets!)
+#   docker compose up -d --build
+#   docker compose logs -f bob
+#
+# Danach: http://<host>:3000 → Creator-Bootstrap mit dem Einmal-Secret.
+# Ohne Bootstrap bleibt die API fail closed (428) — das ist gewollt.
+# =============================================================================
+services:
+  bob:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: babajagabob:local
+    container_name: babajagabob
+    restart: unless-stopped
+    ports:
+      - "${BOB_PORT:-3000}:3000"
+    environment:
+      PORT: "3000"
+      BOB_HOSTNAME: "0.0.0.0"
+      BOB_STORAGE_DIR: "/data"
+      BOB_NS_ROOTFS: "/opt/bob/ns-rootfs"
+      BOB_SANDBOX_RUNTIME: "${BOB_SANDBOX_RUNTIME:-local}"
+      BOB_SHUTDOWN_TIMEOUT_MS: "${BOB_SHUTDOWN_TIMEOUT_MS:-15000}"
+      # Hinter einem Reverse Proxy (nginx/Caddy/Traefik, Preview-Domäne) sitzt
+      # der Dienst nicht unter seinem internen Host. Ohne diese Freigabe werden
+      # cookie-authentifizierte Mutationen mit 403 CSRF_ORIGIN abgelehnt.
+      BOB_TRUST_PROXY: "${BOB_TRUST_PROXY:-1}"
+      BOB_COOKIE_SAMESITE: "${BOB_COOKIE_SAMESITE:-strict}"
+      BOB_COOKIE_SECURE: "${BOB_COOKIE_SECURE:-1}"
+      BOB_BOOTSTRAP_SECRET: "${BOB_BOOTSTRAP_SECRET:-}"
+      BOB_CREATOR_LOGIN_SECRET: "${BOB_CREATOR_LOGIN_SECRET:-}"
+      BOB_SESSION_SECRET: "${BOB_SESSION_SECRET:-}"
+      BOB_CREATOR_TOTP_SECRET: "${BOB_CREATOR_TOTP_SECRET:-}"
+    volumes:
+      - bob-data:/data
+    # Kernel-Isolation (Namespaces/Ressourcenlimits) verlangt zusätzliche
+    # Rechte. Ohne sie läuft die Plattform weiter, meldet aber ehrlich
+    # FILESYSTEM_ONLY bzw. cgroup: UNAVAILABLE und verweigert Ausführungen mit
+    # Speicher-/Prozesslimits (fail closed).
+    # cap_add: [SYS_ADMIN]
+    # security_opt:
+    #   - seccomp=unconfined
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/auth').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  bob-data:

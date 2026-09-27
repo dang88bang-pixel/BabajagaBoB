@@ -6,8 +6,8 @@ BabajagaBoB ist als ausführungsorientierte Agent-Plattform aufgebaut: Missionen
 
 ## Gesamtstatus
 
-**Stand:** 2026-09-25
-**Arbeitsbranch:** `arena/01a0d635-babajagabob`
+**Stand:** 2026-09-27
+**Arbeitsbranch:** `arena/01a0e2af-babajagabob`
 
 Es werden **keine künstlichen Fortschrittswerte** geführt. Jede Komponente hat
 einen belegbaren Reifegrad:
@@ -37,12 +37,13 @@ Recovery`
   verifizierten Snapshot **und** bestandene Regression, `LEARNED` verlangt `fix.verify`.
 - Angriffe werden blockiert **und** auditiert (fremdes Token, Shell-Programm,
   Shell-Metazeichen, fremde Sandbox-Bindung, Lockdown).
-- Nachweis: **63 Testdateien / 422 Tests** sowie die Live-Prüfungen
-  `scripts/verify-live.sh` (**174 / 0**), `scripts/audit-actions.mjs` (**525 / 0**),
+- Nachweis: **65 Testdateien / 432 Tests** sowie die Live-Prüfungen
+  `scripts/verify-live.sh` (**171 / 0**), `scripts/audit-actions.mjs` (**525 / 0**),
   `scripts/audit-api.sh` (**248 / 0**), `scripts/audit-ui.mjs` (**92 / 0**) und der
   Grenznachweis `scripts/verify-rate-limit.sh` (**6 / 0**, Standardbudget, frische Instanz) — jeweils
-  auf der Instanz `:3100` mit Kernel-Isolation und cgroup-Limits; dazu der Abnahmeprüfer
-  `node scripts/acceptance.mjs --live` (**82 / 0**, 66/66 Routennachweise).
+  mit Kernel-Isolation (`NAMESPACES`) und cgroup-Limits (`ENFORCED`); dazu der Abnahmeprüfer
+  `node scripts/acceptance.mjs --live` (**84 / 0**, 68/68 Routennachweise).
+  Alle Suiten laufen in einem Schritt: `bash scripts/verify-all.sh`.
 
 ## Dokumentation
 

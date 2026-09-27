@@ -3003,6 +3003,67 @@
       ],
       "status": "PASS",
       "note": ""
+    },
+    {
+      "id": "DEPLOY-001",
+      "area": "Betrieb",
+      "phase": "P5",
+      "requirement": "Betrieb hinter Reverse Proxy: weitergeleitete Header gelten nur mit ausdrücklicher Freigabe; Session-Cookie mit SameSite-Stufen.",
+      "implementation": [
+        "lib/api/proxy.ts",
+        "lib/api/guard.ts",
+        "app/api/auth/route.ts"
+      ],
+      "tests": [
+        {
+          "file": "tests/security/proxy-deployment.test.ts",
+          "min": 9
+        }
+      ],
+      "ui": [],
+      "evidence": [
+        {
+          "kind": "script",
+          "script": "npm run test:security"
+        },
+        {
+          "kind": "file",
+          "path": "docs/DEPLOYMENT.md"
+        }
+      ],
+      "docs": [
+        "docs/DEPLOYMENT.md",
+        "docs/SECURITY.md"
+      ],
+      "status": "PASS",
+      "note": ""
+    },
+    {
+      "id": "DEPLOY-002",
+      "area": "Betrieb",
+      "phase": "P5",
+      "requirement": "Schlüsselfertige Bereitstellung: Quickstart-Skript, Container-Image mit Compose und Gesamtprüfung aller Live-Suiten in einem Schritt.",
+      "implementation": [
+        "scripts/quickstart.sh",
+        "scripts/verify-all.sh",
+        "Dockerfile",
+        "docker-compose.yml",
+        "scripts/docker-entrypoint.sh",
+        "scripts/ensure-build.mjs"
+      ],
+      "tests": [],
+      "ui": [],
+      "evidence": [
+        {
+          "kind": "file",
+          "path": "docs/DEPLOYMENT.md"
+        }
+      ],
+      "docs": [
+        "docs/DEPLOYMENT.md"
+      ],
+      "status": "PARTIAL",
+      "note": "Quickstart und Gesamtprüfung sind real ausgeführt (verify-all.sh: alle Suiten 0 Fehler, quickstart.sh: produktive :3100-Instanz); ein automatisierter Regressionstest für die Startskripte selbst fehlt, Containerstart ohne Daemon nicht ausgeführt."
     }
   ]
 }

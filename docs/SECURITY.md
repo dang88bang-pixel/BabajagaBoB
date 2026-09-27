@@ -1,6 +1,6 @@
 # Sicherheitsmodell
 
-**Stand:** 2026-09-25
+**Stand:** 2026-09-27
 **Grundsatz:** Alles ist standardmäßig verboten (fail closed). Jede Ausführung ist autorisiert, gebunden,
 auditiert und auf eine isolierte Runtime beschränkt.
 
@@ -56,6 +56,12 @@ Rechte erzeugen noch den Broker umgehen.
   (`Authorization: Bobcap <tokenId>.<secret>`), jeweils mit Secret-Prüfung.
 - **CSRF:** `POST`/`PUT` mit `Origin`-Host ≠ `Host`-Header wird abgelehnt. Clients ohne `Origin`-Header
   (Server-zu-Server) passieren die Origin-Prüfung bewusst; Browser senden `Origin` immer.
+- **CSRF hinter Reverse Proxy:** Mit `BOB_TRUST_PROXY=1` gilt der öffentliche Host aus
+  `X-Forwarded-Host` (erster Eintrag, `lib/api/proxy.ts`) — ohne die Freigabe werden
+  weitergeleitete Header ignoriert und ein fremder `X-Forwarded-Host` kann die Prüfung
+  **nicht** aufweichen (fail closed). `BOB_COOKIE_SAMESITE` steuert das Session-Cookie
+  (`strict` Standard; `none` nur für eingebettete Kontexte und erzwingt `Secure`;
+  unbekannte Werte fallen auf `Strict` zurück). Tests: `tests/security/proxy-deployment.test.ts`.
 - **Legacy-Token:** `BOB_CONTROL_PLANE_TOKEN` ist nur bei ausdrücklicher Freigabe
   (`BOB_ALLOW_LEGACY_CONTROL_TOKEN=1`) aktiv und authentifiziert dann als `ADMIN` – **nie** als Creator/OWNER.
   Standard ist deaktiviert.
@@ -261,8 +267,8 @@ echtes HTTP), `tests/security/inbox-route.test.ts`,
 `tests/security/gate-bypass.test.ts`, `tests/security/token-read-projection.test.ts` (kein
 `secretHash` in Leseantworten), `tests/security/device-enrollment.test.ts` (Enrollment fail closed,
 kein Selbst-Grant, Geheimnis nie in Antworten), `tests/e2e/creator-flow.test.ts`,
-`tests/e2e/failure-recovery.test.ts` (**20 Dateien / 135 Tests** in der Security-Suite, 63 Dateien /
-422 Tests gesamt) und der Live-Nachweis `scripts/verify-live.sh` (**174 Prüfungen / 0 Fehler** auf der
+`tests/e2e/failure-recovery.test.ts` (**21 Dateien / 144 Tests** in der Security-Suite, 65 Dateien /
+432 Tests gesamt) und der Live-Nachweis `scripts/verify-live.sh` (**171 Prüfungen / 0 Fehler** auf der
 Instanz mit aktiver Kernel-Isolation und delegiertem cgroup-Unterbaum) sowie `scripts/audit-ui.mjs` (**92 / 0**, u. a. „kein
 Geheimnisfeld in einer Antwort an den Browser", „kein Gerät ohne Creator-Freigabe autorisiert").
 Zusammenfassung: `docs/TESTING.md`. Offene, als `PARTIAL`/`UNVERIFIED` gekennzeichnete Punkte sind dort und in

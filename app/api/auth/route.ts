@@ -4,6 +4,7 @@ import {CreatorAuthError, creatorLoginAvailable, creatorLockState, creatorSecret
 import {totpConfigured} from "../../../lib/totp";
 import {observe} from "../../../lib/observability";
 import {consumeRateLimit, rateLimitIdentityDigest} from "../../../lib/api/rate-limit";
+import {isForwardedHttps} from "../../../lib/api/proxy";
 import {recordAudit} from "../../../lib/audit";
 import {isShuttingDown} from "../../../lib/shutdown";
 
@@ -27,10 +28,36 @@ function cookieValue(request: Request, name: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Cookie-Attribute für die Session.
+ *
+ * `SameSite=Strict` ist der Standard und bleibt es — eine stillschweigende
+ * Lockerung wäre eine Sicherheitsverschlechterung. Für den Betrieb hinter
+ * einem Reverse Proxy bzw. in einer eingebetteten Ansicht (anderer
+ * Kontext-Ursprung) kann der Betreiber über `BOB_COOKIE_SAMESITE` umstellen:
+ *
+ *   - `strict` (Standard)                 — nur gleicher Kontext,
+ *   - `lax`                               — gleicher Kontext plus Top-Level-Navigation,
+ *   - `none`                              — auch in fremden Kontexten; **erzwingt
+ *                                           `Secure`**, weil Browser `SameSite=None`
+ *                                           ohne TLS ablehnen.
+ *
+ * Ungültige Werte werden nicht „geraten\", sondern fail closed als `strict`
+ * behandelt (siehe `tests/security/api-gate.test.ts`).
+ */
+function sameSiteAttribute(): string {
+  const raw = (process.env.BOB_COOKIE_SAMESITE ?? "strict").trim().toLowerCase();
+  if (raw === "lax" || raw === "none") return raw === "none" ? "None" : "Lax";
+  return "Strict";
+}
+
 function cookieAttributes(request: Request, maxAgeSeconds: number): string {
-  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
-  const secure = forwardedProto === "https" || process.env.BOB_COOKIE_SECURE === "1";
-  return `Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAgeSeconds}${secure ? "; Secure" : ""}`;
+  const secure = isForwardedHttps(request) || process.env.BOB_COOKIE_SECURE === "1";
+  const sameSite = sameSiteAttribute();
+  // `SameSite=None` ohne `Secure` wird von jedem Browser verworfen — dann wäre
+  // die Anmeldung stillschweigend unmöglich. Deshalb erzwingt `none` TLS.
+  const forceSecure = sameSite === "None";
+  return `Path=/; HttpOnly; SameSite=${sameSite}; Max-Age=${maxAgeSeconds}${secure || forceSecure ? "; Secure" : ""}`;
 }
 
 async function readAction(request: Request): Promise<{action?:string;secret?:string;creatorName?:string;totpCode?:string}> {
