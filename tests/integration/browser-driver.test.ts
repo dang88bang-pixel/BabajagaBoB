@@ -68,9 +68,10 @@ describe("CDP browser driver",()=>{
       while(Date.now()<deadline){try{const response=await fetch("http://127.0.0.1:"+port+"/");if(response.ok){ready=true;break;}}catch{ /* server is still starting */ } await new Promise(r=>setTimeout(r,100));}
       expect(ready,`Control-Center server did not become ready on port ${port}: ${serverOutput.slice(-4000)}`).toBe(true);
       const {executeBrowserAction}=await import("../../lib/browser-driver");
-      const result=await executeBrowserAction("NAVIGATE",{url:"http://127.0.0.1:"+port+"/"}) as {ok:boolean; title?:string};
+      const result=await executeBrowserAction("NAVIGATE",{url:"http://127.0.0.1:"+port+"/"}) as {ok:boolean; title?:string; text?:string};
       expect(result.ok).toBe(true);
-      expect(result.title).toContain("BabajagaBoB");
+      expect(result.text).toContain("BabajagaBoB");
+      expect(result.text).toContain("CONTROL CENTER");
     } finally {
       if(child.exitCode===null) child.kill("SIGTERM");
       await new Promise(resolve=>{if(child.exitCode!==null)return resolve(undefined);child.once("exit",()=>resolve(undefined));setTimeout(()=>resolve(undefined),3000);});
