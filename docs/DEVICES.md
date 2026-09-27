@@ -96,3 +96,28 @@ Eigenschaften:
 ## Scheduling
 
 Autorisierte, verfügbare Geräte können anhand von CPU, RAM, GPU, Betriebssystem, Architektur, Netzwerk und benötigten Capabilities ausgewählt werden. Die Auswahl ist deterministisch; nicht passende oder nicht autorisierte Geräte werden nie allokiert. Der API-Aktionsweg ist `allocate-best`.
+
+## Netz-Scan + Attestierung (Phase 4 / 7.3)
+
+`lib/device-scan.ts`, `app/api/device-scan/route.ts`, UI-Abschnitt „Netz-Scan / Attestierung".
+
+- **Sonden**: ARP liest die Kernel-Nachbartabelle (`/proc/net/arp`, keine
+  Zusatzwerkzeuge nötig); mDNS ist nur mit installiertem Browser-Werkzeug
+  (`avahi-browse`/`dns-sd`) verfügbar und wird sonst ehrlich als `UNAVAILABLE`
+  mit Grund gemeldet. Ist keine Sonde verfügbar, wird der Scan fail closed
+  verweigert — es werden keine Ergebnisse behauptet, die nicht erhoben wurden.
+- **Discovery ≠ Autorisierung**: jeder Fund bleibt `PENDING_ATTESTATION`.
+  Vertrauen entsteht ausschließlich durch ausdrückliche Creator-Attestierung
+  (`TRUSTED`/`UNTRUSTED`, immer mit Begründung); spätere Entscheidungen
+  überstimmen frühere, bleiben aber im Bestand.
+- **Nachweis**: jeder Scan und jede Attestierung werden auditiert
+  (`device:scan`, `device:attest`) und im Provenance-Graph verankert
+  (Scan-Ereignis, DEVICE-Knoten je Kandidat, `OBSERVED`- und
+  `AUTHORIZED_BY`-Kanten).
+- **API**: `GET /api/device-scan` (`device-scan:read`), `POST /api/device-scan`
+  (creatorOnly `device-scan:manage`) mit Aktionen `scan` und `attest`.
+- **Ehrliche Grenzen**: aktives Subnetz-Sweeping (arp-scan) findet nicht statt;
+  gelesen wird, was die Nachbartabelle hergibt. Attestierung ersetzt keine
+  kryptografische Geräteidentität — sie ist der dokumentierte Creator-Akt.
+- **Tests**: `tests/unit/device-scan.test.ts` (10), `tests/integration/device-scan.test.ts` (3);
+  Sabotage-Probe `SCAN_TRUSTS_WITHOUT_ATTESTATION`.

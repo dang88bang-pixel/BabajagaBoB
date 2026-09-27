@@ -335,6 +335,21 @@
       "tests": [
         "tests/unit/offline-fabric.test.ts"
       ]
+    },
+    {
+      "id": "SCAN_TRUSTS_WITHOUT_ATTESTATION",
+      "title": "Netz-Scan macht Kandidaten ohne Attestierung vertraut",
+      "guard": "Discovery ist keine Autorisierung: Vertrauen entsteht nur durch ausdrueckliche Attestierung mit Urteil TRUSTED (Phase 4 / 7.3).",
+      "edits": [
+        {
+          "file": "lib/device-scan.ts",
+          "find": "if (attestation.verdict !== \"TRUSTED\") return false;",
+          "replace": "if (false) return false;"
+        }
+      ],
+      "tests": [
+        "tests/unit/device-scan.test.ts"
+      ]
     }
   ],
   "_changes": "Proben müssen die wirksame Schutzregel entfernen. Proben mit mehreren Änderungen (edits) entfernen redundante Ebenen gemeinsam; eine Probe, die nur eine von zwei Ebenen schwächt, belegt nichts."

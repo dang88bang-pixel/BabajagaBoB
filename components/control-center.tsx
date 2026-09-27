@@ -31,6 +31,7 @@ type SectionId =
   | "Sandboxes"
   | "Egress"
   | "OfflineFabric"
+  | "DeviceScan"
   | "Runtimes"
   | "Evidence"
   | "Audit"
@@ -78,6 +79,7 @@ const NAV: {id: SectionId; label: string; group: string}[] = [
   {id: "Sandboxes", label: "Sandboxes", group: "Ausführung"},
   {id: "Egress", label: "Egress", group: "Ausführung"},
   {id: "OfflineFabric", label: "Offline-Fabric", group: "Ausführung"},
+  {id: "DeviceScan", label: "Netz-Scan / Attestierung", group: "Ausführung"},
   {id: "Runtimes", label: "Runtimes", group: "Ausführung"},
   {id: "Evidence", label: "Evidenz", group: "Nachweis"},
   {id: "Audit", label: "Audit", group: "Nachweis"},
@@ -261,6 +263,23 @@ const SOURCES: Partial<Record<SectionId, {url: string; path?: string[]; columns:
       {key: "source", label: "Quelle"},
       {key: "status", label: "Status"},
       {key: "addedAt", label: "Erfasst am"}
+    ]
+  },
+  DeviceScan: {
+    url: "/api/device-scan",
+    path: ["candidates"],
+    note:
+      "Geräte-Netz-Scan + Attestierung (Phase 4 / 7.3): Der Scan liest die ARP-Nachbartabelle (mDNS nur mit installiertem Werkzeug, sonst ehrlich UNAVAILABLE) und erzeugt ausschließlich PENDING-Kandidaten — Discovery ist keine Autorisierung. Vertrauen entsteht nur durch ausdrückliche Creator-Attestierung (TRUSTED/UNTRUSTED mit Begründung), jede Entscheidung wird auditiert.",
+    columns: [
+      {key: "method", label: "Sonde"},
+      {key: "ip", label: "IP"},
+      {key: "mac", label: "MAC"},
+      {key: "seenAt", label: "Gesehen am"},
+      {key: "status", label: "Status"},
+      {key: "attestation", label: "Attestierung", render: row => {
+        const attestation = row.attestation as {verdict?: string} | null;
+        return attestation?.verdict ?? "—";
+      }}
     ]
   },
   Runtimes: {

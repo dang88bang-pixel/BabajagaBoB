@@ -1564,6 +1564,49 @@
       "note": ""
     },
     {
+      "id": "DEV-003",
+      "area": "Device Fabric",
+      "phase": "P2",
+      "requirement": "Geräte-Netz-Scan (ARP/mDNS) ist Discovery ohne Autorisierung; Vertrauen entsteht nur durch ausdrückliche Attestierung, ohne verfügbare Sonde fail closed.",
+      "implementation": [
+        "lib/device-scan.ts",
+        "app/api/device-scan/route.ts"
+      ],
+      "tests": [
+        {
+          "file": "tests/unit/device-scan.test.ts",
+          "min": 10
+        },
+        {
+          "file": "tests/integration/device-scan.test.ts",
+          "min": 3
+        }
+      ],
+      "ui": [
+        "DeviceScan"
+      ],
+      "evidence": [
+        {
+          "kind": "route",
+          "method": "GET",
+          "path": "/api/device-scan",
+          "expect": [
+            200
+          ]
+        },
+        {
+          "kind": "file",
+          "path": "docs/DEVICES.md",
+          "note": "Abschnitt Netz-Scan + Attestierung (Phase 4 / 7.3)"
+        }
+      ],
+      "docs": [
+        "docs/DEVICES.md"
+      ],
+      "status": "PASS",
+      "note": "Phase 4 / 7.3 (2026-09-27): ARP liest die Kernel-Nachbartabelle, mDNS ehrlich UNAVAILABLE ohne Werkzeug; ohne Sonde fail closed. Kandidaten bleiben PENDING_ATTESTATION; Vertrauen nur durch Creator-Attestierung mit Begründung. Sabotage-Probe SCAN_TRUSTS_WITHOUT_ATTESTATION. Ehrliche Grenze: kein aktives Subnetz-Sweeping."
+    },
+    {
       "id": "CU-001",
       "area": "Computer Use",
       "phase": "P2",
