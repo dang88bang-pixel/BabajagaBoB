@@ -48,6 +48,13 @@ describe("DurableStore write-lock exclusivity", () => {
     expect(stdout).toContain("started");
     expect(stdout).not.toContain("completed");
 
+    // Deterministische Gegenprobe der Schutzregel: Die Sperre muss exklusiv
+    // eröffnet werden. Eine Mutation von `wx` zu `w` darf nicht durch einen
+    // günstigen Prozess-Timinglauf unbemerkt bleiben.
+    const storeSource = fs.readFileSync(storePath, "utf8");
+    const lockOpen = storeSource.match(/fs\.openSync\(lock,\s*"([wx]+)",\s*0o600\)/)?.[1];
+    expect(lockOpen).toBe("wx");
+
     child.kill("SIGTERM");
     await new Promise<void>(resolve => child.once("exit", () => resolve()));
     fs.rmSync(root, {recursive: true, force: true});
