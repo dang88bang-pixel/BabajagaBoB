@@ -74,10 +74,10 @@ async function freePort(): Promise<number> {
   return port;
 }
 
-async function launch(exe:string,timeoutMs:number){
+async function launch(exe:string,timeoutMs:number,initialUrl="about:blank"){
   const profile=await mkdtemp(path.join(os.tmpdir(),"bob-browser-"));
   const port=await freePort();
-  const args=["--headless=new","--disable-gpu","--disable-software-rasterizer","--disable-dev-shm-usage","--no-sandbox","--disable-setuid-sandbox","--disable-crash-reporter","--disable-extensions","--disable-background-networking","--disable-sync","--no-first-run","--no-default-browser-check","--host-resolver-rules=MAP * ~NOTFOUND,EXCLUDE localhost,EXCLUDE 127.0.0.1","--remote-debugging-address=127.0.0.1","--remote-debugging-port="+String(port),`--user-data-dir=${profile}`,"about:blank"];
+  const args=["--headless=new","--disable-gpu","--disable-software-rasterizer","--disable-dev-shm-usage","--no-sandbox","--disable-setuid-sandbox","--disable-crash-reporter","--disable-extensions","--disable-background-networking","--disable-sync","--no-first-run","--no-default-browser-check","--host-resolver-rules=MAP * ~NOTFOUND,EXCLUDE localhost,EXCLUDE 127.0.0.1","--remote-debugging-address=127.0.0.1","--remote-debugging-port="+String(port),`--user-data-dir=${profile}`,initialUrl];
   const child:ChildProcess=spawn(exe,args,{shell:false,stdio:"pipe",env:{NODE_ENV:process.env.NODE_ENV ?? "production",PATH:process.env.PATH,LANG:process.env.LANG,HOME:profile}});
   let text="";
   const collect=(b:Buffer)=>{text+=String(b);if(text.length>128000)text=text.slice(-128000);};
@@ -132,7 +132,8 @@ export async function executeBrowserAction(action:string,input:Input,timeoutMs=3
     const parsed=new URL(url);
     if(!["localhost","127.0.0.1","[::1]"].includes(parsed.hostname)) throw new Error("external browser navigation is blocked by default-deny network policy");
   }
-  const browser=await launch(exe,timeoutMs);
+  const initialUrl = action==="NAVIGATE" ? String(input.url ?? "") : "about:blank";
+  const browser=await launch(exe,timeoutMs,initialUrl);
   let id=0;
   try{
     await command(browser.ws,++id,"Page.enable");
@@ -140,7 +141,6 @@ export async function executeBrowserAction(action:string,input:Input,timeoutMs=3
     switch(action){
       case "NAVIGATE": {
         const url=typeof input.url==="string"?input.url:"";
-        await command(browser.ws,++id,"Page.navigate",{url});
         const readyDeadline=Date.now()+5000;
         let title="";
         let text="";
