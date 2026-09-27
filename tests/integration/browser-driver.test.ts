@@ -31,15 +31,15 @@ describe("CDP browser driver",()=>{
     bootstrap.completeBootstrap({secret:TEST_BOOTSTRAP_SECRET,creatorName:"Browser Broker Test"});
     const mission=cp.createMission({title:"Browser Broker",objective:"Real browser execution",createdBy:"CREATOR"});
     const task=cp.createTask({missionId:mission.missionId,title:"Browser screenshot",risk:"MODERATE",assignedAgent:"AG-BROWSER",createdBy:"CREATOR"});
-    const sandbox=await fabric.createSandbox({type:"browser",taskId:task.taskId,agentId:"AG-BROWSER",risk:"MODERATE"});
+    const sandbox=await fabric.createSandbox({type:"browser",taskId:task.taskId,agentId:"AG-BUILD",risk:"MODERATE"});
     await fabric.startSandbox(sandbox.sandboxId);
     const instance=computer.listComputers().find(x=>x.kind==="BROWSER");
     if(!instance) throw new Error("browser computer instance missing");
     if(!instance.authorized) computer.authorizeComputer(instance.id,true,"CREATOR");
     computer.allocateComputer(instance.id,task.taskId,sandbox.sandboxId);
     computer.startComputer(instance.id);
-    const token=authority.issueCapabilityToken({subject:"AG-BROWSER",taskId:task.taskId,sandboxId:sandbox.sandboxId,environment:"browser",capabilities:["task:execute","sandbox:run","computer:execute"],risk:"MODERATE",issuedBy:"CREATOR",issuedByKind:"CREATOR",expiresAt:new Date(Date.now()+600000).toISOString()});
-    const result=await broker.executeComputerAuthorized({taskId:task.taskId,agentId:"AG-BROWSER",sandboxId:sandbox.sandboxId,capabilityTokenId:token.token.id,environment:"browser",argv:["COMPUTER_USE"],computerId:instance.id,computerAction:"SCREENSHOT",computerInput:{}});
+    const token=authority.issueCapabilityToken({subject:"AG-BUILD",taskId:task.taskId,sandboxId:sandbox.sandboxId,environment:"browser",capabilities:["task:execute","sandbox:run","computer:execute"],risk:"MODERATE",issuedBy:"CREATOR",issuedByKind:"CREATOR",expiresAt:new Date(Date.now()+600000).toISOString()});
+    const result=await broker.executeComputerAuthorized({taskId:task.taskId,agentId:"AG-BUILD",sandboxId:sandbox.sandboxId,capabilityTokenId:token.token.id,environment:"browser",argv:["COMPUTER_USE"],computerId:instance.id,computerAction:"SCREENSHOT",computerInput:{}});
     expect(result.status).toBe("SUCCEEDED");
     expect(result.stdoutDigest).toMatch(/^[a-f0-9]{64}$/);
   });
