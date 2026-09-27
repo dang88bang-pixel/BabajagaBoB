@@ -9,7 +9,7 @@ const executable=process.env.BOB_BROWSER_EXECUTABLE;
 if(!executable) throw new Error("BOB_BROWSER_EXECUTABLE is required");
 const port=Number(process.env.BOB_BROWSER_PORT||0)||39000+Math.floor(Math.random()*1000);
 const profile=mkdtempSync(join(tmpdir(),"bob-browser-"));
-const child=spawn(executable,["--headless=new","--no-sandbox","--disable-gpu","--disable-dev-shm-usage",`--remote-debugging-port=${port}`,`--user-data-dir=${profile}","about:blank"],{shell:false,stdio:["ignore","pipe","pipe"]});
+const child=spawn(executable,["--headless=new","--no-sandbox","--disable-gpu","--disable-dev-shm-usage",`--remote-debugging-port=${port}`,`--user-data-dir=${profile}`,"about:blank"],{shell:false,stdio:["ignore","pipe","pipe"]});
 let closed=false;
 const cleanup=()=>{if(closed)return;closed=true;try{child.kill("SIGKILL")}catch{}try{rmSync(profile,{recursive:true,force:true})}catch{}};
 process.on("exit",cleanup); process.on("SIGTERM",()=>{cleanup();process.exit(143)}); process.on("SIGINT",()=>{cleanup();process.exit(130)});
