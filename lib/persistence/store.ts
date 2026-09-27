@@ -239,7 +239,8 @@ export class DurableStore<T> {
 
   private appendMigrationRecord(record: MigrationRecord) {
     const journal = path.join(ensureRoot(), "migrations.jsonl");
-    fs.appendFileSync(journal, `${JSON.stringify(record)}\n`, {encoding: "utf8", mode: 0o600});
+    fs.appendFileSync(journal, `${JSON.stringify(record)}
+`, {encoding: "utf8", mode: 0o600});
   }
 
   /** Liest den Store. Fehlt die Datei, wird der Initialzustand erzeugt und geschrieben. */
@@ -355,7 +356,11 @@ export class DurableStore<T> {
               holderAlive = false;
             }
           }
-          const ageMs = Date.now() - fs.statSync(lock).mtimeMs;\n          // Alter allein darf eine aktive Sperre niemals entwerten: ein lebender\n          // Prozess kann länger als LOCK_STALE_MS schreiben. Nur ein nicht mehr\n          // lebender Halter darf nach dem Stale-Fenster übernommen werden.\n          stale = !holderAlive && ageMs > LOCK_STALE_MS;
+          const ageMs = Date.now() - fs.statSync(lock).mtimeMs;
+          // Alter allein darf eine aktive Sperre niemals entwerten: ein lebender
+          // Prozess kann länger als LOCK_STALE_MS schreiben. Nur ein nicht mehr
+          // lebender Halter darf nach dem Stale-Fenster übernommen werden.
+          stale = !holderAlive && ageMs > LOCK_STALE_MS;
         } catch {
           /* Sperrdatei verschwand zwischenzeitlich — erneut versuchen. */
         }
@@ -607,7 +612,8 @@ export function readMigrationJournal(): MigrationRecord[] {
   if (!fs.existsSync(file)) return [];
   return fs
     .readFileSync(file, "utf8")
-    .split("\n")
+    .split("
+")
     .filter(line => line.trim().length > 0)
     .map(line => JSON.parse(line) as MigrationRecord);
 }
