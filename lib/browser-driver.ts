@@ -40,21 +40,12 @@ async function waitForWs(port:number, deadline:number):Promise<string>{
 
 async function launch(exe:string,timeoutMs:number){
   const profile=await mkdtemp(path.join(os.tmpdir(),"bob-browser-"));
-  const args=["--headless=new","--disable-gpu","--disable-software-rasterizer","--disable-dev-shm-usage","--no-sandbox","--disable-setuid-sandbox","--disable-crash-reporter","--disable-extensions","--disable-background-networking","--disable-sync","--no-first-run","--no-default-browser-check","--host-resolver-rules=MAP * ~NOTFOUND,EXCLUDE localhost","--remote-debugging-address=127.0.0.1","--remote-debugging-port=0",`--user-data-dir=${profile}`,"about:blank"];
+  const args=["--headless=new","--disable-gpu","--disable-software-rasterizer","--disable-dev-shm-usage","--no-sandbox","--disable-setuid-sandbox","--disable-crash-reporter","--disable-extensions","--disable-background-networking","--disable-sync","--no-first-run","--no-default-browser-check","--host-resolver-rules=MAP * ~NOTFOUND,EXCLUDE localhost","--remote-debugging-address=127.0.0.1","--remote-debugging-port=9222",`--user-data-dir=${profile}`,"about:blank"];
   const child=spawn(exe,args,{shell:false,stdio:["ignore","pipe","pipe"],env:{PATH:process.env.PATH,LANG:process.env.LANG,HOME:profile}});
   let text="";
   const collect=(b:Buffer)=>{text+=String(b);if(text.length>128000)text=text.slice(-128000);};
   child.stdout.on("data",collect); child.stderr.on("data",collect);
-  const deadline=Date.now()+Math.min(Math.max(timeoutMs,1000),120000);
-  let port=0;
-  while(Date.now()<deadline){
-    const m=text.match(/DevTools listening on ws:\/\/127\.0\.0\.1:(\d+)\//);
-    if(m){port=Number(m[1]);break;}
-    if(child.exitCode!==null)break;
-    await new Promise(r=>setTimeout(r,50));
-  }
-  if(!port){child.kill("SIGKILL");await rm(profile,{recursive:true,force:true});throw new Error("browser did not expose DevTools");}
-  const wsUrl=await waitForWs(port,deadline);
+  const deadline=Date.now()+Math.min(Math.max(timeoutMs,1000),120000);\n  const port=9222;\n  while(Date.now()<deadline && child.exitCode===null){\n    try {\n      const probe=await fetch(`http://127.0.0.1:${port}/json/version`);\n      if(probe.ok) break;\n    } catch { /* browser endpoint not ready */ }\n    await new Promise(r=>setTimeout(r,50));\n  }\n  if(child.exitCode!==null){\n    const diagnostics=text.trim().slice(-4000);\n    await rm(profile,{recursive:true,force:true});\n    throw new Error(`browser exited before DevTools: ${diagnostics}`);\n  }\n  const wsUrl=await waitForWs(port,deadline);
   const ws=new WebSocket(wsUrl);
   await new Promise<void>((resolve,reject)=>{const t=setTimeout(()=>reject(new Error("browser websocket timeout")),5000);ws.addEventListener("open",()=>{clearTimeout(t);resolve()},{once:true});ws.addEventListener("error",()=>{clearTimeout(t);reject(new Error("browser websocket error"))},{once:true});});
   return {child,ws,profile};
