@@ -3,6 +3,7 @@ import {spawn} from "node:child_process";
 import {mkdtempSync} from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import net from "node:net";
 
 describe("CDP browser driver",()=>{
   it("fails closed when the configured browser executable does not exist",async()=>{
@@ -51,7 +52,12 @@ describe("CDP browser driver",()=>{
   it("loads the real Control Center in Chromium and verifies the rendered page",async()=>{
     if(!process.env.BOB_BROWSER_EXECUTABLE) return;
     const root=mkdtempSync(path.join(os.tmpdir(),"bob-browser-ui-"));
-    const port=3210;
+    const probe=net.createServer();
+    await new Promise<void>((resolve,reject)=>{probe.once("error",reject);probe.listen(0,"127.0.0.1",()=>resolve());});
+    const address=probe.address();
+    const port=typeof address==="object" && address ? address.port : 0;
+    await new Promise<void>(resolve=>probe.close(()=>resolve()));
+    expect(port).toBeGreaterThan(0);
     const child=spawn(process.execPath,["server.mjs"],{env:{...process.env,NODE_ENV:"production",PORT:String(port),BOB_SESSION_SECRET:"browser-e2e-session-secret-0123456789",BOB_STORAGE_DIR:root},stdio:["ignore","pipe","pipe"]});
     try {
       const deadline=Date.now()+15000;
