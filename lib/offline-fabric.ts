@@ -173,6 +173,13 @@ export function importOfflineBundle(bundleDirectory: string): {bundleId:string; 
     if (!fs.statSync(sourceFile).isFile()) throw new Error(`offline bundle file missing: ${item.file}`);
     const digest=sha256File(sourceFile);
     if (digest !== item.sha256) throw new Error(`offline bundle digest mismatch: ${item.id}`);
+    const existing=store.read().resources.find(r=>r.id===item.id);
+    if (existing && existing.sha256 !== item.sha256) {
+      const conflict:OfflineConflict={id:`CONFLICT-${crypto.randomUUID().slice(0,10).toUpperCase()}`,resourceId:item.id,existingDigest:existing.sha256,incomingDigest:item.sha256,bundleId:manifest.bundleId,status:"REJECTED",createdAt:new Date().toISOString()};
+      store.update(p=>p.conflicts=(p.conflicts??[]).concat(conflict));
+      recordAudit({actor:"CREATOR",action:"offline.bundle.merge",resource:item.id,decision:"DENY"},{reason:"DIGEST_CONFLICT",bundleId:manifest.bundleId});
+      throw new Error(`offline merge conflict: ${item.id}`);
+    }
     const destination=path.join(destinationRoot,safeId(item.id));
     fs.copyFileSync(sourceFile,destination);
     const now=new Date().toISOString();
