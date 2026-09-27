@@ -4,6 +4,7 @@ import {recordAudit} from "./audit";
 import {observe} from "./observability";
 import {listComputers} from "./computer-use";
 import {executeBrowserAction} from "./browser-driver";
+import {executeBrowserAction} from "./browser-driver";
 
 export type ComputerExecutionRequest = {
   computerId: string;
@@ -35,6 +36,22 @@ export async function executeComputerAction(req: ComputerExecutionRequest): Prom
   if(!ALLOWED.has(req.action)) throw new Error("computer action is not allowed");
   if(!instance.capabilities.some(c=>c.kind===instance.kind && c.actions.includes(req.action as never))) throw new Error("computer capability does not permit action");
   const timeout=Math.min(Math.max(Number(req.timeoutMs??30000),1000),120000);
+  if (instance.kind === "BROWSER") {
+    const started=Date.now();
+    try {
+      const browserResult=await executeBrowserAction(req.action,req.input,timeout) as {ok:boolean;action:string;bytes?:number;digest?:string;encoding?:string;text?:string;html?:string;durationMs?:number};
+      const stdout=JSON.stringify(browserResult);
+      const out:ComputerExecutionResult={computerId:req.computerId,action:req.action,status:browserResult.ok?"SUCCEEDED":"FAILED",exitCode:browserResult.ok?0:1,stdoutDigest:digest(stdout),stderrDigest:digest(""),stdoutLength:stdout.length,stderrLength:0,durationMs:browserResult.durationMs??(Date.now()-started)};
+      recordAudit({actor:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:out.status==="SUCCEEDED"?"ALLOW":"DENY"},{action:req.action,exitCode:out.exitCode,stdoutDigest:out.stdoutDigest,stderrDigest:out.stderrDigest,durationMs:out.durationMs,driver:"CDP"});
+      observe({type:"computer.executed",message:`Computer ${req.computerId} ${req.action} -> ${out.status}`,status:out.status==="SUCCEEDED"?"COMPLETED":"ERROR",actor:"AG-BROWSER",agentId:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:out.status==="SUCCEEDED"?"ALLOW":"DENY",argumentsValue:{action:req.action,exitCode:out.exitCode,driver:"CDP"}});
+      return out;
+    } catch (error) {
+      const message=error instanceof Error?error.message:String(error);
+      const out:ComputerExecutionResult={computerId:req.computerId,action:req.action,status:"FAILED",exitCode:null,stdoutDigest:digest(""),stderrDigest:digest(message),stdoutLength:0,stderrLength:message.length,durationMs:Date.now()-started};
+      recordAudit({actor:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:"DENY"},{action:req.action,exitCode:null,stderrDigest:out.stderrDigest,durationMs:out.durationMs,driver:"CDP"});
+      return out;
+    }
+  }
   const started=Date.now();
   // Browser-Instanzen verwenden den nativen CDP-Driver, sobald ein explizit
   // freigegebener Browser-Binary-Pfad vorhanden ist. Fehlt er, bleibt der
