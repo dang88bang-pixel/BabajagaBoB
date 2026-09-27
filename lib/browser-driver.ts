@@ -1,5 +1,5 @@
 import {spawn} from "node:child_process";
-import {mkdtemp, rm} from "node:fs/promises";
+import {mkdtemp, rm, readFile} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -65,11 +65,31 @@ async function launch(exe:string,timeoutMs:number){
   return {child,ws,profile};
 }
 
+async function screenshotFallback(exe:string,timeoutMs:number){
+  const dir=await mkdtemp(path.join(os.tmpdir(),"bob-browser-shot-"));
+  const file=path.join(dir,"screenshot.png");
+  const child=spawn(exe,["--headless=new","--disable-gpu","--disable-dev-shm-usage","--no-sandbox","--disable-setuid-sandbox","--disable-extensions",`--screenshot=${file}`,"about:blank"],{shell:false,stdio:["ignore","pipe","pipe"],env:{PATH:process.env.PATH,LANG:process.env.LANG,HOME:dir}});
+  const started=Date.now();
+  try {
+    await new Promise<void>((resolve,reject)=>{
+      const timer=setTimeout(()=>{if(child.exitCode===null)child.kill("SIGKILL");reject(new Error("browser screenshot timeout"));},Math.min(Math.max(timeoutMs,1000),120000));
+      child.once("error",error=>{clearTimeout(timer);reject(error);});
+      child.once("exit",code=>{clearTimeout(timer);if(code===0)resolve();else reject(new Error(`browser screenshot exited with code ${code ?? "unknown"}`));});
+    });
+    const data=await readFile(file);
+    const base64=data.toString("base64");
+    return {ok:true,action:"SCREENSHOT",bytes:data.byteLength,digest:digest(base64),encoding:"base64",durationMs:Date.now()-started};
+  } finally {
+    if(child.exitCode===null)child.kill("SIGKILL");
+    await rm(dir,{recursive:true,force:true});
+  }
+}
+
 export async function executeBrowserAction(action:string,input:Input,timeoutMs=30000){
   const exe=executable();
   if(!exe) throw new Error("BOB_BROWSER_EXECUTABLE is not configured");
   if(/[\s;|&]/.test(exe)) throw new Error("browser executable path is invalid");
-  if(action==="NAVIGATE") {
+  if(action==="SCREENSHOT") return screenshotFallback(exe,timeoutMs);\n  if(action==="NAVIGATE") {
     const url=typeof input.url==="string"?input.url:"";
     if(!/^https?:\\/\\//i.test(url)) throw new Error("NAVIGATE requires an http(s) URL");
     const parsed=new URL(url);
