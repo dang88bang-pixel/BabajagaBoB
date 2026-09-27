@@ -119,8 +119,8 @@
       "title": "Schreibsperre des Stores entfernt (Prüfen und rename laufen auseinander)",
       "guard": "Revisionsprüfung und Umbenennen liegen in derselben exklusiven Sperre; ohne Sperre ist die Prüfung keine Compare-and-Swap-Bedingung.",
       "file": "lib/persistence/store.ts",
-      "find": "fs.openSync(lock, \\\"wx\\\", 0o600)",
-      "replace": "fs.openSync(lock, \\\"w\\\", 0o600)",
+      "find": "fd = fs.openSync(lock, \"wx\", 0o600);",
+      "replace": "fd = fs.openSync(lock, \"w\", 0o600);",
       "tests": [
         "tests/integration/store-lock.test.ts",
         "tests/integration/fault-injection-processes.test.ts",
