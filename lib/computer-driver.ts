@@ -86,39 +86,6 @@ export async function executeComputerAction(req: ComputerExecutionRequest): Prom
     }
   }
 
-  if (instance.kind === "BROWSER" && process.env.BOB_BROWSER_EXECUTABLE) {
-    const started = Date.now();
-    try {
-      const native = await executeBrowserAction(req.action, req.input, req.timeoutMs ?? 30000) as {
-        ok: boolean; action: string; bytes?: number; digest?: string; title?: string; url?: string;
-      };
-      const stdout = JSON.stringify({ok:native.ok, action:native.action, bytes:native.bytes ?? 0, title:native.title ?? "", url:native.url ?? ""});
-      const out: ComputerExecutionResult = {
-        computerId:req.computerId,
-        action:req.action,
-        status:native.ok ? "SUCCEEDED" : "FAILED",
-        exitCode:native.ok ? 0 : 1,
-        stdoutDigest:digest(stdout),
-        stderrDigest:digest(""),
-        stdoutLength:stdout.length,
-        stderrLength:0,
-        durationMs:Date.now()-started
-      };
-      recordAudit({actor:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:out.status==="SUCCEEDED"?"ALLOW":"DENY"}, {
-        action:req.action,exitCode:out.exitCode,stdoutDigest:out.stdoutDigest,stderrDigest:out.stderrDigest,durationMs:out.durationMs,driver:"CDP"
-      });
-      observe({type:"computer.executed",message:`Browser ${req.computerId} ${req.action} -> ${out.status}`,status:out.status==="SUCCEEDED"?"COMPLETED":"ERROR",actor:"AG-BROWSER",agentId:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:out.status==="SUCCEEDED"?"ALLOW":"DENY",argumentsValue:{action:req.action,exitCode:out.exitCode,driver:"CDP"}});
-      return out;
-    } catch (error) {
-      const message=error instanceof Error ? error.message : String(error);
-      const out: ComputerExecutionResult = {
-        computerId:req.computerId,action:req.action,status:"FAILED",exitCode:null,
-        stdoutDigest:digest(""),stderrDigest:digest(message),stdoutLength:0,stderrLength:message.length,durationMs:Date.now()-started
-      };
-      recordAudit({actor:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:"DENY"}, {action:req.action,driver:"CDP",errorDigest:out.stderrDigest});
-      throw error;
-    }
-  }
 
   const command=(process.env.BOB_COMPUTER_DRIVER ?? "").trim();
   if (/\s/.test(command) || command.includes(";") || command.includes("|") || command.includes("&")) throw new Error("computer driver path is invalid");
