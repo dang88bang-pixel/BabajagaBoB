@@ -1,14 +1,13 @@
-# Temporäre Diagnose: Der Job „Security- und End-to-End-Suite" ist in CI rot,
-# die Laufprotokolle sind aber nicht lesbar (sie liegen auf
-# *.blob.core.windows.net, das aus der Arbeitsumgebung nicht erreichbar ist;
-# die Check-Run-Annotationen liefern nur „Process completed with exit code 1").
+# Temporäre Diagnose, Stufe 2: `tests/security/device-attestation.test.ts` ist in
+# CI rot (alle 20 übrigen Security-Dateien sind grün, auch einzeln gefahren).
+# Die Protokolle sind nicht lesbar, also fährt diese Matrix **jede Prüfung der
+# Datei als eigenen Job** — über eine ASCII-benannte Kopie
+# (`tests/security/diag-device.test.ts`), damit der Jobstatus die Prüfung nennt.
 #
-# Dieser Workflow fährt jede Security-Testdatei in einem eigenen Job und die
-# Suite zusätzlich einmal komplett. Damit steht die fehlschlagende Datei im
-# **Jobstatus**, der über `GET /actions/runs/{id}/jobs` lesbar ist — ohne
-# Protokoll. Ist nur die Gesamtlauf-Job rot, liegt es am Nebenläufigkeitsgrad.
+# `ganze-datei` fährt die Originaldatei als Kontrolle: Ist sie rot, aber jede
+# einzelne Prüfung grün, hängt der Fehler an der Reihenfolge, nicht an einem Fall.
 #
-# Wird entfernt, sobald die Ursache behoben ist.
+# Beide Dateien werden entfernt, sobald die Ursache behoben ist.
 name: Diagnose Security-Suite
 
 on:
@@ -24,35 +23,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  datei:
-    name: Datei ${{ matrix.file }}
+  prüfung:
+    name: Fall ${{ matrix.case }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        file:
-          - api-gate.test.ts
-          - api-guard.test.ts
-          - api-route-contract.test.ts
-          - argv-policy.test.ts
-          - authority.test.ts
-          - broker-scope.test.ts
-          - causal-integrity.test.ts
-          - creator-login-lockout.test.ts
-          - creator-login.test.ts
-          - creator-totp.test.ts
-          - device-attestation.test.ts
-          - device-enrollment.test.ts
-          - direct-route-denial.test.ts
-          - gate-bypass.test.ts
-          - inbox-route.test.ts
-          - input-validation.test.ts
-          - ops-enforcement.test.ts
-          - promotion-gates.test.ts
-          - route-guards.test.ts
-          - token-read-projection.test.ts
-          - token-replay.test.ts
+        case:
+          - t01
+          - t02
+          - t03
+          - t04
+          - t05
+          - t06
+          - t07
+          - t08
+          - t09
+          - t10
+          - t11
+          - t12
+          - t13
+          - t14
+          - t15
+          - t16
+          - t17
+          - t18
+          - t19
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.3.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -60,15 +57,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Netzmaske des Runners messen
-        run: node -e 'const os=require("os");for(const[n,i]of Object.entries(os.networkInterfaces()))for(const x of i??[])if(x.family==="IPv4")console.log(n,x.address,x.netmask)'
-      - name: Nur diese Datei fahren
-        run: npx vitest run tests/security/${{ matrix.file }} --reporter=verbose
+      - name: Nur diese Prüfung fahren
+        run: npx vitest run tests/security/diag-device.test.ts -t "${{ matrix.case }}" --reporter=verbose
 
-  komplett:
-    name: Suite komplett (wie in CI)
+  ganze-datei:
+    name: Originaldatei komplett (Kontrolle)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.3.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -76,7 +71,5 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Netzmaske des Runners messen
-        run: node -e 'const os=require("os");for(const[n,i]of Object.entries(os.networkInterfaces()))for(const x of i??[])if(x.family==="IPv4")console.log(n,x.address,x.netmask)'
-      - name: npm run test:security
-        run: npm run test:security
+      - name: Originaldatei fahren
+        run: npx vitest run tests/security/device-attestation.test.ts --reporter=verbose
