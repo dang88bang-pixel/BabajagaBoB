@@ -69,7 +69,7 @@ export async function executeBrowserAction(action:string,input:Input,timeoutMs=3
   const exe=executable();
   if(!exe) throw new Error("BOB_BROWSER_EXECUTABLE is not configured");
   if(/[\s;|&]/.test(exe)) throw new Error("browser executable path is invalid");
-  const browser=await launch(exe);
+  if(action==="NAVIGATE") {\n    const url=typeof input.url==="string"?input.url:"";\n    if(!/^https?:\\/\\//i.test(url)) throw new Error("NAVIGATE requires an http(s) URL");\n    const parsed=new URL(url);\n    if(!["localhost","127.0.0.1","[::1]"].includes(parsed.hostname)) throw new Error("external browser navigation is blocked by default-deny network policy");\n  }\n  const browser=await launch(exe,timeoutMs);
   let id=0;
   try{
     await command(browser.ws,++id,"Page.enable");
