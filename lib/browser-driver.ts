@@ -40,7 +40,7 @@ async function waitForWs(port:number, deadline:number):Promise<string>{
 
 async function launch(exe:string,timeoutMs:number){
   const profile=await mkdtemp(path.join(os.tmpdir(),"bob-browser-"));
-  const args=["--headless=new","--disable-gpu","--disable-dev-shm-usage","--no-sandbox","--disable-background-networking","--disable-sync","--no-first-run","--no-default-browser-check","--host-resolver-rules=MAP * ~NOTFOUND,EXCLUDE localhost","--remote-debugging-port=0",`--user-data-dir=${profile}`,"about:blank"];
+  const args=["--headless=new","--disable-gpu","--disable-software-rasterizer","--disable-dev-shm-usage","--no-sandbox","--disable-setuid-sandbox","--disable-crash-reporter","--disable-extensions","--disable-background-networking","--disable-sync","--no-first-run","--no-default-browser-check","--host-resolver-rules=MAP * ~NOTFOUND,EXCLUDE localhost","--remote-debugging-address=127.0.0.1","--remote-debugging-port=0",`--user-data-dir=${profile}`,"about:blank"];
   const child=spawn(exe,args,{shell:false,stdio:["ignore","pipe","pipe"],env:{PATH:process.env.PATH,LANG:process.env.LANG,HOME:profile}});
   let text="";
   const collect=(b:Buffer)=>{text+=String(b);if(text.length>128000)text=text.slice(-128000);};
