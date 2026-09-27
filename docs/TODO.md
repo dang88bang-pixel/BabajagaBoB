@@ -1,60 +1,36 @@
 # Offene Punkte
 
-**Stand:** 2026-09-25
-**Hinweis:** Die ursprüngliche Roadmap-Fassung dieser Datei (246 Zeilen mit 132
-unbearbeiteten Checkboxen) war ein Planungsdokument aus der Startphase und hat
-den Umsetzungsstand nicht mehr korrekt abgebildet. Sie wurde durch diese
-faktische Liste ersetzt. Maßgeblich für Reifegrade sind `docs/STATUS.md`,
-`docs/SPEC_COMPLIANCE.md` und der Abschlussbericht `docs/ABSCHLUSSBERICHT.md`.
-Die historische Zerlegung bleibt in `docs/IMPLEMENTATION_ROADMAP.md` erhalten
-(ebenfalls Planungsstand, keine Statusaussage).
+**Stand:** 2026-09-27
 
-## 1. Erledigt und nachgewiesen (Kurzfassung)
+Diese Datei enthält ausschließlich aktuell offene Punkte. Maßgeblich für die
+formale Abnahme bleibt `docs/acceptance/requirements.json`; Reifegrade und
+Laufzeitnachweise stehen in `docs/STATUS.md`.
 
-Vollständige Liste mit Belegen: `docs/STATUS.md`, `docs/ABSCHLUSSBERICHT.md` §B/§C.
+## 1. PARTIAL
 
-Control Plane über HTTP, Server-Authentifizierung (Session + Creator-Login +
-Capability-Weg), aktionsspezifische Routen-Guards auf **allen** Routen (strukturell
-erzwungen), Betriebsmetriken (Prometheus-Text), Backup/Restore mit Digest-Prüfung, Execution Gate + Broker mit 17
-Prüfungen, argv-Policy ohne Shell, Sandbox-Fabric mit Task-/Agent-Bindung,
-Snapshots mit SHA-256 und verifiziertem Restore, lokale Runtime mit Timeout-Kill,
-Experiment-Engine mit Kausalvalidierung, Error Intelligence bis
-`REGRESSION_LOCKED`, Recovery mit Verifikationspflicht, Regression Engine,
-Knowledge Graph mit negativem Wissen, Agent Fabric (11 Rollen mit
-Autonomie-Vertrag), Provider-Fabric mit Approval-Pflicht, Privacy default `DENY`,
-Device- und Computer-Use-Autorisierung, CI/CD mit Promotion-Gate, 14 §44-Dokumente,
-Live-Nachweis über 171 HTTP-Prüfungen (inkl. Agentenweg über Capability-Token,
-Lockdown-Nachweis für interne Läufe und Kernel-Isolation mit Ressourcenlimits),
-kein Ausführungspfad um den Broker (`lib/system-execution.ts`; Regression und
-Smoke-Test laufen als SYSTEM-WORKER über Gate, Broker und Evidenz).
-
-## 2. Offen – als `PARTIAL` geführt
-
-| Punkt | Warum offen | Nächster Schritt |
+| Punkt | Aktueller Stand | Nächster Nachweis |
 |---|---|---|
-| OCI-Runtime verifizieren | kein Container-Daemon in der Umgebung | Lauf mit Docker/Podman auf einem Host mit Daemon; Härtungsflags und Snapshot prüfen |
-| Egress-Allowlist | bewusst fail closed, bis ein kontrollierter Proxy existiert | Egress-Proxy + DNS-Pinning implementieren, dann `ALLOWLIST` freischalten |
-| Provider live verbinden | keine externen Verbindungen erlaubt (Netzwerk `DENY`) | mit Allowlist + Approval einen Adapter real anbinden und Telemetrie prüfen |
-| ~~Geräte-Discovery~~ | erledigt: `lib/device-enrollment.ts` + `scripts/discover-host.mjs` (Meldung mit Geheimnis, fail closed, nur Discovery/Heartbeat), Autorisierung bleibt Creator-Akt | offen: Netz-Scan (ARP/mDNS) und Attestierung sind `NOT_IMPLEMENTED`; Scheduling nach CPU/RAM/GPU/OS/Architektur/Capabilities ist jetzt implementiert und getestet |
-| Computer Use | Lifecycle + reale Driver-Grenze jetzt implementiert; konkrete Browser/Desktop-Treiber bleiben extern konfiguriert | `lib/computer-driver.ts` über expliziten Child-Process-Driver nutzen; Driver selbst in Sandbox bereitstellen und live verifizieren |
-| ~~Simulation/Visualisierung~~ | erledigt | Renderer `lib/visualization.ts` für alle sieben Arten (aus dem echten Zustand), Bildroute + Evidenzartefakt, `tests/integration/visualization.test.ts` |
-| Control-Center-UI | kein Browser in der Umgebung (geprüft: kein Chromium/Chrome/Firefox, kein Playwright-Cache; Download-Hosts gesperrt) | Browser-E2E bleibt `NOT_VERIFIED`; ersatzweise jsdom-Tests gegen echte Routen-Handler + `audit-ui.mjs` |
-| ~~Recovery-Tier-Ableitung~~ | erledigt | automatische, begründete Klassifikation in `lib/recovery-tier.ts` (Tests: `tests/unit/recovery-tier.test.ts`) |
-| ~~Alarmierung (Regeln)~~ | erledigt | 16 Regeln in `lib/alerting.ts`, an die echten Kennzahlen gebunden, `GET /api/alerts[?format=prometheus]`, UI-Anzeige, Tests; offen bleibt der Betrieb von Scraper/Alertmanager (`NOT_VERIFIED`) |
-| ~~Backup-Automation~~ | erledigt: `lib/backup-policy.ts` (idempotenter geplanter Lauf, Aufbewahrungsgrenze je Store, Audit + Ereignis, UI-Panel) | offen bleibt ein echter Scheduler-Daemon (externer Auslöser, `NOT_VERIFIED`) |
-| ~~Last-/Soak-Tests~~ | erledigt: begrenzter Nachweis **mit definierten Schwellen** (`SOAK_SLO_P95_MS`, `SOAK_SLO_MIN_SUCCESS_RATIO`, Negativnachweis Exit 1) und betriebsweite SLO-Bewertung (`lib/slo.ts`, `/api/slo`, UI „Service-Level“) | offen bleibt ein **Dauerlauf** über Stunden/Lastkurve (`NOT_VERIFIED`) |
+| Computer Use | Lifecycle und fail-closed Child-Process-Driver vorhanden. Der konkrete Driver ist aber noch nicht als vollständiger Capability-/Execution-Broker-Verbrauchspfad integriert und es fehlt der reale Browser/Desktop-Treiber. | Brokergebundene Capability für Computer-Aktionen, isolierter Browser-/Desktop-Driver, echter Ausführungs-/Screenshot-Nachweis |
+| Offline Fabric | Lokale Ressourcenregistrierung, SHA-256-Verifikation und provenance-erhaltender Bundle-Export/Import vorhanden. | Paket-/Modell-/Wissens-spezifische Offline-Nutzung und vollständiger herkunftstreuer Merge in die jeweiligen Fabs |
+| Last-/Soak | Begrenzter Lauf mit Schwellen und Negativpfad vorhanden. | Mehrstündiger Dauerlauf mit Lastkurve und reproduzierbarer SLO-Messung |
+| Device Fabric | Enrollment, Autorisierung und Scheduling vorhanden. | Aktiver Netz-Scan, Attestierung und echte Hardware-Ausführung |
 
-## 3. Neu implementiert / nachzuziehende Verifikation\n\n- Offline-Fabric: `lib/offline-fabric.ts` + `/api/offline` + Control-Center-Abschnitt „Offline Fabric“; lokale Ressourcen werden persistent registriert, SHA-256-verifiziert und Sync bleibt bis zur Verifikation gesperrt.\n- Computer-Use-Ausführung: `lib/computer-driver.ts` + `POST /api/computer-use` mit echtem Child-Process-Driver, Shell-Verbot, Minimal-Environment, Timeout und Digest-Audit.\n\n## 4. Nicht implementiert (bewusst)
+## 2. NOT_VERIFIED
 
-- WebAuthn als Alternative zu TOTP (TOTP ist implementiert: `BOB_CREATOR_TOTP_SECRET`).
-- Automatisches Deployment (Promotion bleibt manuell und Creator-gebunden).
-- Vektor-/Embedding-Suche im Knowledge Graph.
-- Statistische Signifikanzprüfung in der Kausalvalidierung.
+| Punkt | Grund |
+|---|---|
+| Provider-Liveverbindung | Externe Verbindung ist im aktuellen Sicherheitsmodus nicht freigeschaltet; deshalb kein echter Fremdsystem-Live-Nachweis |
+| Browser-E2E | Kein geeigneter realer Browserlauf als reproduzierbare CI-Evidence vorhanden |
 
-## 5. Regeln für neue Einträge
+## 3. Bewusst begrenzt
 
-- Kein Punkt gilt als erledigt ohne Implementierung + Integration + Persistenz
-  (falls nötig) + Fehlerpfade + Security-Grenze + Test + Regressionstest +
-  sichtbaren UI-Zustand + Dokumentation + erfolgreichen E2E-Nachweis.
-- Unsichere oder nicht prüfbare Punkte werden als `UNKNOWN`, `UNVERIFIED`,
-  `BLOCKED` oder `NOT_IMPLEMENTED` geführt – nie als Erfolg.
+- Netzwerk-Allowlist/Egress bleibt fail closed, solange keine kontrollierte Egress-Schicht existiert.
+- WebAuthn als zusätzliche Creator-Authentisierung ist nicht implementiert; TOTP ist vorhanden.
+- Ein automatischer Deployment-Watchdog bleibt außerhalb der Creator-gebundenen Promotion.
+- Statistische Signifikanzprüfung ist nicht Bestandteil der aktuellen Kausalvalidierung.
+
+## 4. Verifikationsregel
+
+Kein Punkt wird als VERIFIED oder PRODUCTION_READY geführt, solange
+Implementierung, Integration, Sicherheitsgrenze, Test und reproduzierbarer
+Nachweis nicht vorliegen.
