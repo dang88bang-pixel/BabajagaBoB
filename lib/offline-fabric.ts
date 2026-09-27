@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
-import {createStore} from "./persistence/store";
+import {createStore, storageRoot} from "./persistence/store";
 import {recordAudit} from "./audit";
 import {observe} from "./observability";
 
@@ -34,10 +34,14 @@ export type OfflineSyncRecord = {
   createdAt: string;
 };
 
-type Payload = {resources: OfflineResource[]; sync: OfflineSyncRecord[]};
-const store = createStore<Payload>("offline-fabric", 1, () => ({resources: [], sync: []}));
+export type OfflineBundleManifest = {schemaVersion: 1; bundleId: string; createdAt: string; resources: Array<Pick<OfflineResource,"id"|"kind"|"name"|"version"|"sha256"|"sizeBytes"|"source"|"metadata"> & {file: string}>; manifestSha256: string};
+
+type Payload = {resources: OfflineResource[]; sync: OfflineSyncRecord[]; bundles: string[]};
+const store = createStore<Payload>("offline-fabric", 1, () => ({resources: [], sync: [], bundles: []}));
 
 const sha256File = (file: string) => crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+const safeId = (value: string) => /^[A-Za-z0-9._-]+$/.test(value) ? value : value.replace(/[^A-Za-z0-9._-]/g, "_");
+const manifestDigest = (manifest: Omit<OfflineBundleManifest,"manifestSha256">) => crypto.createHash("sha256").update(JSON.stringify(manifest)).digest("hex");
 
 export function registerOfflineResource(input: Omit<OfflineResource, "id"|"sha256"|"sizeBytes"|"verified"|"createdAt"|"updatedAt">): OfflineResource {
   if (!input.name?.trim() || !input.location?.trim()) throw new Error("offline resource name and location required");
@@ -127,4 +131,62 @@ export function verifyOfflineSync(id: string, observedTargetDigest: string): Off
   return structuredClone(record);
 }
 
-export function offlineStoreReport() { return store.integrity(); }
+export function exportOfflineBundle(resourceIds: string[], destination: string): OfflineBundleManifest {
+  if (!Array.isArray(resourceIds) || resourceIds.length === 0) throw new Error("at least one resource is required");
+  const absolute = fs.realpathSync.native ? fs.realpathSync.native(storageRoot()) : fs.realpathSync(storageRoot());
+  const target = fs.existsSync(destination) ? fs.realpathSync(destination) : destination;
+  if (target === absolute || target.startsWith(absolute + "/")) throw new Error("offline bundle destination must be outside the storage root");
+  fs.mkdirSync(target, {recursive:true, mode:0o700});
+  const payload = store.read();
+  const selected = resourceIds.map(id => payload.resources.find(r => r.id === id));
+  if (selected.some(r => !r)) throw new Error("offline bundle references an unknown resource");
+  const resources = selected.map(resource => {
+    const verified = verifyOfflineResource(resource!.id);
+    const file = `${safeId(verified.id)}.resource`;
+    fs.copyFileSync(verified.location, pathJoin(target, file));
+    return {id:verified.id,kind:verified.kind,name:verified.name,version:verified.version,sha256:verified.sha256,sizeBytes:verified.sizeBytes,source:verified.source,metadata:verified.metadata,file};
+  });
+  const base: Omit<OfflineBundleManifest,"manifestSha256"> = {schemaVersion:1,bundleId:`BND-${crypto.randomUUID().slice(0,10).toUpperCase()}`,createdAt:new Date().toISOString(),resources};
+  const manifest: OfflineBundleManifest = {...base,manifestSha256:manifestDigest(base)};
+  fs.writeFileSync(pathJoin(target,"manifest.json"),JSON.stringify(manifest,null,2)+"\n",{mode:0o600});
+  store.update(p => p.bundles.push(manifest.bundleId));
+  recordAudit({actor:"CREATOR",action:"offline.bundle.export",resource:manifest.bundleId,decision:"ALLOW"},{resourceIds,manifestSha256:manifest.manifestSha256});
+  observe({type:"offline.bundle.exported",message:`Offline-Bundle ${manifest.bundleId} erstellt`,status:"COMPLETED",actor:"CREATOR",action:"offline.bundle.export",resource:manifest.bundleId});
+  return structuredClone(manifest);
+}
+
+export function importOfflineBundle(bundleDirectory: string): {bundleId:string; imported:string[]} {
+  const manifestPath = pathJoin(bundleDirectory,"manifest.json");
+  const manifest = JSON.parse(fs.readFileSync(manifestPath,"utf8")) as OfflineBundleManifest;
+  if (manifest.schemaVersion !== 1 || !manifest.bundleId || !Array.isArray(manifest.resources)) throw new Error("invalid offline bundle manifest");
+  const {manifestSha256,...base} = manifest;
+  if (manifestDigest(base) !== manifestSha256) throw new Error("offline bundle manifest digest mismatch");
+  const imported:string[]=[];
+  const destinationRoot=pathJoin(storageRoot(),"offline-imports",safeId(manifest.bundleId));
+  fs.mkdirSync(destinationRoot,{recursive:true,mode:0o700});
+  for (const item of manifest.resources) {
+    if (!item.id || !item.file || !/^[A-Za-z0-9._-]+$/.test(item.file)) throw new Error("invalid offline bundle file name");
+    const sourceFile=pathJoin(bundleDirectory,item.file);
+    if (!fs.statSync(sourceFile).isFile()) throw new Error(`offline bundle file missing: ${item.file}`);
+    const digest=sha256File(sourceFile);
+    if (digest !== item.sha256) throw new Error(`offline bundle digest mismatch: ${item.id}`);
+    const destination=pathJoin(destinationRoot,safeId(item.id));
+    fs.copyFileSync(sourceFile,destination);
+    const now=new Date().toISOString();
+    store.update(p=>{
+      const existing=p.resources.find(r=>r.id===item.id);
+      const resource:OfflineResource={id:item.id,kind:item.kind,name:item.name,version:item.version,location:destination,sha256:item.sha256,sizeBytes:item.sizeBytes,source:item.source,metadata:{...item.metadata,bundleId:manifest.bundleId},verified:true,createdAt:existing?.createdAt??now,updatedAt:now};
+      if(existing) Object.assign(existing,resource); else p.resources.push(resource);
+    });
+    imported.push(item.id);
+  }
+  store.update(p=>p.bundles.push(manifest.bundleId));
+  recordAudit({actor:"CREATOR",action:"offline.bundle.import",resource:manifest.bundleId,decision:"ALLOW"},{imported});
+  observe({type:"offline.bundle.imported",message:`Offline-Bundle ${manifest.bundleId} importiert`,status:"COMPLETED",actor:"CREATOR",action:"offline.bundle.import",resource:manifest.bundleId});
+  return {bundleId:manifest.bundleId,imported};
+}
+
+function pathJoin(...parts:string[]):string { return requirePath().join(...parts); }
+function requirePath(){ return require("node:path") as typeof import("node:path"); }
+
+export function offlineStoreReport() { return {...store.integrity(),bundles:store.read().bundles.length}; }
