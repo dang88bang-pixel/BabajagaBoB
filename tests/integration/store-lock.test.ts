@@ -52,7 +52,7 @@ describe("DurableStore write-lock exclusivity", () => {
     // geprüft. Eine Sabotage darf weder die exklusive Eröffnung noch die
     // atomare Ausführungsschicht entfernen.
     const lockContract = fs.readFileSync(storePath, "utf8");
-    expect(lockContract).toMatch(/fs\\.openSync\\(lock,\s*"wx",\s*0o600\\)/);
+    expect(lockContract).toMatch(/fs\.openSync\(lock,\s*"wx",\s*0o600\)/);
     expect(lockContract).toContain("return this.withWriteLock(() => {");
 
     // Deterministische Gegenprobe der Schutzregel: Die Sperre muss exklusiv
