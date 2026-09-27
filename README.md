@@ -264,6 +264,17 @@ Jede operative Aktion muss über:
 laufen.
 
 
+## Agent-unabhängige Fertigstellung / Handoff
+
+Damit ein beliebiger neuer Coding-Agent das Repository ohne Chat-Kontext vollständig übernehmen kann, ist zusätzlich ein verbindlicher Completion-Vertrag hinterlegt:
+
+- `docs/AGENT_COMPLETION_HANDOFF_SPEC_DE.md` — vollständige agentenunabhängige Rekonstruktions-, Implementierungs-, Sicherheits-, Test-, Verifikations- und Release-Regeln.
+- `docs/acceptance/agent-completion-contract.json` — maschinenlesbarer Completion-/Handoff-Vertrag.
+
+Ein neuer Agent MUSS zuerst diese Dokumente sowie `docs/APP_VOLLSTAENDIGE_SPEZIFIKATION_DE.md`, `docs/acceptance/requirements.json`, `docs/STATUS.md` und `docs/TODO.md` lesen und anschließend die ausführbaren Verifikationspfade selbst ausführen. Kein Status darf aus Chat-Aussagen übernommen werden.
+
+**READY TO USE** darf erst ausgewiesen werden, wenn die verpflichtenden Anforderungen des deklarierten Zielsystems implementiert, integriert, sicherheitsbegrenzt, getestet und reproduzierbar verifiziert sowie dokumentiert sind. Echte externe/hardwareseitige Blocker müssen explizit ausgewiesen werden.
+
 ## Verbindliche Gesamtspezifikation
 
 Die vollständige deutschsprachige Spezifikation für Rekonstruktion, Entwicklung, Sicherheitsregeln, Berechtigungen, Datenmodelle, Agenten, Runtimes, Sandboxen, Integrationen, Statusmodell, Tests und finale Abnahme befindet sich in:
