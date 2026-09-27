@@ -2,6 +2,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {describe,expect,it,beforeEach,vi} from "vitest";
+import * as cp from "../../lib/control-plane";
+import * as fabric from "../../lib/sandbox";
+import * as authority from "../../lib/authority";
 import {TEST_BOOTSTRAP_SECRET} from "../helpers/runtime";
 
 describe("Computer Use execution boundary",()=>{
@@ -60,6 +63,35 @@ describe("Computer Use execution boundary",()=>{
     expect(result.status).toBe("SUCCEEDED");
     expect(result.stdoutDigest).toMatch(/^[a-f0-9]{64}$/);
     expect(result.stdoutLength).toBeGreaterThan(0);
+  });
+
+  it("führt Computer Use nur über den zentralen Execution Broker aus",async()=>{
+    const task = cp.createTask({missionId:cp.createMission({title:"CU Broker",objective:"Brokerpfad",createdBy:"CREATOR"}).missionId,title:"CU Broker Task",risk:"LOW",assignedAgent:"AG-BROWSER",createdBy:"CREATOR"});
+    const sandbox = await fabric.createSandbox({type:"browser",taskId:task.taskId,agentId:"AG-BROWSER",risk:"LOW"});
+    await fabric.startSandbox(sandbox.sandboxId);
+    const computer = computers.listComputers()[0];
+    computers.authorizeComputer(computer.id,true,"CREATOR");
+    computers.allocateComputer(computer.id,task.taskId,sandbox.sandboxId);
+    computers.startComputer(computer.id);
+    const issued = authority.issueCapabilityToken({subject:"AG-BROWSER",taskId:task.taskId,sandboxId:sandbox.sandboxId,environment:sandbox.type,capabilities:["task:execute","sandbox:run","computer:execute"],risk:"LOW",issuedBy:"CREATOR",issuedByKind:"CREATOR",expiresAt:new Date(Date.now()+60_000).toISOString()});
+    const broker = await import("../../lib/execution-broker");
+    const result = await broker.executeComputerAuthorized({taskId:task.taskId,agentId:"AG-BROWSER",sandboxId:sandbox.sandboxId,capabilityTokenId:issued.token.id,runId:"RUN-CU-BROKER",computerId:computer.id,computerAction:"SCREENSHOT",computerInput:{url:"http://example.test"}});
+    expect(result.status).toBe("SUCCEEDED");
+    expect(authority.getCapabilityToken(issued.token.id)?.uses).toBe(1);
+  });
+
+  it("verweigert den Brokerpfad mit falschem Task/Token-Binding",async()=>{
+    const task = cp.createTask({missionId:cp.createMission({title:"CU Scope",objective:"Scope",createdBy:"CREATOR"}).missionId,title:"CU Scope Task",risk:"LOW",assignedAgent:"AG-BROWSER",createdBy:"CREATOR"});
+    const otherTask = cp.createTask({missionId:task.missionId,title:"Andere Task",risk:"LOW",assignedAgent:"AG-BROWSER",createdBy:"CREATOR"});
+    const sandbox = await fabric.createSandbox({type:"browser",taskId:task.taskId,agentId:"AG-BROWSER",risk:"LOW"});
+    await fabric.startSandbox(sandbox.sandboxId);
+    const computer = computers.listComputers()[0];
+    computers.authorizeComputer(computer.id,true,"CREATOR");
+    computers.allocateComputer(computer.id,task.taskId,sandbox.sandboxId);
+    computers.startComputer(computer.id);
+    const issued = authority.issueCapabilityToken({subject:"AG-BROWSER",taskId:otherTask.taskId,sandboxId:sandbox.sandboxId,environment:sandbox.type,capabilities:["task:execute","sandbox:run","computer:execute"],risk:"LOW",issuedBy:"CREATOR",issuedByKind:"CREATOR",expiresAt:new Date(Date.now()+60_000).toISOString()});
+    const broker = await import("../../lib/execution-broker");
+    await expect(broker.executeComputerAuthorized({taskId:task.taskId,agentId:"AG-BROWSER",sandboxId:sandbox.sandboxId,capabilityTokenId:issued.token.id,computerId:computer.id,computerAction:"SCREENSHOT",computerInput:{}})).rejects.toThrow(/scope mismatch|token task/);
   });
 
   it("bleibt ohne Driver fail closed",async()=>{
