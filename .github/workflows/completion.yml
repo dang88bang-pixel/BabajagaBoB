@@ -1,0 +1,76 @@
+name: BabajagaBoB Completion Workflow
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["fix/**", "feature/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bob-completion-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BOB_CI: "1"
+  NEXT_TELEMETRY_DISABLED: "1"
+  BOB_SANDBOX_RUNTIME: local
+
+jobs:
+  completion-baseline:
+    name: W0 Baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:unit
+      - run: npm run test:integration
+      - run: npm run test:regression
+      - run: npm run test:security
+      - run: npm run test:e2e
+      - run: npm run test:ui
+      - run: node scripts/acceptance.mjs
+
+  completion-full-regression:
+    name: W8/W9 Gesamtregression und Release-Gate
+    needs: completion-baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: node scripts/sabotage.mjs --check
+      - run: node scripts/acceptance.mjs
+      - run: npm run test:oci
+      - run: node scripts/audit-actions.mjs
+      - run: node scripts/audit-api.sh
+      - run: node scripts/audit-ui.mjs
+      - run: node scripts/fault-injection.mjs --cycles=1 --port=3400 --storage=$RUNNER_TEMP/bob-completion
+      - name: Abschlussbericht als Artefakt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: completion-evidence
+          path: |
+            docs/ACCEPTANCE.md
+            ${{ runner.temp }}/bob-completion/**
+
+  completion-summary:
+    name: Completion Gate
+    needs: completion-full-regression
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Completion regression passed; Production promotion remains Creator-gated."
