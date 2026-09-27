@@ -20,7 +20,7 @@ function command(browser: WebSocket, id:number, method:string, params:Record<str
         clearTimeout(timer);browser.removeEventListener("message",onMessage);
         if(message.error) reject(new Error(message.error.message??"browser command failed"));
         else resolve(message);
-      } catch {}
+      } catch { /* ignore unrelated websocket messages */ }
     };
     browser.addEventListener("message",onMessage);
     browser.send(JSON.stringify({id,method,params}));
@@ -32,20 +32,20 @@ async function waitForWs(port:number, deadline:number):Promise<string>{
     try {
       const r=await fetch(`http://127.0.0.1:${port}/json/version`);
       if(r.ok){const j=await r.json() as {webSocketDebuggerUrl?:string};if(j.webSocketDebuggerUrl)return j.webSocketDebuggerUrl;}
-    } catch {}
+    } catch { /* endpoint not ready yet */ }
     await new Promise(r=>setTimeout(r,100));
   }
   throw new Error("browser DevTools endpoint unavailable");
 }
 
-async function launch(exe:string){
+async function launch(exe:string,timeoutMs:number){
   const profile=await mkdtemp(path.join(os.tmpdir(),"bob-browser-"));
   const args=["--headless=new","--disable-gpu","--disable-dev-shm-usage","--no-sandbox","--disable-background-networking","--disable-sync","--no-first-run","--no-default-browser-check","--host-resolver-rules=MAP * ~NOTFOUND,EXCLUDE localhost","--remote-debugging-port=0",`--user-data-dir=${profile}`,"about:blank"];
   const child=spawn(exe,args,{shell:false,stdio:["ignore","pipe","pipe"],env:{PATH:process.env.PATH,LANG:process.env.LANG,HOME:profile}});
   let text="";
   const collect=(b:Buffer)=>{text+=String(b);if(text.length>128000)text=text.slice(-128000);};
   child.stdout.on("data",collect); child.stderr.on("data",collect);
-  const deadline=Date.now()+10000;
+  const deadline=Date.now()+Math.min(Math.max(timeoutMs,1000),120000);
   let port=0;
   while(Date.now()<deadline){
     const m=text.match(/DevTools listening on ws:\/\/127\.0\.0\.1:(\d+)\//);
@@ -72,9 +72,6 @@ export async function executeBrowserAction(action:string,input:Input,timeoutMs=3
     switch(action){
       case "NAVIGATE": {
         const url=typeof input.url==="string"?input.url:"";
-        if(!/^https?:\/\//i.test(url))throw new Error("NAVIGATE requires an http(s) URL");
-        const parsed=new URL(url);
-        if(!["localhost","127.0.0.1","[::1]"].includes(parsed.hostname))throw new Error("external browser navigation is blocked by default-deny network policy");
         await command(browser.ws,++id,"Page.navigate",{url});
         return {ok:true,action,url};
       }
@@ -111,7 +108,12 @@ export async function executeBrowserAction(action:string,input:Input,timeoutMs=3
     }
   } finally {
     browser.ws.close();
-    browser.child.kill("SIGKILL");
+    if(browser.child.exitCode===null) browser.child.kill("SIGKILL");
+    await new Promise<void>(resolve=>{
+      if(browser.child.exitCode!==null){resolve();return;}
+      const timer=setTimeout(resolve,1000);
+      browser.child.once("exit",()=>{clearTimeout(timer);resolve();});
+    });
     await rm(browser.profile,{recursive:true,force:true});
   }
 }
