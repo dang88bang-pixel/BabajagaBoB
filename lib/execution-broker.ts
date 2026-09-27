@@ -178,7 +178,7 @@ export async function executeAuthorized(request: ExecutionRequest): Promise<Exec
   if (!token) deny(request, "TOKEN_EXISTS", "capability token not found");
 
   // 8.-12. Token-Bindungen (Subject, Task, Sandbox, Risk) + Gültigkeit.
-  const validation = validateCapabilityToken(request.capabilityTokenId, ["task:execute", "sandbox:run", "computer:execute"], {
+  const validation = validateCapabilityToken(request.capabilityTokenId, ["task:execute", "sandbox:run"], {
     subject: request.agentId,
     taskId: request.taskId,
     sandboxId: request.sandboxId,
