@@ -171,13 +171,18 @@ export function importOfflineBundle(bundleDirectory: string): {bundleId:string; 
     if (!fs.statSync(sourceFile).isFile()) throw new Error(`offline bundle file missing: ${item.file}`);
     const digest=sha256File(sourceFile);
     if (digest !== item.sha256) throw new Error(`offline bundle digest mismatch: ${item.id}`);
+    const existing=store.read().resources.find(r=>r.id===item.id);
+    if(existing && existing.sha256!==item.sha256){
+      recordAudit({actor:"CREATOR",action:"offline.bundle.merge",resource:item.id,decision:"DENY"},{reason:"PROVENANCE_CONFLICT",existingDigest:existing.sha256,incomingDigest:item.sha256,bundleId:manifest.bundleId});
+      throw new Error(`offline bundle provenance conflict: ${item.id}`);
+    }
     const destination=path.join(destinationRoot,safeId(item.id));
     fs.copyFileSync(sourceFile,destination);
     const now=new Date().toISOString();
     store.update(p=>{
-      const existing=p.resources.find(r=>r.id===item.id);
-      const resource:OfflineResource={id:item.id,kind:item.kind,name:item.name,version:item.version,location:destination,sha256:item.sha256,sizeBytes:item.sizeBytes,source:item.source,metadata:{...item.metadata,bundleId:manifest.bundleId},verified:true,createdAt:existing?.createdAt??now,updatedAt:now};
-      if(existing) Object.assign(existing,resource); else p.resources.push(resource);
+      const current=p.resources.find(r=>r.id===item.id);
+      const resource:OfflineResource={id:item.id,kind:item.kind,name:item.name,version:item.version,location:destination,sha256:item.sha256,sizeBytes:item.sizeBytes,source:item.source,metadata:{...(current?.metadata??{}),...item.metadata,bundleId:manifest.bundleId},verified:true,createdAt:current?.createdAt??now,updatedAt:now};
+      if(current) Object.assign(current,resource); else p.resources.push(resource);
     });
     imported.push(item.id);
   }
