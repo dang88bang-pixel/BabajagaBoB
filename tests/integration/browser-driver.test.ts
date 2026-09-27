@@ -56,10 +56,10 @@ describe("CDP browser driver",()=>{
     try {
       const deadline=Date.now()+15000;
       let ready=false;
-      while(Date.now()<deadline){try{const response=await fetch("http://127.0.0.1:"+port+"/");if(response.ok){ready=true;break;}}catch{} await new Promise(r=>setTimeout(r,100));}
+      while(Date.now()<deadline){try{const response=await fetch("http://127.0.0.1:"+port+"/");if(response.ok){ready=true;break;}}catch{ /* server is still starting */ } await new Promise(r=>setTimeout(r,100));}
       expect(ready).toBe(true);
       const {executeBrowserAction}=await import("../../lib/browser-driver");
-      const result=await executeBrowserAction("NAVIGATE",{url:"http://127.0.0.1:"+port+"/"});
+      const result=await executeBrowserAction("NAVIGATE",{url:"http://127.0.0.1:"+port+"/"}) as {ok:boolean; title?:string};
       expect(result.ok).toBe(true);
       expect(result.title).toContain("BabajagaBoB");
     } finally {
