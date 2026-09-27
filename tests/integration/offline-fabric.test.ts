@@ -48,7 +48,7 @@ describe("offline fabric",()=>{
     const source=path.join(root,"source.txt"); fs.writeFileSync(source,"original");
     const resource=registerOfflineResource({kind:"DOCUMENTATION",name:"conflict-source",location:source,metadata:{}});
     verifyOfflineResource(resource.id);
-    const bundle=path.join(root,"bundle-conflict"); exportOfflineBundle([resource.id],bundle);
+    const bundle=fs.mkdtempSync(path.join(os.tmpdir(),"bob-bundle-conflict-")); exportOfflineBundle([resource.id],bundle);
     const manifest=JSON.parse(fs.readFileSync(path.join(bundle,"manifest.json"),"utf8"));
     const item=manifest.resources[0]; fs.writeFileSync(path.join(bundle,item.file),"changed");
     item.sha256=crypto.createHash("sha256").update("changed").digest("hex");
