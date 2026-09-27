@@ -178,7 +178,7 @@ export async function executeAuthorized(request: ExecutionRequest): Promise<Exec
   if (!token) deny(request, "TOKEN_EXISTS", "capability token not found");
 
   // 8.-12. Token-Bindungen (Subject, Task, Sandbox, Risk) + Gültigkeit.
-  const validation = validateCapabilityToken(request.capabilityTokenId, ["task:execute", "sandbox:run"], {
+  const validation = validateCapabilityToken(request.capabilityTokenId, ["task:execute", "sandbox:run", "computer:execute"], {
     subject: request.agentId,
     taskId: request.taskId,
     sandboxId: request.sandboxId,
@@ -356,6 +356,12 @@ export async function executeAuthorized(request: ExecutionRequest): Promise<Exec
  * Adapter erzwingt davor den kanonischen Preflight, bindet Task/Agent/Sandbox/
  * Capability-Token und verbraucht das Einmal-Token unmittelbar vor dem Driver.
  */
+function taskRisk(taskId: string): Risk {
+  const task = getControlState().tasks.find(t => t.taskId === taskId);
+  if (!task) throw new ExecutionDeniedError("TASK_EXISTS", "task not found");
+  return task.risk;
+}
+
 export async function executeComputerAuthorized(request: ExecutionRequest & {
   computerId: string;
   computerAction: string;
@@ -370,6 +376,8 @@ export async function executeComputerAuthorized(request: ExecutionRequest & {
   if (!computer.capabilities.some(cap => cap.kind === computer.kind && cap.actions.includes(request.computerAction as never))) throw new ExecutionDeniedError("COMPUTER_CAPABILITY", "computer capability does not permit action");
   const token = capabilityTokens().find(t => t.id === request.capabilityTokenId);
   if (!token) throw new ExecutionDeniedError("TOKEN_EXISTS", "capability token not found");
+  const computerToken = validateCapabilityToken(request.capabilityTokenId, ["computer:execute"], {subject: request.agentId, taskId: request.taskId, sandboxId: request.sandboxId, risk: taskRisk(request.taskId)});
+  if (!computerToken.valid) throw new ExecutionDeniedError("COMPUTER_CAPABILITY_TOKEN", computerToken.reason);
   try {
     consumeCapabilityToken(request.capabilityTokenId, request.agentId);
   } catch (error) {
