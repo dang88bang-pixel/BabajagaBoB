@@ -141,10 +141,18 @@ export async function executeBrowserAction(action:string,input:Input,timeoutMs=3
       case "NAVIGATE": {
         const url=typeof input.url==="string"?input.url:"";
         await command(browser.ws,++id,"Page.navigate",{url});
-        await new Promise(resolve => setTimeout(resolve, 200));
-        const titleResult = await command(browser.ws,++id,"Runtime.evaluate",{expression:"document.title",returnByValue:true});
-        const bodyResult = await command(browser.ws,++id,"Runtime.evaluate",{expression:"document.body?.innerText ?? \"\"",returnByValue:true});
-        return {ok:true,action,url,title:typeof titleResult.result?.value==="string"?titleResult.result.value:"",text:typeof bodyResult.result?.value==="string"?bodyResult.result.value:""};
+        const readyDeadline=Date.now()+5000;
+        let title="";
+        let text="";
+        while(Date.now()<readyDeadline){
+          const titleResult = await command(browser.ws,++id,"Runtime.evaluate",{expression:"document.title",returnByValue:true});
+          const bodyResult = await command(browser.ws,++id,"Runtime.evaluate",{expression:"document.body?.innerText ?? \\"\\"",returnByValue:true});
+          title=typeof titleResult.result?.value==="string"?titleResult.result.value:"";
+          text=typeof bodyResult.result?.value==="string"?bodyResult.result.value:"";
+          if(text.trim().length>0) break;
+          await new Promise(resolve => setTimeout(resolve,100));
+        }
+        return {ok:text.trim().length>0,action,url,title,text};
       }
       case "CLICK": {
         const selector=typeof input.selector==="string"?input.selector:"";
