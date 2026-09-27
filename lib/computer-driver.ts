@@ -5,6 +5,7 @@ import {observe} from "./observability";
 import {listComputers} from "./computer-use";
 import {executeBrowserAction} from "./browser-driver";
 import {executeBrowserAction} from "./browser-driver";
+import {executeBrowserAction} from "./browser-driver";
 
 export type ComputerExecutionRequest = {
   computerId: string;
@@ -37,6 +38,24 @@ export async function executeComputerAction(req: ComputerExecutionRequest): Prom
   if(!instance.capabilities.some(c=>c.kind===instance.kind && c.actions.includes(req.action as never))) throw new Error("computer capability does not permit action");
   const timeout=Math.min(Math.max(Number(req.timeoutMs??30000),1000),120000);
   const started=Date.now();
+  // Browser-Instanzen verwenden den nativen CDP-Driver, sobald ein explizit
+  // freigegebener Browser-Binary-Pfad vorhanden ist. Fehlt er, bleibt der
+  // generische Driverpfad für Test-/Stub-Umgebungen bestehen und ist weiterhin
+  // fail closed über BOB_COMPUTER_DRIVER.
+  if(instance.kind === "BROWSER" && (process.env.BOB_BROWSER_EXECUTABLE ?? "").trim()) {
+    const browserResult = await executeBrowserAction(req.action, req.input, timeout);
+    const serialized = JSON.stringify(browserResult);
+    const out:ComputerExecutionResult={
+      computerId:req.computerId, action:req.action,
+      status:browserResult.ok ? "SUCCEEDED" : "FAILED", exitCode:browserResult.ok ? 0 : 1,
+      stdoutDigest:digest(serialized), stderrDigest:digest(""), stdoutLength:serialized.length, stderrLength:0,
+      durationMs:Date.now()-started
+    };
+    recordAudit({actor:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:out.status==="SUCCEEDED"?"ALLOW":"DENY"},
+      {action:req.action,driver:"native-cdp",exitCode:out.exitCode,stdoutDigest:out.stdoutDigest,stderrDigest:out.stderrDigest,durationMs:out.durationMs});
+    observe({type:"computer.executed",message:`Computer ${req.computerId} ${req.action} -> ${out.status}`,status:out.status==="SUCCEEDED"?"COMPLETED":"ERROR",actor:"AG-BROWSER",agentId:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:out.status==="SUCCEEDED"?"ALLOW":"DENY",argumentsValue:{action:req.action,driver:"native-cdp"}});
+    return out;
+  }
   if (instance.kind === "BROWSER") {
     const started = Date.now();
     try {
