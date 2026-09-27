@@ -363,6 +363,11 @@ export async function executeComputerAuthorized(request: ExecutionRequest & {
 }): Promise<ComputerExecutionResult> {
   const gate = preflight(request);
   if (!gate.allowed) throw new ExecutionDeniedError("COMPUTER_EXECUTION_GATE", gate.reasons.join("; "));
+  const computer = listComputers().find(x => x.id === request.computerId);
+  if (!computer) throw new ExecutionDeniedError("COMPUTER_EXISTS", "computer not found");
+  if (!computer.authorized) throw new ExecutionDeniedError("COMPUTER_AUTHORIZATION", "computer is not authorized");
+  if (computer.state !== "EXECUTING") throw new ExecutionDeniedError("COMPUTER_STATE", "computer must be executing");
+  if (!computer.capabilities.some(cap => cap.kind === computer.kind && cap.actions.includes(request.computerAction as never))) throw new ExecutionDeniedError("COMPUTER_CAPABILITY", "computer capability does not permit action");
   const token = capabilityTokens().find(t => t.id === request.capabilityTokenId);
   if (!token) throw new ExecutionDeniedError("TOKEN_EXISTS", "capability token not found");
   try {
