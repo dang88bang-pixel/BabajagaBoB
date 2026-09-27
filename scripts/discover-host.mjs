@@ -54,7 +54,22 @@ function capabilities() {
   return found;
 }
 
-function loadOrCreateKeyPair() {\n  if (existsSync(PRIVATE_KEY_FILE)) {\n    const privateKey=crypto.createPrivateKey(readFileSync(PRIVATE_KEY_FILE,"utf8"));\n    const publicKey=crypto.createPublicKey(privateKey);\n    return {privateKey,publicKey};\n  }\n  const pair=crypto.generateKeyPairSync("ed25519");\n  mkdirSync(KEY_DIR,{recursive:true,mode:0o700});\n  writeFileSync(PRIVATE_KEY_FILE,pair.privateKey.export({type:"pkcs8",format:"pem"}));\n  chmodSync(PRIVATE_KEY_FILE,0o600);\n  return pair;\n}\nconst keyPair=loadOrCreateKeyPair();\nconst publicKeyPem=keyPair.publicKey.export({type:"spki",format:"pem"}).toString();\n\nconst identity = {
+function loadOrCreateKeyPair() {
+  if (existsSync(PRIVATE_KEY_FILE)) {
+    const privateKey=crypto.createPrivateKey(readFileSync(PRIVATE_KEY_FILE,"utf8"));
+    const publicKey=crypto.createPublicKey(privateKey);
+    return {privateKey,publicKey};
+  }
+  const pair=crypto.generateKeyPairSync("ed25519");
+  mkdirSync(KEY_DIR,{recursive:true,mode:0o700});
+  writeFileSync(PRIVATE_KEY_FILE,pair.privateKey.export({type:"pkcs8",format:"pem"}));
+  chmodSync(PRIVATE_KEY_FILE,0o600);
+  return pair;
+}
+const keyPair=loadOrCreateKeyPair();
+const publicKeyPem=keyPair.publicKey.export({type:"spki",format:"pem"}).toString();
+
+const identity = {
   id: DEVICE_ID,
   name: hostname(),
   os: platform(),
@@ -88,7 +103,14 @@ if (enrolled.status !== 201) {
   console.error(`discover-host: Meldung verweigert (HTTP ${enrolled.status}) ${enrolled.text.slice(0, 200)}`);
   process.exit(1);
 }
-const challengeResponse = await call("attestation-challenge");\nif (challengeResponse.status !== 200) { console.error(`discover-host: Attestierungs-Challenge verweigert (HTTP ${challengeResponse.status})`); process.exit(1); }\nconst challenge = challengeResponse.body?.challenge;\nconst attestationPayload = Buffer.from(JSON.stringify({deviceId:DEVICE_ID,nonce:challenge?.nonce}));\nconst signature = crypto.sign(null,attestationPayload,keyPair.privateKey).toString("base64url");\nconst attestationResponse = await fetch(`${BASE}/api/devices`, {method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"attestation-verify",secret:SECRET,id:DEVICE_ID,nonce:challenge?.nonce,signature})});\nif (attestationResponse.status !== 200 || !(await attestationResponse.clone().json()).attestation?.verified) { console.error(`discover-host: kryptographische Attestierung fehlgeschlagen (HTTP ${attestationResponse.status})`); process.exit(1); }\nconst heartbeat = await call("heartbeat");
+const challengeResponse = await call("attestation-challenge");
+if (challengeResponse.status !== 200) { console.error(`discover-host: Attestierungs-Challenge verweigert (HTTP ${challengeResponse.status})`); process.exit(1); }
+const challenge = challengeResponse.body?.challenge;
+const attestationPayload = Buffer.from(JSON.stringify({deviceId:DEVICE_ID,nonce:challenge?.nonce}));
+const signature = crypto.sign(null,attestationPayload,keyPair.privateKey).toString("base64url");
+const attestationResponse = await fetch(`${BASE}/api/devices`, {method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"attestation-verify",secret:SECRET,id:DEVICE_ID,nonce:challenge?.nonce,signature})});
+if (attestationResponse.status !== 200 || !(await attestationResponse.clone().json()).attestation?.verified) { console.error(`discover-host: kryptographische Attestierung fehlgeschlagen (HTTP ${attestationResponse.status})`); process.exit(1); }
+const heartbeat = await call("heartbeat");
 if (heartbeat.status !== 200) {
   console.error(`discover-host: Lebenszeichen verweigert (HTTP ${heartbeat.status}) ${heartbeat.text.slice(0, 200)}`);
   process.exit(1);
