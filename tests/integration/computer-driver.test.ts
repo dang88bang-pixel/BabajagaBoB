@@ -6,7 +6,7 @@ import {TEST_BOOTSTRAP_SECRET} from "../helpers/runtime";
 
 describe("Computer Use execution boundary",()=>{
   let root:string;
-  beforeEach(()=>{root=fs.mkdtempSync(path.join(os.tmpdir(),"bob-computer-"));process.env.BOB_STORAGE_DIR=root;vi.resetModules();});
+  beforeEach(()=>{root=fs.mkdtempSync(path.join(os.tmpdir(),"bob-computer-"));process.env.BOB_STORAGE_DIR=root;process.env.BOB_BOOTSTRAP_SECRET=TEST_BOOTSTRAP_SECRET;vi.resetModules();});
 
   it("führt eine autorisierte Aktion über Execution Gate, Broker und echten Child-Process-Driver aus",async()=>{
     const driver=path.join(root,"driver.mjs");
