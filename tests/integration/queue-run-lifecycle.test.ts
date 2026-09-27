@@ -87,10 +87,16 @@ describe("Job-Queue: Lebenszyklus und Garantien", () => {
     const job = queue.enqueueJob({taskId: "TASK-QL-5", agentId: "AG-BUILD", risk: "LOW", backoffMs: 25, idempotencyKey: "retry-ql-1"});
     queue.leaseJob(job.jobId, "worker-r");
     queue.startJob(job.jobId, "worker-r");
+    const beforeFail = Date.now();
     const retried = queue.failJob(job.jobId, "absichtlicher Testfehler", "worker-r")!;
     expect(retried.state).toBe("QUEUED");
     expect(retried.error).toContain("absichtlicher Testfehler");
-    expect(new Date(retried.nextAttemptAt!).getTime()).toBeGreaterThan(Date.now() - 5);
+    // Der Retry liegt im Backoff-Fenster (25 ms) — gegen vor dem Fehler
+    // gemessene Zeit statt gegen ein zweites Date.now() geprüft, damit
+    // langsame CI-Läufer nicht über Millisekunden-Differenzen stolpern.
+    const nextAttempt = new Date(retried.nextAttemptAt!).getTime();
+    expect(nextAttempt).toBeGreaterThanOrEqual(beforeFail + 20);
+    expect(nextAttempt).toBeLessThanOrEqual(beforeFail + 3000);
     // Während des Backoffs ist der Job weder claim- noch leasebar.
     expect(queue.claimNextJob("worker-r2")).toBeNull();
     expect(queue.leaseJob(job.jobId, "worker-r2")).toBeNull();
