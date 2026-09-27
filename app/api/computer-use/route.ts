@@ -2,7 +2,7 @@ import {NextResponse} from "next/server";
 import {allocateComputer, authorizeComputer, listComputers, registerComputer, releaseComputer, startComputer} from "@/lib/computer-use";
 import {guardOrDeny} from "@/lib/api/api-gate";
 import {objectField} from "@/lib/request-validation";
-import {executeComputerAction} from "@/lib/computer-driver";
+import {executeComputerAuthorized} from "@/lib/execution-broker";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,7 +32,8 @@ export async function POST(request: Request) {
       const denied = guardOrDeny(request, {action: "computer:execute", taskId: body.taskId, sandboxId: body.sandboxId});
       if (denied) return denied;
       if (typeof body.id !== "string" || typeof body.computerAction !== "string") return NextResponse.json({error:"id and computerAction required"},{status:400});
-      return NextResponse.json({result: await executeComputerAction({computerId:body.id,action:body.computerAction,input:body.input && typeof body.input==="object" ? body.input : {},timeoutMs:body.timeoutMs})});
+      if (typeof body.taskId!=="string" || typeof body.agentId!=="string" || typeof body.sandboxId!=="string" || typeof body.capabilityTokenId!=="string") return NextResponse.json({error:"taskId, agentId, sandboxId and capabilityTokenId are required for brokered computer execution"},{status:400});
+      return NextResponse.json({result: await executeComputerAuthorized({taskId:body.taskId,agentId:body.agentId,sandboxId:body.sandboxId,capabilityTokenId:body.capabilityTokenId,runId:typeof body.runId==="string"?body.runId:undefined,approvalId:typeof body.approvalId==="string"?body.approvalId:undefined,environment:typeof body.environment==="string"?body.environment:undefined,argv:["COMPUTER_USE"],timeoutMs:body.timeoutMs,computerId:body.id,computerAction:body.computerAction,computerInput:body.input && typeof body.input==="object" ? body.input : {}})});
     }
     if (body.action === "allocate") {
       const denied = guardOrDeny(request, {action: "computer:allocate", taskId: body.taskId, sandboxId: body.sandboxId});
