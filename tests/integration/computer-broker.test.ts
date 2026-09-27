@@ -42,6 +42,7 @@ describe("Computer Use through Execution Broker",()=>{
 
     expect(result.status).toBe("SUCCEEDED");
     expect(authority.getCapabilityToken(issued.token.id)?.uses).toBe(1);
+    computers.releaseComputer(computer.id);
   });
 
   it("rejects a computer allocated to another task before consuming the capability",async()=>{
