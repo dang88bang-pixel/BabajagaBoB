@@ -40,4 +40,5 @@ describe("offline fabric",()=>{
     const sync=f.prepareOfflineSync(verified.id,"b".repeat(64));
     expect(f.verifyOfflineSync(sync.id,"b".repeat(64)).status).toBe("VERIFIED");
   });
+  it("verweigert einen Herkunftskonflikt beim Merge statt bestehende Ressourcen zu überschreiben",async()=>{\n    const source=path.join(root,"data.bin");fs.writeFileSync(source,"one");\n    const f=await import("../../lib/offline-fabric");\n    const r=f.verifyOfflineResource(f.registerOfflineResource({kind:"DATASET",name:"dataset",location:source,metadata:{}}).id);\n    const bundleDir=fs.mkdtempSync(path.join(os.tmpdir(),"bob-conflict-bundle-"));\n    f.exportOfflineBundle([r.id],bundleDir);\n    fs.writeFileSync(path.join(bundleDir,r.id+".resource"),"two");\n    expect(()=>f.importOfflineBundle(bundleDir)).toThrow(/digest mismatch/);\n  });\n
 });
