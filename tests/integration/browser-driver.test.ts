@@ -19,8 +19,8 @@ describe("real Chromium browser driver",()=>{
   try{
    expect((await run("NAVIGATE",{url})).ok).toBe(true);
    expect((await run("SCREENSHOT",{})).digest).toMatch(/^[a-f0-9]{64}$/);
-   expect((await run("CLICK",{selector:"#b"})).ok).toBe(true);
-   expect((await run("TYPE",{selector:"#x",text:"BabajagaBoB"})).ok).toBe(true);
+   expect((await run("CLICK",{url,selector:"#b"})).ok).toBe(true);
+   expect((await run("TYPE",{url,selector:"#x",text:"BabajagaBoB"})).ok).toBe(true);
   } finally {server.close();}
  },30000);
 });
