@@ -23,12 +23,16 @@
  *  - Kein Shell-Aufruf: die Fähigkeitsprüfung nutzt ausschließlich `existsSync`
  *    auf bekannten Pfaden und Node-Bordmittel (kein `exec`, kein `spawn`).
  */
-import {existsSync} from "node:fs";
+import {existsSync, readFileSync, writeFileSync, chmodSync} from "node:fs";
 import {arch, cpus, hostname, platform, totalmem} from "node:os";
+import crypto from "node:crypto";
+import path from "node:path";
 
 const BASE = process.env.BASE ?? "http://127.0.0.1:3000";
 const SECRET = process.env.BOB_DEVICE_ENROLLMENT_SECRET ?? "";
 const DEVICE_ID = process.env.BOB_DEVICE_ID ?? `DEV-${hostname().toUpperCase().replace(/[^A-Z0-9]/g, "-").slice(0, 24)}`;
+const KEY_DIR = process.env.BOB_DEVICE_KEY_DIR ?? path.join(process.env.HOME ?? "/tmp",".babajagabob");
+const PRIVATE_KEY_FILE = path.join(KEY_DIR, `${DEVICE_ID}.ed25519.pem`);
 
 if (SECRET.length < 16) {
   console.error("discover-host: BOB_DEVICE_ENROLLMENT_SECRET fehlt oder ist zu kurz (<16 Zeichen) — fail closed, es wird nichts gesendet.");
@@ -50,7 +54,7 @@ function capabilities() {
   return found;
 }
 
-const identity = {
+function loadOrCreateKeyPair() {\n  if (existsSync(PRIVATE_KEY_FILE)) {\n    const privateKey=crypto.createPrivateKey(readFileSync(PRIVATE_KEY_FILE,"utf8"));\n    const publicKey=crypto.createPublicKey(privateKey);\n    return {privateKey,publicKey};\n  }\n  const pair=crypto.generateKeyPairSync("ed25519");\n  writeFileSync(KEY_DIR,"",{flag:"a"});\n  writeFileSync(PRIVATE_KEY_FILE,pair.privateKey.export({type:"pkcs8",format:"pem"}));\n  chmodSync(PRIVATE_KEY_FILE,0o600);\n  return pair;\n}\nconst keyPair=loadOrCreateKeyPair();\nconst publicKeyPem=keyPair.publicKey.export({type:"spki",format:"pem"}).toString();\n\nconst identity = {
   id: DEVICE_ID,
   name: hostname(),
   os: platform(),
@@ -84,7 +88,7 @@ if (enrolled.status !== 201) {
   console.error(`discover-host: Meldung verweigert (HTTP ${enrolled.status}) ${enrolled.text.slice(0, 200)}`);
   process.exit(1);
 }
-const heartbeat = await call("heartbeat");
+const challengeResponse = await call("attestation-challenge");\nif (challengeResponse.status !== 200) { console.error(`discover-host: Attestierungs-Challenge verweigert (HTTP ${challengeResponse.status})`); process.exit(1); }\nconst challenge = challengeResponse.body?.challenge;\nconst attestationPayload = Buffer.from(JSON.stringify({deviceId:DEVICE_ID,nonce:challenge?.nonce}));\nconst signature = crypto.sign(null,attestationPayload,keyPair.privateKey).toString("base64url");\nconst attestationResponse = await fetch(`${BASE}/api/devices`, {method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"attestation-verify",secret:SECRET,id:DEVICE_ID,nonce:challenge?.nonce,signature})});\nif (attestationResponse.status !== 200 || !(await attestationResponse.clone().json()).attestation?.verified) { console.error(`discover-host: kryptographische Attestierung fehlgeschlagen (HTTP ${attestationResponse.status})`); process.exit(1); }\nconst heartbeat = await call("heartbeat");
 if (heartbeat.status !== 200) {
   console.error(`discover-host: Lebenszeichen verweigert (HTTP ${heartbeat.status}) ${heartbeat.text.slice(0, 200)}`);
   process.exit(1);
