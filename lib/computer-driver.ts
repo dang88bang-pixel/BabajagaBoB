@@ -4,8 +4,6 @@ import {recordAudit} from "./audit";
 import {observe} from "./observability";
 import {listComputers} from "./computer-use";
 import {executeBrowserAction} from "./browser-driver";
-import {executeBrowserAction} from "./browser-driver";
-import {executeBrowserAction} from "./browser-driver";
 
 export type ComputerExecutionRequest = {
   computerId: string;
