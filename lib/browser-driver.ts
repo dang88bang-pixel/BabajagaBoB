@@ -89,7 +89,8 @@ export async function executeBrowserAction(action:string,input:Input,timeoutMs=3
   const exe=executable();
   if(!exe) throw new Error("BOB_BROWSER_EXECUTABLE is not configured");
   if(/[\s;|&]/.test(exe)) throw new Error("browser executable path is invalid");
-  if(action==="SCREENSHOT") return screenshotFallback(exe,timeoutMs);\n  if(action==="NAVIGATE") {
+  if(action==="SCREENSHOT") return screenshotFallback(exe,timeoutMs);
+  if(action==="NAVIGATE") {
     const url=typeof input.url==="string"?input.url:"";
     if(!/^https?:\\/\\//i.test(url)) throw new Error("NAVIGATE requires an http(s) URL");
     const parsed=new URL(url);
