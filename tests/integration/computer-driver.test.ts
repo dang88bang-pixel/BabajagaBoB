@@ -10,7 +10,7 @@ describe("Computer Use execution boundary",()=>{
 
   it("führt eine autorisierte Aktion über Execution Gate, Broker und echten Child-Process-Driver aus",async()=>{
     const driver=path.join(root,"driver.mjs");
-    fs.writeFileSync(driver,'process.stdin.on("data",b=>{const x=JSON.parse(String(b)); process.stdout.write(JSON.stringify({ok:true,action:x.action})); process.exit(0);});');
+    fs.writeFileSync(driver,'#!/usr/bin/env node\nprocess.stdin.on("data",b=>{const x=JSON.parse(String(b)); process.stdout.write(JSON.stringify({ok:true,action:x.action})); process.exit(0);});');
     fs.chmodSync(driver,0o700);
     process.env.BOB_COMPUTER_DRIVER=driver;
 
