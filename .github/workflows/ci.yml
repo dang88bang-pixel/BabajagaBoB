@@ -161,6 +161,26 @@ jobs:
           BOB_STORAGE_DIR: ${{ runner.temp }}/bob-oci
           BOB_OCI_IMAGE: alpine:3.20
 
+  browser-driver:
+    name: Real Browser Driver
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Detect system browser
+        run: |
+          if command -v google-chrome >/dev/null 2>&1; then echo "BOB_BROWSER_EXECUTABLE=$(command -v google-chrome)" >> "$GITHUB_ENV";
+          elif command -v chromium >/dev/null 2>&1; then echo "BOB_BROWSER_EXECUTABLE=$(command -v chromium)" >> "$GITHUB_ENV";
+          elif command -v chromium-browser >/dev/null 2>&1; then echo "BOB_BROWSER_EXECUTABLE=$(command -v chromium-browser)" >> "$GITHUB_ENV";
+          else echo "Kein Chromium/Chrome auf dem Runner vorhanden" >&2; exit 1; fi
+      - name: Browser-CDP Integration
+        run: npx vitest run tests/integration/browser-driver.test.ts
+
   verification-gate:
     name: Verification Gate
     runs-on: ubuntu-latest
