@@ -1,0 +1,115 @@
+import {spawn} from "node:child_process";
+import {mkdtemp, rm} from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import crypto from "node:crypto";
+
+type Input = Record<string, unknown>;
+type CdpResult = {result?: {value?: unknown;data?: string};error?: {message?: string}};
+
+const digest=(v:string)=>crypto.createHash("sha256").update(v).digest("hex");
+const executable=()=> (process.env.BOB_BROWSER_EXECUTABLE ?? "").trim();
+
+function command(browser: WebSocket, id:number, method:string, params:Record<string,unknown>={}):Promise<CdpResult>{
+  return new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>{browser.removeEventListener("message",onMessage);reject(new Error("browser command timeout"));},15000);
+    const onMessage=(event:MessageEvent)=>{
+      try {
+        const message=JSON.parse(String(event.data));
+        if(message.id!==id)return;
+        clearTimeout(timer);browser.removeEventListener("message",onMessage);
+        if(message.error) reject(new Error(message.error.message??"browser command failed"));
+        else resolve(message);
+      } catch {}
+    };
+    browser.addEventListener("message",onMessage);
+    browser.send(JSON.stringify({id,method,params}));
+  });
+}
+
+async function waitForWs(port:number, deadline:number):Promise<string>{
+  while(Date.now()<deadline){
+    try {
+      const r=await fetch(`http://127.0.0.1:${port}/json/version`);
+      if(r.ok){const j=await r.json() as {webSocketDebuggerUrl?:string};if(j.webSocketDebuggerUrl)return j.webSocketDebuggerUrl;}
+    } catch {}
+    await new Promise(r=>setTimeout(r,100));
+  }
+  throw new Error("browser DevTools endpoint unavailable");
+}
+
+async function launch(exe:string){
+  const profile=await mkdtemp(path.join(os.tmpdir(),"bob-browser-"));
+  const args=["--headless=new","--disable-gpu","--disable-dev-shm-usage","--no-sandbox","--remote-debugging-port=0",`--user-data-dir=${profile}`,"about:blank"];
+  const child=spawn(exe,args,{shell:false,stdio:["ignore","pipe","pipe"],env:{PATH:process.env.PATH,LANG:process.env.LANG,HOME:profile}});
+  let text="";
+  const collect=(b:Buffer)=>{text+=String(b);if(text.length>128000)text=text.slice(-128000);};
+  child.stdout.on("data",collect); child.stderr.on("data",collect);
+  const deadline=Date.now()+10000;
+  let port=0;
+  while(Date.now()<deadline){
+    const m=text.match(/DevTools listening on ws:\/\/127\.0\.0\.1:(\d+)\//);
+    if(m){port=Number(m[1]);break;}
+    if(child.exitCode!==null)break;
+    await new Promise(r=>setTimeout(r,50));
+  }
+  if(!port){child.kill("SIGKILL");await rm(profile,{recursive:true,force:true});throw new Error("browser did not expose DevTools");}
+  const wsUrl=await waitForWs(port,deadline);
+  const ws=new WebSocket(wsUrl);
+  await new Promise<void>((resolve,reject)=>{const t=setTimeout(()=>reject(new Error("browser websocket timeout")),5000);ws.addEventListener("open",()=>{clearTimeout(t);resolve()},{once:true});ws.addEventListener("error",()=>{clearTimeout(t);reject(new Error("browser websocket error"))},{once:true});});
+  return {child,ws,profile};
+}
+
+export async function executeBrowserAction(action:string,input:Input,timeoutMs=30000){
+  const exe=executable();
+  if(!exe) throw new Error("BOB_BROWSER_EXECUTABLE is not configured");
+  if(/[\s;|&]/.test(exe)) throw new Error("browser executable path is invalid");
+  const browser=await launch(exe);
+  let id=0;
+  try{
+    await command(browser.ws,++id,"Page.enable");
+    await command(browser.ws,++id,"Runtime.enable");
+    switch(action){
+      case "NAVIGATE": {
+        const url=typeof input.url==="string"?input.url:"";
+        if(!/^https?:\/\//i.test(url))throw new Error("NAVIGATE requires an http(s) URL");
+        await command(browser.ws,++id,"Page.navigate",{url});
+        return {ok:true,action,url};
+      }
+      case "CLICK": {
+        const selector=typeof input.selector==="string"?input.selector:"";
+        if(!selector)throw new Error("CLICK requires selector");
+        const r=await command(browser.ws,++id,"Runtime.evaluate",{expression:`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw new Error("element not found");e.click();return true})()`,returnByValue:true});
+        return {ok:true,action,value:r.result?.value};
+      }
+      case "TYPE": {
+        const selector=typeof input.selector==="string"?input.selector:"";
+        const value=typeof input.text==="string"?input.text:"";
+        if(!selector)throw new Error("TYPE requires selector");
+        const r=await command(browser.ws,++id,"Runtime.evaluate",{expression:`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw new Error("element not found");e.focus();e.value=${JSON.stringify(value)};e.dispatchEvent(new Event("input",{bubbles:true}));e.dispatchEvent(new Event("change",{bubbles:true}));return true})()`,returnByValue:true});
+        return {ok:true,action,value:r.result?.value};
+      }
+      case "SELECT": {
+        const selector=typeof input.selector==="string"?input.selector:"";
+        const value=typeof input.value==="string"?input.value:"";
+        if(!selector)throw new Error("SELECT requires selector");
+        const r=await command(browser.ws,++id,"Runtime.evaluate",{expression:`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw new Error("element not found");e.value=${JSON.stringify(value)};e.dispatchEvent(new Event("change",{bubbles:true}));return true})()`,returnByValue:true});
+        return {ok:true,action,value:r.result?.value};
+      }
+      case "SCREENSHOT": {
+        const r=await command(browser.ws,++id,"Page.captureScreenshot",{format:"png"});
+        const data=r.result?.data??"";
+        return {ok:true,action,bytes:Math.floor(data.length*0.75),digest:digest(data),encoding:"base64"};
+      }
+      case "OCR": {
+        throw new Error("OCR requires an explicitly configured OCR capability; browser text extraction is not OCR");
+      }
+      default:
+        throw new Error(`browser action not supported: ${action}`);
+    }
+  } finally {
+    browser.ws.close();
+    browser.child.kill("SIGKILL");
+    await rm(browser.profile,{recursive:true,force:true});
+  }
+}
