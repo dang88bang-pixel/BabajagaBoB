@@ -178,7 +178,7 @@ export async function executeAuthorized(request: ExecutionRequest): Promise<Exec
   if (!token) deny(request, "TOKEN_EXISTS", "capability token not found");
 
   // 8.-12. Token-Bindungen (Subject, Task, Sandbox, Risk) + Gültigkeit.
-  const validation = validateCapabilityToken(request.capabilityTokenId, ["task:execute", "sandbox:run"], {
+  const validation = validateCapabilityToken(request.capabilityTokenId, mode === "COMPUTER" ? ["computer:execute", "sandbox:run"] : ["task:execute", "sandbox:run"], {
     subject: request.agentId,
     taskId: request.taskId,
     sandboxId: request.sandboxId,
@@ -361,7 +361,7 @@ export async function executeComputerAuthorized(request: ExecutionRequest & {
   computerAction: string;
   computerInput: Record<string, unknown>;
 }): Promise<ComputerExecutionResult> {
-  const gate = preflight(request);
+  const gate = preflight(request, "COMPUTER");
   if (!gate.allowed) throw new ExecutionDeniedError("COMPUTER_EXECUTION_GATE", gate.reasons.join("; "));
   const computer = listComputers().find(x => x.id === request.computerId);
   if (!computer) throw new ExecutionDeniedError("COMPUTER_EXISTS", "computer not found");
@@ -398,7 +398,7 @@ export async function executeComputerAuthorized(request: ExecutionRequest & {
   return result;
 }
 /** Prüfprotokoll ohne Ausführung (Dry-Run für UI/Governance). */
-export function preflight(request: Omit<ExecutionRequest, "argv">): {allowed: boolean; checks: string[]; reasons: string[]} {
+export function preflight(request: Omit<ExecutionRequest, "argv">, mode: "STANDARD" | "COMPUTER" = "STANDARD"): {allowed: boolean; checks: string[]; reasons: string[]} {
   const state = getControlState();
   const checks: string[] = [];
   const reasons: string[] = [];
@@ -419,7 +419,7 @@ export function preflight(request: Omit<ExecutionRequest, "argv">): {allowed: bo
     checks.push("AGENT_TASK_BINDING");
     if (task.assignedAgent !== request.agentId) reasons.push("task is assigned to another agent");
     checks.push("AGENT_CAPABILITY");
-    if (!agent.capabilities.includes("task:execute")) reasons.push("agent lacks task:execute");
+    if (mode === "COMPUTER" ? !agent.capabilities.includes("computer:use") : !agent.capabilities.includes("task:execute")) reasons.push(mode === "COMPUTER" ? "agent lacks computer:use" : "agent lacks task:execute");
     checks.push("AGENT_RISK");
     if (riskRank[agent.maxRisk] < riskRank[task.risk]) reasons.push("agent risk scope is insufficient");
   }
