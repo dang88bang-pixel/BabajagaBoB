@@ -45,7 +45,21 @@ async function launch(exe:string,timeoutMs:number){
   let text="";
   const collect=(b:Buffer)=>{text+=String(b);if(text.length>128000)text=text.slice(-128000);};
   child.stdout.on("data",collect); child.stderr.on("data",collect);
-  const deadline=Date.now()+Math.min(Math.max(timeoutMs,1000),120000);\n  const port=9222;\n  while(Date.now()<deadline && child.exitCode===null){\n    try {\n      const probe=await fetch(`http://127.0.0.1:${port}/json/version`);\n      if(probe.ok) break;\n    } catch { /* browser endpoint not ready */ }\n    await new Promise(r=>setTimeout(r,50));\n  }\n  if(child.exitCode!==null){\n    const diagnostics=text.trim().slice(-4000);\n    await rm(profile,{recursive:true,force:true});\n    throw new Error(`browser exited before DevTools: ${diagnostics}`);\n  }\n  const wsUrl=await waitForWs(port,deadline);
+  const deadline=Date.now()+Math.min(Math.max(timeoutMs,1000),120000);
+  const port=9222;
+  while(Date.now()<deadline && child.exitCode===null){
+    try {
+      const probe=await fetch(`http://127.0.0.1:${port}/json/version`);
+      if(probe.ok) break;
+    } catch { /* browser endpoint not ready */ }
+    await new Promise(r=>setTimeout(r,50));
+  }
+  if(child.exitCode!==null){
+    const diagnostics=text.trim().slice(-4000);
+    await rm(profile,{recursive:true,force:true});
+    throw new Error(`browser exited before DevTools: ${diagnostics}`);
+  }
+  const wsUrl=await waitForWs(port,deadline);
   const ws=new WebSocket(wsUrl);
   await new Promise<void>((resolve,reject)=>{const t=setTimeout(()=>reject(new Error("browser websocket timeout")),5000);ws.addEventListener("open",()=>{clearTimeout(t);resolve()},{once:true});ws.addEventListener("error",()=>{clearTimeout(t);reject(new Error("browser websocket error"))},{once:true});});
   return {child,ws,profile};
