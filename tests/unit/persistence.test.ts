@@ -51,11 +51,12 @@ describe("DurableStore (Persistenz)", () => {
   it("prüft Revision und atomisches Rename innerhalb derselben exklusiven Schreibsperre", () => {
     const store = storeModule.createStore("unit-lock-window", 1, () => ({count: 0}));
     const lockFile = path.join(root, ".unit-lock-window.lock");
+    const originalRename = fs.renameSync;
     const rename = vi.spyOn(fs, "renameSync");
     let observedLockDuringRename = false;
     rename.mockImplementation((oldPath, newPath) => {
       observedLockDuringRename = fs.existsSync(lockFile);
-      return fs.renameSync.wrappedMethod(oldPath, newPath);
+      return originalRename(oldPath, newPath);
     });
     try {
       store.write({count: 1});
