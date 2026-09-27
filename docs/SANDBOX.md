@@ -21,7 +21,7 @@ Sandbox-Typen: `development`, `experiment`, `test`, `browser`, `security`,
 
 | Grenze | Umsetzung |
 |---|---|
-| Netzwerk | Default `DENY`. `ALLOWLIST` ist **fail closed**: `NETWORK_POLICY`-Denial, solange keine kontrollierte Egress-Schicht existiert. Klassifikation `NOT_IMPLEMENTED`. |
+| Netzwerk | Default `DENY`. `ALLOWLIST` bleibt **fail closed**, solange kein Egress-Proxy läuft. Mit laufender kontrollierter Egress-Schicht (`BOB_EGRESS_PROXY=1`, Phase 4 / 7.1) öffnet sich `ALLOWLIST` in der lokalen Laufzeit ohne Kernel-Namespaces: Verkehr läuft über den Loopback-Proxy, ausschließlich zu Allowlist-Hosts/-Ports, über gepinnte Adressen (DNS-Pinning, Anti-Rebinding), jede Entscheidung auditiert. Unter `NAMESPACES` und in OCI (`--network none`) bleibt `ALLOWLIST` fail closed (keine Route zum Proxy). |
 | Shell | `argv[]` + `shell: false`; `isShellInterpreter` und `firstMetacharacterArg` verweigern Shell-Programme und Metazeichen (`SHELL_PROGRAM`, `SHELL_METACHAR`). |
 | Ressourcen | `ResourceLimits` (CPU, RAM, Storage, Timeout, Prozesse) mit Obergrenzen im Broker (`RESOURCE_LIMITS`). |
 | Workspace | Eigener Workspace je Sandbox unter `<BOB_STORAGE_DIR>/sandboxes/<sandboxId>`; Logs und Artefakte bleiben darin. |

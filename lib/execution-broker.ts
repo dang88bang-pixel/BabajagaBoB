@@ -5,6 +5,7 @@ import {capabilityTokens, consumeCapabilityToken, validateCapabilityToken} from 
 import {recordAudit} from "./audit";
 import {executionEvidenceContent, recordArtifact, verifyArtifact} from "./artifacts";
 import {activeSandboxRuntime, runtimeHandle} from "./runtime-factory";
+import {egressProxyUrl} from "./egress";
 import {observe} from "./observability";
 import {addProvenanceEdge, addProvenanceNode} from "./provenance";
 import {MAX_ARGV_LENGTH, firstMetacharacterArg, isShellInterpreter} from "./argv-policy";
@@ -200,10 +201,14 @@ export async function executeAuthorized(request: ExecutionRequest): Promise<Exec
     if (approval.taskId !== task.taskId) deny(request, "APPROVAL_BINDING", "approval belongs to a different task");
   }
 
-  // 15. Netzwerkpolicy: DENY ist Standard, ALLOWLIST ist fail-closed.
-  if (sandbox.network === "ALLOWLIST") deny(request, "NETWORK_POLICY", "ALLOWLIST networking is fail-closed");
+  // 15. Netzwerkpolicy: DENY ist Standard. ALLOWLIST ist fail-closed, solange
+  // keine kontrollierte Egress-Schicht läuft (Phase 4 / 7.1). Ist der
+  // Egress-Proxy aktiv, übernimmt er die Durchsetzung (Allowlist + DNS-Pinning
+  // + Audit); die Runtime-Voraussetzungen prüft die Laufzeit beim Anlegen.
+  const egressActive = Boolean(egressProxyUrl());
+  if (sandbox.network === "ALLOWLIST" && !egressActive) deny(request, "NETWORK_POLICY", "ALLOWLIST networking is fail-closed (egress proxy not running)");
   const handle = runtimeHandle(request.sandboxId);
-  if (handle?.network.mode === "ALLOWLIST") deny(request, "NETWORK_POLICY", "runtime network allowlist is not available");
+  if (handle?.network.mode === "ALLOWLIST" && !egressActive) deny(request, "NETWORK_POLICY", "runtime network allowlist requires the egress proxy");
 
   // 16. Ressourcenlimits müssen innerhalb der Policy-Grenzen liegen.
   const limits = handle?.limits;

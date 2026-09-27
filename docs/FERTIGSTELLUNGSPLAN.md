@@ -175,11 +175,11 @@ Nachweis, Statusaktualisierung.
 
 | Nr. | To-do | Matrix/Bezug | Abhängigkeit | Freigabe |
 |---|---|---|---|---|
-| 7.1 | **Egress-Proxy + DNS-Pinning** implementieren, danach `ALLOWLIST` freischalten (bis dahin bleibt Netzwerk fail closed `DENY`) | TODO §2, MASTER §10/§22 | keine | ☐ offen |
+| 7.1 | **Egress-Proxy + DNS-Pinning** implementieren, danach `ALLOWLIST` freischalten (bis dahin bleibt Netzwerk fail closed `DENY`) | TODO §2, MASTER §10/§22 | keine | ✅ umgesetzt 2026-09-27 (Freigabe): `lib/egress/` (Allowlist-Store ohne IP-Literale, DNS-Pinning mit TTL, Loopback-Forward-Proxy inkl. CONNECT, Audit je ALLOW/DENY, fail closed bei Drainage/Kill-Switch), Start über `BOB_EGRESS_PROXY=1` (`instrumentation.ts`), API `app/api/egress/route.ts`, UI-Abschnitt „Egress". `ALLOWLIST` öffnet sich damit in Fabric/lokaler Laufzeit/Broker, wo der Proxy erreichbar ist; unter Kernel-Namespaces und in OCI bleibt es fail closed. Tests: `tests/unit/egress-allowlist.test.ts` (7), `tests/integration/egress-proxy.test.ts` (9), Sabotage-Probe `ALLOWLIST_FAIL_CLOSED` auf beide Ebenen aktualisiert. |
 | 7.2 | **Computer-Use-Treiber** (Browser-Automation/Desktop-Eingabe/Screenshots, z. B. Playwright-/VNC-Treiber im Sandbox-Workspace); Aktionen ausschließlich über Gate/Broker | `CU-001` | 6.2-Umgebung | ☐ offen |
 | 7.3 | **Geräte-Netz-Scan (ARP/mDNS) + Attestierung** | TODO §2 (`DEV-*`) | 7.1 für Netz-Zugriff | ☐ offen |
 | 7.4 | **Offline Fabric**: lokaler Paket-/Modell-/Wissensbestand und herkunftstreuer Sync-/Merge-Pfad | `OFF-001`, MASTER §36 | keine | ☐ offen |
-| 7.5 | **Aktionsspezifische `guardRequest`-Prüfungen** für die restlichen, noch nicht verdrahteten Routen ergänzen (Defense-in-depth; heute fail closed über Middleware) | STATUS „Offene Restarbeiten" | keine | ☐ offen |
+| 7.5 | **Aktionsspezifische `guardRequest`-Prüfungen** für die restlichen, noch nicht verdrahteten Routen ergänzen (Defense-in-depth; heute fail closed über Middleware) | STATUS „Offene Restarbeiten" | keine | ✅ geprüft & verriegelt 2026-09-27: Bestandsaufnahme zeigt, dass bereits **jede** Route einen aktionsspezifischen Guard trägt; einzige bewusste Ausnahme ist `/api/auth` (stellt die Session aus, vgl. `middleware.ts`). Neu: statischer Verdrahtungs-Regressionstest `tests/security/route-guard-wiring.test.ts` (3), der jede künftig ungesicherte Route fail closed meldet. STATUS-„Offene Restarbeiten" entsprechend bereinigt. |
 
 ---
 

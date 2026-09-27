@@ -184,6 +184,7 @@ if (only && selected.length === 0) {
 // stillschweigend als Start- und Wiederherstellungsbasis dienen — sonst würde
 // ein späterer Lauf die Verschmutzung als „Original" festschreiben und am Ende
 // scheinbar korrekt wiederherstellen. Fail closed: lieber abbrechen.
+const preexistingDirty = new Set();
 if (!CHECK_ONLY) {
   const allowDirty = process.env.SABOTAGE_ALLOW_DIRTY === "1";
   const catalogFiles = [...new Set(probes.flatMap(probe => editsOf(probe).map(edit => edit.file)))];
@@ -197,6 +198,7 @@ if (!CHECK_ONLY) {
     process.exit(2);
   } else if (dirtyBefore.length > 0) {
     say(`WARNUNG: SABOTAGE_ALLOW_DIRTY=1 — Startbasis ist verschmutzt (${dirtyBefore.join(", ")}); Wiederherstellung geht auf diesen Zustand zurück.`);
+    for (const file of dirtyBefore) preexistingDirty.add(file);
   }
 }
 
@@ -339,13 +341,20 @@ ok(`Alle ${originals.size} Dateien sind unverändert (sha256 geprüft).`);
 // Abschlussprüfung gegen git (Nachhärtung Befund B8): Selbst wenn die
 // Hash-Prüfung grün ist, muss der Arbeitsbaum für git sauber sein — die
 // Hash-Prüfung kennt nur den Zustand, den das Skript selbst gesehen hat.
-const dirtyAfter = gitDirty([...originals.keys()]);
-if (dirtyAfter === null) {
-  say("Hinweis: git nicht verfügbar — die git-Abschlussprüfung entfällt.");
-} else if (dirtyAfter.length > 0) {
-  bad(`Quellcode laut git nicht im Ausgangszustand: ${dirtyAfter.join(", ")} — Wiederherstellung unvollständig (Befund B8).`);
-  console.error("Sabotage: Lauf gilt als ungültig (Exit 2). `git status` prüfen und die Dateien gezielt wiederherstellen.");
-  process.exit(2);
+// Bereits vor dem Lauf verschmutzte Dateien (SABOTAGE_ALLOW_DIRTY) zählen
+// nicht als neue Beschädigung; im CHECK-Modus wird nichts mutiert.
+if (!CHECK_ONLY) {
+  const dirtyAfter = gitDirty([...originals.keys()]);
+  if (dirtyAfter === null) {
+    say("Hinweis: git nicht verfügbar — die git-Abschlussprüfung entfällt.");
+  } else {
+    const newlyDirty = dirtyAfter.filter(file => !preexistingDirty.has(file));
+    if (newlyDirty.length > 0) {
+      bad(`Quellcode laut git nicht im Ausgangszustand: ${newlyDirty.join(", ")} — Wiederherstellung unvollständig (Befund B8).`);
+      console.error("Sabotage: Lauf gilt als ungültig (Exit 2). `git status` prüfen und die Dateien gezielt wiederherstellen.");
+      process.exit(2);
+    }
+  }
 }
 
 const caught = results.filter(entry => entry.outcome === "CAUGHT").length;

@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import {spawn} from "node:child_process";
 import {createStore, storageRoot} from "./persistence/store";
 import {assertArgvPolicy} from "./argv-policy";
+import {egressProxyUrl} from "./egress";
 import {isolationActive, isolationReport, runIsolated} from "./ns-isolation";
 import type {
   ExecutionResult,
@@ -142,7 +143,21 @@ export class LocalWorkspaceRuntime implements SandboxRuntime {
 
   async create(spec: SandboxSpec): Promise<RuntimeHandle> {
     if (spec.network.mode === "ALLOWLIST") {
-      throw new Error("ALLOWLIST networking is fail-closed: no controlled egress layer is available for the local runtime");
+      // ALLOWLIST öffnet sich nur über die kontrollierte Egress-Schicht
+      // (Phase 4 / 7.1) — und auch dann nur, wo der Proxy erreichbar ist:
+      // Unter Kernel-Namespaces (`unshare --net`) hat die Sandbox keine Route
+      // zum Proxy; dort bleibt die Vorgabe DENY kernel-erzwungen und ALLOWLIST
+      // fail closed. Ohne Namespaces läuft der Verkehr über die gesetzten
+      // Proxy-Variablen (Policy-Ebene, ehrlich als solche ausgewiesen).
+      if (!egressProxyUrl()) {
+        throw new Error("ALLOWLIST networking is fail-closed: the egress proxy is not running (BOB_EGRESS_PROXY=1)");
+      }
+      if (isolationActive()) {
+        throw new Error("ALLOWLIST networking is fail-closed: kernel network isolation is active and the isolated namespace has no route to the egress proxy");
+      }
+      if ((spec.network.allowlist ?? []).length === 0) {
+        throw new Error("ALLOWLIST networking requires at least one allowlisted host");
+      }
     }
     if (spec.limits.timeoutMs <= 0 || spec.limits.memoryMb <= 0 || spec.limits.cpuMillicores <= 0 || spec.limits.processes <= 0) {
       throw new Error("invalid sandbox resource limits");
@@ -302,7 +317,11 @@ export class LocalWorkspaceRuntime implements SandboxRuntime {
     if (argv.length === 0) throw new Error("argv must not be empty");
     // Zentrale Policy: keine Shell-Strings (Interpreter, Metazeichen, Limits).
     assertArgvPolicy(argv, "local sandbox runtime");
-    if (record.network.mode === "ALLOWLIST") throw new Error("ALLOWLIST execution is fail-closed in the local runtime");
+    if (record.network.mode === "ALLOWLIST") {
+      const proxyUrl = egressProxyUrl();
+      if (!proxyUrl) throw new Error("ALLOWLIST execution is fail-closed: the egress proxy is not running");
+      if (isolationActive()) throw new Error("ALLOWLIST execution is fail-closed: kernel network isolation has no route to the egress proxy");
+    }
     const [command, ...args] = argv;
     const timeout = Math.min(timeoutMs ?? record.limits.timeoutMs, record.limits.timeoutMs);
     // Kernel-Isolation, wenn die Umgebung sie zulässt (BOB_NS_ISOLATION=auto|on).
@@ -315,11 +334,23 @@ export class LocalWorkspaceRuntime implements SandboxRuntime {
     }
     const started = Date.now();
     return new Promise<ExecutionResult>((resolve, reject) => {
+      const proxyUrl = record.network.mode === "ALLOWLIST" ? egressProxyUrl() : null;
       const child = spawn(command, args, {
         cwd: record.workspace,
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
-        env: {PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: record.workspace, LANG: "C.UTF-8", NODE_ENV: process.env.NODE_ENV ?? "production", BOB_SANDBOX: record.sandboxId}
+        env: {
+          PATH: process.env.PATH ?? "/usr/bin:/bin",
+          HOME: record.workspace,
+          LANG: "C.UTF-8",
+          NODE_ENV: process.env.NODE_ENV ?? "production",
+          BOB_SANDBOX: record.sandboxId,
+          // ALLOWLIST: Verkehr läuft über den kontrollierten Egress-Proxy
+          // (Allowlist + DNS-Pinning + Audit). Vorgabe bleibt DENY.
+          ...(proxyUrl
+            ? {HTTP_PROXY: proxyUrl, HTTPS_PROXY: proxyUrl, http_proxy: proxyUrl, https_proxy: proxyUrl, NO_PROXY: "", no_proxy: ""}
+            : {})
+        }
       });
       let stdout = "";
       let stderr = "";

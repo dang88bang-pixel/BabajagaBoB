@@ -838,7 +838,7 @@
         "docs/SANDBOX.md"
       ],
       "status": "PASS",
-      "note": ""
+      "note": "Seit 2026-09-27 existiert die kontrollierte Egress-Schicht (lib/egress/, Phase 4 / 7.1): Loopback-Proxy mit Allowlist und DNS-Pinning, Audit je Entscheidung. Die Anforderung bleibt erfüllt: Vorgabe ist DENY; ohne laufenden Proxy (BOB_EGRESS_PROXY=1) ist ALLOWLIST weiterhin fail closed, und auch mit Proxy nur dort verfügbar, wo der Proxy erreichbar ist (lokale Laufzeit ohne Kernel-Namespaces). Zusätzliche Nachweise: tests/unit/egress-allowlist.test.ts, tests/integration/egress-proxy.test.ts."
     },
     {
       "id": "EXP-001",

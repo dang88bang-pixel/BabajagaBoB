@@ -1,5 +1,6 @@
 import {createStore} from "../persistence/store";
 import {activeSandboxRuntime, runtimeModeLabel} from "../runtime-factory";
+import {egressCoversHost, egressProxyUrl} from "../egress";
 import {observe} from "../observability";
 import {getControlState, destroySandboxRecord, getTask, registerSandbox, updateSandboxStatus} from "../control-plane";
 import type {ResourceLimits, Risk, Sandbox, SandboxLifecycle, SandboxType} from "../types";
@@ -60,15 +61,32 @@ function assertBinding(taskId: string, agentId: string) {
 
 export async function createSandbox(request: SandboxRequest): Promise<Sandbox> {
   const task = assertBinding(request.taskId, request.agentId);
-  if (request.network === "ALLOWLIST" || (request.allowlist?.length ?? 0) > 0) {
-    throw new Error("ALLOWLIST networking is fail-closed until a controlled egress layer exists");
+  // Vorgabe ist DENY. ALLOWLIST öffnet sich ausschließlich über die
+  // kontrollierte Egress-Schicht (Phase 4 / 7.1): Proxy aktiv, jeder
+  // gewünschte Host in der Allowlist, sonst fail closed.
+  const requestedAllowlist = (request.allowlist ?? []).map(host => String(host));
+  const wantsAllowlist = request.network === "ALLOWLIST" || requestedAllowlist.length > 0;
+  let networkMode: "DENY" | "ALLOWLIST" = "DENY";
+  let networkAllowlist: string[] = [];
+  if (wantsAllowlist) {
+    if (!egressProxyUrl()) {
+      throw new Error("ALLOWLIST networking is fail-closed until the controlled egress layer is running (BOB_EGRESS_PROXY=1)");
+    }
+    if (requestedAllowlist.length === 0) throw new Error("ALLOWLIST networking requires explicit allowlist hosts");
+    for (const host of requestedAllowlist) {
+      if (!egressCoversHost(host)) {
+        throw new Error(`egress allowlist does not cover ${host}`);
+      }
+    }
+    networkMode = "ALLOWLIST";
+    networkAllowlist = requestedAllowlist;
   }
   const sandboxId = request.sandboxId ?? `SB-${Date.now().toString(36).toUpperCase()}`;
   const limits: ResourceLimits = {...DEFAULTS, ...request.limits};
   const handle = await activeSandboxRuntime.create({
     id: sandboxId,
     type: request.type,
-    network: {mode: "DENY", allowlist: []},
+    network: {mode: networkMode, allowlist: networkAllowlist},
     limits,
     risk: request.risk,
     image: request.image,
@@ -80,7 +98,7 @@ export async function createSandbox(request: SandboxRequest): Promise<Sandbox> {
     type: request.type,
     status: "RUNNING",
     lifecycle: handle.state === "RUNNING" ? "RUNNING" : "CREATED",
-    network: "DENY",
+    network: networkMode,
     taskId: request.taskId,
     agentId: request.agentId,
     runtimeMode: handle.mode === "REAL_OCI" ? "real-oci" : handle.mode === "REAL_LOCAL" ? "real-local" : "mock",
@@ -106,7 +124,7 @@ export async function createSandbox(request: SandboxRequest): Promise<Sandbox> {
     sandboxId,
     action: "sandbox.create",
     resource: sandboxId,
-    argumentsValue: {type: request.type, limits, network: "DENY", runtime: runtimeModeLabel()}
+    argumentsValue: {type: request.type, limits, network: networkMode, allowlist: networkAllowlist, runtime: runtimeModeLabel()}
   });
   void task;
   return sandbox;

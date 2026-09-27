@@ -18,7 +18,9 @@ import type {
  *
  * Härtung:
  *  - kein Shell-String: ausschließlich argv[] mit `shell:false`
- *  - `--network none` (ALLOWLIST ist fail-closed, bis ein Egress-Proxy existiert)
+ *  - `--network none` (ALLOWLIST bleibt hier fail closed: Container haben keine
+ *    Route zum Egress-Proxy; die kontrollierte Egress-Schicht gilt für die
+ *    lokale Laufzeit, Phase 4 / 7.1)
  *  - `--read-only` Root-Dateisystem, tmpfs für /tmp ohne exec
  *  - `--cap-drop ALL`, `--security-opt no-new-privileges`
  *  - CPU-, Speicher- und PID-Limits, harte Timeouts
@@ -113,7 +115,11 @@ export class OciContainerRuntimeAdapter implements SandboxRuntime {
 
   async create(spec: SandboxSpec): Promise<RuntimeHandle> {
     assertSafeImage(spec.image ?? process.env.BOB_OCI_IMAGE ?? "alpine:3.20");
-    if (spec.network.mode === "ALLOWLIST") throw new Error("OCI ALLOWLIST networking is fail-closed until a controlled egress proxy exists");
+    if (spec.network.mode === "ALLOWLIST") {
+      // OCI-Container laufen hartverdrahtet mit `--network none`; eine
+      // Egress-Route zum Proxy gibt es dort nicht (Phase 4 / 7.1). Vorgabe DENY.
+      throw new Error("OCI runtime supports DENY only (containers run with --network none); ALLOWLIST requires the local runtime with the egress proxy");
+    }
     if (spec.limits.timeoutMs <= 0 || spec.limits.memoryMb <= 0 || spec.limits.cpuMillicores <= 0 || spec.limits.processes <= 0) throw new Error("Invalid sandbox resource limits");
     const containerName = `bob-${spec.id.toLowerCase().replace(/[^a-z0-9-]/g, "-")}`;
     assertSafeName(containerName);

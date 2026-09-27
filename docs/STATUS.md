@@ -57,6 +57,7 @@ Produktionsreife:
 | Apps / App-Module | TESTED | Modul-Sandbox über die Fabric gebunden (Task+Agent), `tests/integration/app-module-sandbox.test.ts` |
 | argv-Policy (keine Shell-Strings) | TESTED | `lib/argv-policy.ts`, Broker-DENY + Runtime-Enforcement |
 | OCI Runtime (`REAL_OCI`) | TESTED (CI) / lokal UNVERIFIED | Voller OCI-Lifecycle gegen echten Docker-Daemon in CI grün nachgewiesen (Lauf `36278988500`, Job „Real OCI Runtime", 2026-09-27); Storage-Quota wird ehrlich gemeldet (`ENFORCED`, sonst ausdrücklich `UNAVAILABLE` — Fallback nach cgroup-Muster, Befund B1 behoben). Lokal bleibt der Nachweis `UNVERIFIED`: kein Docker/Podman in der Umgebung. Ersatzweise **kernel-seitige** Isolation als `NAMESPACES` umgesetzt und gemessen — bewusst **nicht** als `CONTAINER` bezeichnet |
+| Egress-Schicht (Proxy, Allowlist, DNS-Pinning) | TESTED | Kontrollierter Egress (Phase 4 / 7.1): Forward-Proxy nur für Loopback, vermittelt ausschließlich Allowlist-Hosts/-Ports über **gepinnte** Adressen (Anti-Rebinding, Verbindung nur zur gepinnten IP), jede Entscheidung ALLOW/DENY auditiert; fail closed bei Drainage und Kill-Switch. `BOB_EGRESS_PROXY=1` schaltet ihn beim Serverstart frei, sonst bleibt Vorgabe DENY. Erlaubt `ALLOWLIST` in der lokalen Laufzeit **ohne** Kernel-Namespaces (Proxy-Variablen, Policy-Ebene — ehrlich so ausgewiesen); unter `NAMESPACES` und in OCI (`--network none`) bleibt ALLOWLIST fail closed. `lib/egress/`, `app/api/egress/route.ts`, UI-Abschnitt „Egress"; Tests: `tests/unit/egress-allowlist.test.ts` (7), `tests/integration/egress-proxy.test.ts` (9) |
 | Task Queue / Runs | TESTED | Lease/Retry/Backoff/Dead-Letter, Lease-Ablauf, Ownership, Idempotenz; eigener Test `tests/integration/queue-run-lifecycle.test.ts` (18 Tests, 2026-09-26) |
 | Worker / Dispatcher | TESTED | `worker.cycle` (Fehlerpfad) in `tests/integration/worker-recovery.test.ts`; Dispatcher/`runOnce` und Job-Kapselung in `tests/integration/dispatcher-worker.test.ts` (10 Tests, 2026-09-26); Befund B5 (zweiter Dispatch wirft statt idempotenter Antwort) im Fertigstellungsplan |
 
@@ -109,7 +110,7 @@ Produktionsreife:
 3. Capability Token muss zu Subjekt, Task, Sandbox, Umgebung und Risiko passen.
 4. Selbstvergabe, Wildcards, TTL-Überschreitung und Risk-Eskalation sind verboten.
 5. Kill Switch blockiert Execution; Freigabe nur durch CREATOR.
-6. Netzwerk ist standardmäßig deaktiviert; `ALLOWLIST` ist fail closed.
+6. Netzwerk ist standardmäßig deaktiviert; `ALLOWLIST` bleibt fail closed, solange kein Egress-Proxy läuft, und öffnet sich danach nur über die kontrollierte Egress-Schicht (Allowlist + DNS-Pinning + Audit, Phase 4 / 7.1).
 7. Shell-Interpreter und Shell-Metazeichen sind in jedem `argv`-Element verboten.
 8. Legacy-Administrationstoken ist standardmäßig deaktiviert und nie Creator.
 9. OCI-Nutzung ohne Shell-Interpolation; Härtungsflags unverifiziert. Ist `BOB_NS_ISOLATION=on` gesetzt,
@@ -123,8 +124,9 @@ Produktionsreife:
 > und dokumentierter Befunde).
 
 
-- Aktionsspezifische `guardRequest`-Prüfungen für die restlichen, noch nicht verdrahteten Routen ergänzen
-  (Kern- und Schreibpfade sind verdrahtet, übrige Routen sind über die Middleware fail closed).
+- Aktionsspezifische `guardRequest`-Prüfungen: am 2026-09-27 vollständig geprüft — jede Route trägt einen
+  aktionsspezifischen Guard; einzige bewusste Ausnahme ist `/api/auth` (stellt die Session aus). Verriegelt
+  durch den statischen Verdrahtungs-Test `tests/security/route-guard-wiring.test.ts` (fail closed bei Lücken).
 - OCI-Runtime: voller Lifecycle gegen echten Daemon in CI nachgewiesen (Lauf `36278988500`,
   Job „Real OCI Runtime", 2026-09-27); lokal ohne Daemon gilt weiterhin die gemessene Stufe
   `NAMESPACES`. Für `OCI-001 = PASS` fehlt nur der Nachweis der erzwungenen Storage-Quota auf

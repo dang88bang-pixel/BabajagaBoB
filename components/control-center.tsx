@@ -29,6 +29,7 @@ type SectionId =
   | "Queue"
   | "Runs"
   | "Sandboxes"
+  | "Egress"
   | "Runtimes"
   | "Evidence"
   | "Audit"
@@ -74,6 +75,7 @@ const NAV: {id: SectionId; label: string; group: string}[] = [
   {id: "Queue", label: "Warteschlange", group: "Ausführung"},
   {id: "Runs", label: "Runs", group: "Ausführung"},
   {id: "Sandboxes", label: "Sandboxes", group: "Ausführung"},
+  {id: "Egress", label: "Egress", group: "Ausführung"},
   {id: "Runtimes", label: "Runtimes", group: "Ausführung"},
   {id: "Evidence", label: "Evidenz", group: "Nachweis"},
   {id: "Audit", label: "Audit", group: "Nachweis"},
@@ -229,6 +231,19 @@ const SOURCES: Partial<Record<SectionId, {url: string; path?: string[]; columns:
       {key: "taskId", label: "Task"},
       {key: "agentId", label: "Agent"},
       {key: "runtimeMode", label: "Runtime"}
+    ]
+  },
+  Egress: {
+    url: "/api/egress",
+    path: ["entries"],
+    note:
+      "Kontrollierte Egress-Schicht (Phase 4 / 7.1): Vorgabe ist DENY. ALLOWLIST öffnet sich nur bei laufendem Egress-Proxy (BOB_EGRESS_PROXY=1) und nur für hier gelistete Hosts — vermittelt über gepinnte Adressen (DNS-Pinning) und auditiert. IP-Literale sind ausgeschlossen.",
+    columns: [
+      {key: "host", label: "Host"},
+      {key: "ports", label: "Ports", render: row => (Array.isArray(row.ports) ? (row.ports as number[]).join(", ") : "—")},
+      {key: "addedBy", label: "Angelegt von"},
+      {key: "addedAt", label: "Angelegt am"},
+      {key: "reason", label: "Begründung"}
     ]
   },
   Runtimes: {

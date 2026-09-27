@@ -26,6 +26,13 @@ Routen `app/api/persistence/route.ts`, `app/api/metrics/route.ts`,
   `docs/RUNTIME.md` §2b — das `chown` der Kontrolldateien **und** der Start innerhalb des
   delegierten Baums sind beide nötig; ohne sie meldet `/api/runtime` ehrlich `UNAVAILABLE` und
   Ausführungen mit Speicher-/Prozesslimits werden verweigert, statt still ohne Limit zu laufen).
+- Kontrollierter Egress (optional, Phase 4 / 7.1): `BOB_EGRESS_PROXY=1` startet beim Serverstart
+  einen Loopback-Forward-Proxy; `BOB_EGRESS_PROXY_PORT` legt den Port fest (Standard: automatisch).
+  Ohne die Variable bleibt die Netzwerk-Vorgabe `DENY` und `ALLOWLIST` ist weiterhin fail closed.
+  Allowlist-Einträge werden über `POST /api/egress` (Creator, `egress:manage`) gepflegt und sind
+  unter „Ausführung / Egress" sichtbar; jede vermittelte oder verweigerte Anfrage steht als
+  `egress:request`-Eintrag in der Audit-Kette. IP-Literale sind als Einträge ausgeschlossen,
+  Hosts werden per DNS-Pinning an ihre aufgelösten Adressen gebunden (Anti-Rebinding).
 - Root-Verzeichnis `0700`, jede Store-Datei `0600`, geschrieben atomar (tmp + rename).
 - Jeder Store ist ein Umschlag `{store, version, writtenAt, payload, digest}`; `digest` ist
   SHA-256 über `{store, version, payload}` und damit **an den Store-Namen gebunden**. Eine unter
