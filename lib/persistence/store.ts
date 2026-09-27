@@ -612,8 +612,7 @@ export function readMigrationJournal(): MigrationRecord[] {
   if (!fs.existsSync(file)) return [];
   return fs
     .readFileSync(file, "utf8")
-    .split("
-")
+    .split("\n")
     .filter(line => line.trim().length > 0)
     .map(line => JSON.parse(line) as MigrationRecord);
 }
