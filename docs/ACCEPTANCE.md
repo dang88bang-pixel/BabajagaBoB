@@ -11,11 +11,11 @@ Eingefroren: 2026-09-25. Quellen: GESAMTAUFTRAG (53 Punkte); docs/MASTER_COMPLET
 
 | Status | Anzahl | Bedeutung |
 |---|---|---|
-| ✅ PASS | 79 | Implementierung + Test + Nachweis vorhanden |
+| ✅ PASS | 80 | Implementierung + Test + Nachweis vorhanden |
 | 🟡 PARTIAL | 4 | Teilweise umgesetzt, Lücke benannt |
 | ❌ FAIL | 0 | Umgesetzt, aber Nachweis fehlgeschlagen |
 | ⚪ NOT_IMPLEMENTED | 0 | keine |
-| 🔵 NOT_VERIFIED | 3 | Vorhanden, aber Umgebung erlaubt keinen Nachweis |
+| 🔵 NOT_VERIFIED | 2 | Vorhanden, aber Umgebung erlaubt keinen Nachweis |
 | ⛔ BLOCKED | 0 | Durch äußere Abhängigkeit blockiert |
 
 ## Zielkette
