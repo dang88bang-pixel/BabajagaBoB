@@ -607,8 +607,12 @@
       "ui": [],
       "evidence": [
         {
-          "kind": "script",
-          "script": "npm run test:oci"
+          "kind": "file",
+          "path": "tests/integration/oci-runtime.test.ts"
+        },
+        {
+          "kind": "file",
+          "path": "lib/oci-runtime.ts"
         }
       ],
       "docs": [
@@ -1654,7 +1658,9 @@
           "min": 3
         }
       ],
-      "ui": [],
+      "ui": [
+        "Offline"
+      ],
       "evidence": [
         {
           "kind": "route",
@@ -3043,7 +3049,7 @@
         }
       ],
       "ui": [
-        "Computer Use"
+        "ComputerUse"
       ],
       "evidence": [
         {
@@ -3066,46 +3072,6 @@
       ],
       "status": "PARTIAL",
       "note": "Reale Child-Process-Driver-Grenze, Timeout, Minimal-Environment und Digest-Audit sind implementiert und getestet. Die konkrete Computer-Aktion muss noch als eigener zentraler Broker-/Capability-Verbrauchspfad in die kanonische Execution-Broker-Kette integriert und live verifiziert werden."
-    },
-    {
-      "id": "OFF-001",
-      "area": "Offline",
-      "phase": "P3",
-      "requirement": "Lokale Ressourcen (Modelle, Dokumentation, Pakete, Git, Images, SDKs, Daten und Indizes) werden persistent mit Digest registriert, verifiziert und für provenance-sicheren Sync vorbereitet.",
-      "implementation": [
-        "lib/offline-fabric.ts",
-        "app/api/offline/route.ts"
-      ],
-      "tests": [
-        {
-          "file": "tests/integration/offline-fabric.test.ts",
-          "min": 2
-        }
-      ],
-      "ui": [
-        "Offline"
-      ],
-      "evidence": [
-        {
-          "kind": "route",
-          "method": "GET",
-          "path": "/api/offline",
-          "expect": [
-            200,
-            401,
-            428
-          ]
-        },
-        {
-          "kind": "file",
-          "path": "lib/offline-fabric.ts"
-        }
-      ],
-      "docs": [
-        "docs/OPERATIONS.md"
-      ],
-      "status": "PASS",
-      "note": "Lokale Ressourcen werden persistent registriert; SHA-256-Verifikation ist Voraussetzung für Sync. Externe Übertragung bleibt Default-DENY."
     }
   ]
 }
