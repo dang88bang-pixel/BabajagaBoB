@@ -10,8 +10,7 @@ describe("Store write-lock security contract", () => {
     expect(source).toContain("stale = !holderAlive && ageMs > LOCK_STALE_MS;");
     const writeStart = source.indexOf("private writeEnvelope(payload: T, expectedRevision: number | null): T {");
     expect(writeStart).toBeGreaterThanOrEqual(0);
-    const writeEnd = source.indexOf("
-  /**", writeStart + 20);
+    const writeEnd = source.indexOf("\n  /**", writeStart + 20);
     const writeBody = source.slice(writeStart, writeEnd === -1 ? source.length : writeEnd);
     expect(writeBody).toContain("return this.withWriteLock(() => {");
     expect(writeBody).toContain("const onDisk = this.currentRevision();");
