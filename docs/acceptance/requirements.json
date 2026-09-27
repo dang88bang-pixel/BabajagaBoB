@@ -1,6 +1,6 @@
 {
   "schema": "bob-acceptance/1",
-  "frozenAt": "2026-09-25",
+  "frozenAt": "2026-09-27",
   "sources": [
     "GESAMTAUFTRAG (53 Punkte)",
     "docs/MASTER_COMPLETION_SPEC.md",
@@ -3070,8 +3070,8 @@
       "docs": [
         "docs/COMPUTER_USE.md"
       ],
-      "status": "PARTIAL",
-      "note": "Reale Child-Process-Driver-Grenze, Timeout, Minimal-Environment und Digest-Audit sind implementiert und getestet. Die konkrete Computer-Aktion muss noch als eigener zentraler Broker-/Capability-Verbrauchspfad in die kanonische Execution-Broker-Kette integriert und live verifiziert werden."
+      "status": "PASS",
+      "note": "Zentraler Brokerpfad ist implementiert und durch 4 Integrationstests belegt: Execution Gate/Task-Agent-Sandbox-Binding, Capability-Token mit computer:execute und Einmalverbrauch, realer Child-Process-Driver mit Timeout/Digest-Audit sowie fail-closed Verhalten ohne Driver. Der CI-Job Real Browser Driver verifiziert zusätzlich den realen CDP-Browserpfad."
     }
   ]
 }
