@@ -1,7 +1,7 @@
 # Gesamtstatus BabajagaBoB
 
-**Stand:** 2026-09-25
-**Branch:** `fix/spec-compliance-computer-offline`
+**Stand:** 2026-09-27
+**Branch:** `fix/deep-audit-round-2`
 
 ## Statuslegende
 
@@ -81,7 +81,7 @@ Produktionsreife:
 | Event Store (append-only, kausal) | TESTED | `tests/e2e/failure-recovery.test.ts` prüft Eventtypen |
 | Provenance | TESTED | Kanten im E2E-Erfolgspfad und im Live-Lauf (§4a in `docs/TESTING.md`); Schreibzugriff ist Creator-Aktion |
 | Privacy / Data Boundary | TESTED | default `DENY`, live geprüft (`GET /api/privacy`: Policy, Regeln, Grenze, kein Silent-Telemetry/Tracking/Advertising) |
-| Provider Fabric | TESTED | Katalog/Bindungen/Telemetrie persistent, Approval-gebundene Verbindung (`tests/integration/provider-fabric.test.ts`) |
+| Provider Fabric | TESTED | Katalog/Bindungen/Telemetrie persistent, Approval-gebundene Verbindung (`tests/integration/provider-fabric.test.ts`); echter externer Live-Adapter bleibt `NOT_VERIFIED` |
 | Device Fabric / Computer Use | PARTIAL | persistent; Computer Use-Lifecycle plus reale Child-Process-Driver-Grenze (`lib/computer-driver.ts`, `tests/integration/computer-driver.test.ts`); Geräte-Discovery über Enrollment-Agenten (`scripts/discover-host.mjs`, fail closed, ohne Selbst-Grant). Offen: konkreter Browser/Desktop-Treiber und aktiver Netz-Scan/Attestierung |
 | Simulation / Visualisierung | TESTED | Szenarien persistent (`lib/simulation.ts`); Renderer `lib/visualization.ts` erzeugt SVG aus dem echten Zustand (7 Arten), `assertPassiveSvg` verhindert aktive Inhalte, Größenlimit sichert vollständige Evidenzartefakte; Oberfläche zeigt Vorschau, Artefakt-ID, Digest und erneute Prüfung; `tests/integration/visualization.test.ts` (11 Tests), `scripts/audit-actions.mjs` rendert jede Art |
 | Deployment (Ausrollen, Health-Check, Rückroll) | VERIFIED | `lib/release.ts` (Slots mit sha256-Digest, atomarer `current`-Zeiger, Aufräumschutz für aktiven und Vorgänger-Slot) und `lib/deployment.ts` (Plan mit Promotion-Gates + Kill-Switch/Lockdown/Freigabe, sieben Health-Checks inkl. echter HTTP-Antworten, Ausrollen erst danach, Rückroll nur mit unversehrtem Vorgänger und anschließender Neumessung); Route `GET|POST /api/deployment` ist Creator-Aktion (Agenten-Token → 403). **„Aktiv" gilt erst nach Messung**: gleiche Build-ID *und* Start aus dem Slot. Live belegt auf Port 3100: `STAGING`-Plan mit quittierten Lücken (`BROWSER`/`EVALUATION`, mit Begründung), `PRODUCTION` benannt blockiert, Vorgang `STAGED` → `scripts/release-supervisor.sh` startet aus dem Slot und bestätigt `ACTIVE`, Plan-`--live` 84/0 und 68/68 Routen. Tests: `tests/unit/release.test.ts` (6), `tests/integration/deployment.test.ts` (7), `tests/e2e/deployment-release.test.ts` (3), `tests/security/route-guards.test.ts` (12) |
@@ -133,3 +133,13 @@ Eine Produktionsreife-Aussage wird bewusst nicht getroffen; maßgeblich sind die
 
 - **Offline Fabric:** `lib/offline-fabric.ts` persistiert lokale Ressourcen aus Modell-, Dokumentations-, Paket-, Git-, Image-, SDK-, Daten- und Indexklassen mit SHA-256. Sync wird nur für lokal verifizierte Ressourcen vorbereitet und erneut gegen einen Ziel-Digest geprüft. `/api/offline` und Control-Center-Abschnitt `Offline Fabric` sind angebunden.
 - **Computer Use Execution:** `lib/computer-driver.ts` führt autorisierte Aktionen über einen explizit konfigurierten Child-Process-Driver ohne Shell aus. Minimal-Environment, Timeout, Output-Limits und Digest-Audit sind erzwungen; ohne Driver bleibt der Pfad fail closed. Die konkrete Browser-/Desktop-Automation bleibt ein konfigurierbarer Treiber und benötigt noch einen realen Live-Nachweis.
+
+
+## Tiefenaudit 2026-09-27
+
+- TypeScript/Lint für den Reparaturstand: **PASS**.
+- Echter Docker-OCI-Lifecycle: **PASS**, GitHub Actions Run `36303131453` auf Commit `6b5724a749b7ac1f78d02a97937df4882b32e110`; OCI-Code blieb danach unverändert.
+- Security/E2E-Suite: **PASS** auf demselben CI-Lauf.
+- Gefundene und reparierte Befunde: Computer-Driver-Typecheck, OCI-Storage-Option auf Standard-Runnern, Device-Enrollment-Middleware-Grenze, Acceptance-Matrix-Duplikat/Nachweisvertrag.
+- Offline-Fabric ist jetzt **PARTIAL** statt `NOT_IMPLEMENTED`: lokale Ressourcenverifikation und provenance-erhaltender Bundle-Export/Import sind vorhanden; vollständiger paket-/modell-/wissensspezifischer Merge bleibt offen.
+- Offene Kernpunkte bleiben: echte Computer-Use-Treiber/Broker-Verbrauchskette, externe Provider-Liveverbindung, echter Browser-E2E-Nachweis und Dauer-Soak.
