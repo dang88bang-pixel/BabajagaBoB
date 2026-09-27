@@ -41,7 +41,6 @@ describe("offline fabric",()=>{
     const sync=f.prepareOfflineSync(verified.id,"b".repeat(64));
     expect(f.verifyOfflineSync(sync.id,"b".repeat(64)).status).toBe("VERIFIED");
   });
-});
 
 
   it("rejects a same-id bundle with a different digest instead of overwriting provenance",async()=>{
@@ -58,3 +57,5 @@ describe("offline fabric",()=>{
     await expect(importOfflineBundle(bundle)).rejects.toThrow(/merge conflict/);
     expect(listOfflineConflicts().length).toBeGreaterThan(0);
   });
+
+});
