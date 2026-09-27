@@ -24,6 +24,8 @@ export type OfflineResource = {
   updatedAt: string;
 };
 
+export type OfflineConflict = {id:string;resourceId:string;existingDigest:string;incomingDigest:string;bundleId:string;status:"REJECTED";createdAt:string};
+
 export type OfflineSyncRecord = {
   id: string;
   resourceId: string;
@@ -37,8 +39,8 @@ export type OfflineSyncRecord = {
 
 export type OfflineBundleManifest = {schemaVersion: 1; bundleId: string; createdAt: string; resources: Array<Pick<OfflineResource,"id"|"kind"|"name"|"version"|"sha256"|"sizeBytes"|"source"|"metadata"> & {file: string}>; manifestSha256: string};
 
-type Payload = {resources: OfflineResource[]; sync: OfflineSyncRecord[]; bundles: string[]};
-const store = createStore<Payload>("offline-fabric", 1, () => ({resources: [], sync: [], bundles: []}));
+type Payload = {resources: OfflineResource[]; sync: OfflineSyncRecord[]; bundles: string[]; conflicts?: OfflineConflict[]};
+const store = createStore<Payload>("offline-fabric", 1, () => ({resources: [], sync: [], bundles: [], conflicts: []}));
 
 const sha256File = (file: string) => crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 const safeId = (value: string) => /^[A-Za-z0-9._-]+$/.test(value) ? value : value.replace(/[^A-Za-z0-9._-]/g, "_");
@@ -187,4 +189,4 @@ export function importOfflineBundle(bundleDirectory: string): {bundleId:string; 
   return {bundleId:manifest.bundleId,imported};
 }
 
-export function offlineStoreReport() { return {...store.integrity(),bundles:store.read().bundles.length}; }
+export function listOfflineConflicts(): OfflineConflict[] { return structuredClone(store.read().conflicts ?? []); }\n\nexport function offlineStoreReport() { const p=store.read(); return {...store.integrity(),bundles:p.bundles.length,conflicts:(p.conflicts??[]).length}; }
