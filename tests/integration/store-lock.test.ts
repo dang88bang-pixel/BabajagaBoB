@@ -7,8 +7,6 @@ describe("DurableStore write-lock exclusivity", () => {
   it("does not bypass a live lock before the lock holder releases it", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "bob-lock-"));
     const lock = path.join(root, ".lock-probe.lock");
-    fs.writeFileSync(lock, JSON.stringify({pid: process.pid, at: Date.now()}), {mode: 0o600});
-
     const helper = path.join(root, "helper.mjs");
     const storePath = path.join(process.cwd(), "lib/persistence/store.ts");
     fs.writeFileSync(helper,
@@ -30,6 +28,8 @@ describe("DurableStore write-lock exclusivity", () => {
 
     let stdout = "";
     let stderr = "";
+    if (!child.pid) throw new Error("helper process has no pid");
+    fs.writeFileSync(lock, JSON.stringify({pid: child.pid, at: Date.now()}), {mode: 0o600});
     child.stdout.on("data", chunk => { stdout += String(chunk); });
     child.stderr.on("data", chunk => { stderr += String(chunk); });
 
