@@ -1,6 +1,6 @@
 import {NextResponse} from "next/server";
 import {guardOrDeny} from "@/lib/api/api-gate";
-import {listOfflineResources, offlineStatus, prepareOfflineSync, registerOfflineResource, verifyOfflineResource, verifyOfflineSync} from "@/lib/offline-fabric";
+import {exportOfflineBundle, importOfflineBundle, listOfflineResources, offlineStatus, prepareOfflineSync, registerOfflineResource, verifyOfflineResource, verifyOfflineSync} from "@/lib/offline-fabric";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -19,6 +19,8 @@ export async function POST(request: Request) {
     if(body.action==="verify") return NextResponse.json({resource:verifyOfflineResource(String(body.id))});
     if(body.action==="sync.prepare") return NextResponse.json({sync:prepareOfflineSync(String(body.id),String(body.targetDigest))},{status:201});
     if(body.action==="sync.verify") return NextResponse.json({sync:verifyOfflineSync(String(body.id),String(body.targetDigest))});
+    if(body.action==="bundle.export") return NextResponse.json({bundle:exportOfflineBundle(Array.isArray(body.resourceIds)?body.resourceIds.map(String):[],String(body.destination))},{status:201});
+    if(body.action==="bundle.import") return NextResponse.json({bundle:importOfflineBundle(String(body.destination))},{status:201});
     return NextResponse.json({error:"unsupported offline action"},{status:400});
   } catch(error) { return NextResponse.json({error:error instanceof Error?error.message:"offline error"},{status:400}); }
 }
