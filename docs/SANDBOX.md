@@ -21,7 +21,7 @@ Sandbox-Typen: `development`, `experiment`, `test`, `browser`, `security`,
 
 | Grenze | Umsetzung |
 |---|---|
-| Netzwerk | Default `DENY`. `ALLOWLIST` ist **fail closed**: `NETWORK_POLICY`-Denial, solange keine kontrollierte Egress-Schicht existiert. Klassifikation `NOT_IMPLEMENTED`. |
+| Netzwerk | Default `DENY`. `ALLOWLIST` ist **fail closed**, solange keine Egress-Allowlist konfiguriert ist (`BOB_EGRESS_ALLOWLIST`); mit Allowlist ist der Egress-Proxy (`lib/egress-proxy.ts`) der einzige Ausgang — die Sandbox erhält `HTTPS_PROXY`/`HTTP_PROXY` und `BOB_EGRESS=PROXY_ONLY`. Klassifikation `TESTED` (Proxy + DNS-Pinning), `NOT_VERIFIED` gegen das offene Internet. |
 | Shell | `argv[]` + `shell: false`; `isShellInterpreter` und `firstMetacharacterArg` verweigern Shell-Programme und Metazeichen (`SHELL_PROGRAM`, `SHELL_METACHAR`). |
 | Ressourcen | `ResourceLimits` (CPU, RAM, Storage, Timeout, Prozesse) mit Obergrenzen im Broker (`RESOURCE_LIMITS`). |
 | Workspace | Eigener Workspace je Sandbox unter `<BOB_STORAGE_DIR>/sandboxes/<sandboxId>`; Logs und Artefakte bleiben darin. |
@@ -82,3 +82,28 @@ verändern. Auch dort gelten Netzwerk-DENY, argv-Policy und Limits.
   rlimit/cgroup, Aufräumen des cgroup-Zweigs, fail closed).
 - `scripts/verify-live.sh` — Snapshot/Restore, Sandbox-Ausführung, Verweigerungen und
   gemessene Isolation über HTTP (Schritt 11).
+
+
+## Egress-Proxy (`lib/egress-proxy.ts`)
+
+`ALLOWLIST` war überall fail closed, weil es keine kontrollierte Schicht gab.
+Der Proxy ist diese Schicht:
+
+- **Keine Allowlist, kein Ausgang.** Ohne `BOB_EGRESS_ALLOWLIST` verweigert er
+  alles — auch dann, wenn er läuft. Ein unausgesprochener Default auf Port 443
+  existiert nicht: Ein Eintrag ohne Port gilt nicht.
+- **DNS-Pinning.** Der Name wird einmal aufgelöst; verbunden wird nur zu einer
+  Adresse aus dieser Menge, und die tatsächlich verbundene Gegenstelle wird
+  gegen die gepinnte Menge geprüft. Ein zweiter Lookup mit anderer Antwort
+  (DNS-Rebinding) hat damit keine Wirkung.
+- **Keine privaten Adressen.** `10/8`, `127/8`, `169.254/16`, `172.16/12`,
+  `192.168/16`, `100.64/10`, Multicast und IPv6 sind nie erreichbar — auch nicht
+  über einen erlaubten öffentlichen Namen.
+- **Nur CONNECT.** Einfache Proxy-Anfragen werden mit 403 beantwortet; der Proxy
+  ist kein offener Proxy.
+- **Jede Entscheidung wird auditiert** (`egress.connect`, ALLOW/DENY) und als
+  Ereignis festgehalten.
+
+Grenze: Bei TLS sieht der Proxy nur den Zielnamen, nicht den Inhalt.
+TLS-Inspektion ist bewusst **nicht** eingebaut — sie würde Zertifikate brechen
+und geschützte Daten lesbar machen.

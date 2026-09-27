@@ -3,6 +3,7 @@ import {createStore} from "./persistence/store";
 import {observe} from "./observability";
 import {executeAuthorized} from "./execution-broker";
 import {registerExperiment as registerControlExperiment, updateExperimentRecord} from "./control-plane";
+import {assessSignificance, type SignificanceAssessment} from "./significance";
 import type {Experiment, KnowledgeState, Status} from "./types";
 
 /**
@@ -67,6 +68,23 @@ export type ExperimentRun = {
   repeat: number;
 };
 
+/**
+ * Numerischer Messwert eines Laufs.
+ *
+ * Erst Messwerte machen eine Aussage über **Stärke** eines Unterschieds
+ * möglich. Sie sind an das Experiment und an die Gruppe (Baseline, Kontrolle,
+ * Replikation) gebunden; ohne sie bleibt die Signifikanzpr?fung ausdr?cklich
+ * ohne Ergebnis (`significant: null`), statt einen Erfolg zu behaupten.
+ */
+export type Measurement = {
+  measurementId: string;
+  experimentId: string;
+  group: ExperimentRun["kind"];
+  label: string;
+  value: number;
+  observedAt: string;
+};
+
 export type DecisionRecord = {
   decisionId: string;
   taskId: string;
@@ -89,9 +107,23 @@ type Payload = {
   experiments: ExperimentRecord[];
   evidence: Evidence[];
   runs: ExperimentRun[];
+  measurements: Measurement[];
   decisions: DecisionRecord[];
 };
-const store = createStore<Payload>("science", 2, () => ({objectives: [], experiments: [], evidence: [], runs: [], decisions: []}));
+const store = createStore<Payload>(
+  "science",
+  3,
+  () => ({objectives: [], experiments: [], evidence: [], runs: [], measurements: [], decisions: []}),
+  {
+    // Bestand behält seine Experimente; Messwerte kommen neu hinzu (leer).
+    migrations: {
+      2: (payload: unknown) => {
+        const current = (payload ?? {}) as Partial<Payload>;
+        return {...current, measurements: Array.isArray(current.measurements) ? current.measurements : []};
+      }
+    }
+  }
+);
 
 export function createObjective(x: {objectiveId?: string; missionId: string; title: string; description: string}): Objective {
   if(!x||typeof x!=="object")throw new Error("objective required");
@@ -244,6 +276,50 @@ export function listEvidence(experimentId?: string): Evidence[] {
 }
 
 /**
+ * Erfasst einen Messwert zu einem Experiment.
+ *
+ * Nur endliche Zahlen werden angenommen: ein Messwert ist die Grundlage der
+ * Signifikanzprüfung, und `NaN`, `Infinity` oder Texte w?rden die Pr?fung
+ * stillschweigend verfälschen. Unzul?ssige Werte werden abgelehnt (fail closed),
+ * nicht gerundet oder ersetzt.
+ */
+export function addMeasurement(x: Omit<Measurement, "measurementId" | "observedAt">): Measurement {
+  if (!x || typeof x !== "object") throw new Error("measurement required");
+  if (typeof x.experimentId !== "string" || x.experimentId.trim().length === 0) throw new Error("experimentId required");
+  if (!["BASELINE", "CONTROL", "REPLICATION"].includes(x.group)) throw new Error("measurement group must be BASELINE, CONTROL or REPLICATION");
+  if (typeof x.value !== "number" || !Number.isFinite(x.value)) throw new Error("measurement value must be a finite number");
+  const label = typeof x.label === "string" && x.label.trim().length > 0 ? x.label.trim().slice(0, 120) : "value";
+  const measurement: Measurement = {
+    measurementId: `MEA-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+    experimentId: x.experimentId,
+    group: x.group,
+    label,
+    value: x.value,
+    observedAt: new Date().toISOString()
+  };
+  store.update(payload => {
+    payload.measurements.push(measurement);
+    if (payload.measurements.length > 5000) payload.measurements.splice(0, payload.measurements.length - 5000);
+  });
+  observe({
+    type: "science.measurement.added",
+    message: `Messwert ${measurement.measurementId} (${label}) für ${x.group} erfasst`,
+    status: "TESTING",
+    actor: "AG-SCIENTIST",
+    agentId: "AG-SCIENTIST",
+    experimentId: x.experimentId,
+    action: "science.measurement.add",
+    resource: measurement.measurementId,
+    argumentsValue: {group: x.group, label, value: x.value}
+  });
+  return structuredClone(measurement);
+}
+
+export function listMeasurements(experimentId?: string): Measurement[] {
+  return structuredClone(store.read().measurements.filter(m => !experimentId || m.experimentId === experimentId));
+}
+
+/**
  * Führt einen Experimentlauf über den Broker aus (Baseline, Kontrolle oder Replikation).
  * `repeat` erlaubt mehrere Replikationen derselben Bedingung.
  */
@@ -329,6 +405,14 @@ export type CausalValidation = {
   alternativeExplanations: string[];
   confounders: string[];
   evidenceCount: number;
+  /** Gemessene Werte je Gruppe (Grundlage der Signifikanzprüfung). */
+  measurementCount: number;
+  /**
+   * Signifikanzprüfung der Differenz Baseline gegen Kontrolle.
+   * `significant: null` heißt **nicht prüfbar** und wird nie als Best?tigung
+   * gewertet (kein stiller Erfolg).
+   */
+  significance: SignificanceAssessment;
   reasons: string[];
 };
 
@@ -362,6 +446,27 @@ export function validateCausalChain(experimentId: string): CausalValidation {
   if (baseline.length > 0 && baseline.some(r => r.message.trim().length === 0)) reasons.push("baseline lacks observation message");
   if (control.length > 0 && control.some(r => r.message.trim().length === 0)) reasons.push("control lacks observation message");
 
+  // Statistische Tragfähigkeit: Ein Unterschied, der auch Zufall sein kann,
+  // trägt keine Kausalaussage. Geprüft wird nur mit echten Messwerten; ohne sie
+  // bleibt das Ergebnis `significant: null` und **ohne** zus?tzlichen Grund
+  // (fehlende Messwerte sind kein Fehler des Experiments, sondern eine Grenze
+  // der Aussage).
+  const measurements = payload.measurements.filter(m => m.experimentId === experimentId);
+  const significance = assessSignificance({
+    baseline: measurements.filter(m => m.group === "BASELINE").map(m => m.value),
+    control: measurements.filter(m => m.group === "CONTROL").map(m => m.value)
+  });
+  if (significance.computed && significance.significant === false) {
+    reasons.push(
+      `difference is not statistically significant (p=${significance.pValue?.toFixed(4)} ?? n/a, alpha=${significance.alpha})`
+    );
+  }
+  if (significance.computed && significance.confidence === "INSUFFICIENT") {
+    reasons.push(
+      `sample size below the required ${significance.requiredPerGroup ?? "?"} measurements per group (baseline ${significance.samples.baseline}, control ${significance.samples.control})`
+    );
+  }
+
   const contradiction = runs.some(r => r.kind === "CONTROL" && !r.accepted) || experiment.knowledgeState === "CONTRADICTED";
   const valid = reasons.length === 0;
   const state: KnowledgeState = contradiction ? "CONTRADICTED" : valid ? "ESTABLISHED" : replication.length > 0 || experiment.evidenceIds.length > 0 ? "SUPPORTED" : "HYPOTHESIS";
@@ -377,6 +482,8 @@ export function validateCausalChain(experimentId: string): CausalValidation {
     alternativeExplanations: experiment.alternativeExplanations,
     confounders: experiment.confounders,
     evidenceCount: experiment.evidenceIds.length,
+    measurementCount: measurements.length,
+    significance,
     reasons
   };
   experiment.knowledgeState = state;
@@ -399,7 +506,17 @@ export function validateCausalChain(experimentId: string): CausalValidation {
     decision: valid ? "ALLOW" : "DENY",
     purpose: "Prüfen, ob die Beobachtungen die Behauptung stützen (Baseline, Kontrolle, Replikation, Evidenz).",
     result: valid ? `ESTABLISHED (${result.replicationRuns} Replikationen, Abweichung ${result.replicationAgreement})` : `nicht belegt: ${result.reasons.join("; ")}`,
-    argumentsValue: {reasons: result.reasons, agreement: result.replicationAgreement}
+    argumentsValue: {
+      reasons: result.reasons,
+      agreement: result.replicationAgreement,
+      significance: {
+        computed: result.significance.computed,
+        method: result.significance.method,
+        pValue: result.significance.pValue,
+        significant: result.significance.significant,
+        confidence: result.significance.confidence
+      }
+    }
   });
   return result;
 }
@@ -434,6 +551,27 @@ export function listExperiments(): ExperimentRecord[] {
 
 export function scienceStoreReport() {
   return store.integrity();
+}
+
+/** Signifikanzübersicht über alle geprüften Experimente (Nachweis, keine Steuerung). */
+export function significanceSummary() {
+  const measurements = store.read().measurements;
+  const experiments = store.read().experiments;
+  const assessed = experiments.map(experiment => ({
+    experimentId: experiment.experimentId,
+    significance: assessSignificance({
+      baseline: measurements.filter(m => m.experimentId === experiment.experimentId && m.group === "BASELINE").map(m => m.value),
+      control: measurements.filter(m => m.experimentId === experiment.experimentId && m.group === "CONTROL").map(m => m.value)
+    })
+  }));
+  return {
+    measurements: measurements.length,
+    withMeasurements: assessed.filter(entry => entry.significance.samples.baseline > 0 && entry.significance.samples.control > 0).length,
+    computed: assessed.filter(entry => entry.significance.computed).length,
+    significant: assessed.filter(entry => entry.significance.significant === true).length,
+    notSignificant: assessed.filter(entry => entry.significance.significant === false).length,
+    undecidable: assessed.filter(entry => entry.significance.significant === null).length
+  };
 }
 
 export function experimentSummary() {

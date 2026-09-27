@@ -29,6 +29,16 @@ import {registerAgent, getControlState} from "./control-plane";
  *  4. Danach wird das Secret gelöscht und kann nicht erneut verwendet werden.
  */
 
+/**
+ * Fähigkeiten der System-Delegation (`CREATOR → SYSTEM-WORKER`).
+ *
+ * `computer:execute` erlaubt ausschließlich den Systempfad des Brokers
+ * (`executeComputerAuthorized`): gebunden an Task, Sandbox, Umgebung und
+ * Risiko, genau eine Verwendung, hinter Gate und Kill Switch. Eine
+ * Computer-Instanz bleibt zusätzlich creator-autorisiert.
+ */
+const SYSTEM_WORKER_CAPABILITIES = ["task:execute", "sandbox:run", "sandbox:snapshot", "regression:run", "computer:execute"];
+
 export type BootstrapState = {
   initialized: boolean;
   rootAuthorityId: string | null;
@@ -124,14 +134,14 @@ export function completeBootstrap(input: {secret: string; creatorName: string}) 
   const rootAuthorityId = `ROOT-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
   setRootAuthority(rootAuthorityId, "CREATOR");
   addAuthorityEdge(
-    {id: `EDGE-ROOT-${rootAuthorityId}`, from: "CREATOR", to: "SYSTEM-WORKER", kind: "DELEGATES", capabilities: ["task:execute", "sandbox:run", "sandbox:snapshot", "regression:run"], maxRisk: "HIGH", expiresAt: null},
+    {id: `EDGE-ROOT-${rootAuthorityId}`, from: "CREATOR", to: "SYSTEM-WORKER", kind: "DELEGATES", capabilities: SYSTEM_WORKER_CAPABILITIES, maxRisk: "HIGH", expiresAt: null},
     "CREATOR"
   );
   createDelegation(
     {
       from: "CREATOR",
       to: "SYSTEM-WORKER",
-      capabilities: ["task:execute", "sandbox:run", "sandbox:snapshot", "regression:run"],
+      capabilities: SYSTEM_WORKER_CAPABILITIES,
       maxRisk: "HIGH",
       expiresAt: new Date(Date.now() + 365 * 24 * 3600_000).toISOString()
     },

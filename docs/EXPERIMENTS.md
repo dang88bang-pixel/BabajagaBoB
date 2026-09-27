@@ -92,14 +92,68 @@ Sicherheitsgrenzen:
 - Der Kopf jedes Bildes nennt Szenario und Zustand („Szenario SCN-… (DRAFT)") und trägt
   den Vermerk **SIMULATION — kein Nachweis**.
 
-## 6. Grenzen
+## 6. Statistische Signifikanz (`lib/significance.ts`)
 
-- Keine statistische Signifikanzberechnung (kein p-Wert). Bewertet wird
-  Übereinstimmung der Replikationen und Vollständigkeit der Bedingungen —
-  das ist eine strukturelle, keine statistische Aussage (`UNVERIFIED` bzgl. Signifikanz).
+Struktur allein reicht nicht: Drei zufällig günstige Läufe sind kein Beleg.
+Deshalb verlangt `validateCausalChain` zusätzlich einen **tragfähigen**
+Unterschied zwischen Baseline und Kontrolle.
+
+Messwerte werden als Creator-Aktion erfasst:
+
+```
+POST /api/science {action:"measurement",
+                   value:{experimentId, group:"BASELINE"|"CONTROL"|"REPLICATION",
+                          label:"dauer-ms", value:101}}
+```
+
+Nur endliche Zahlen werden angenommen — `NaN`, `Infinity` und Texte werden
+abgelehnt, nicht gerundet oder ersetzt.
+
+Verfahren (Auswahl anhand der Skala):
+
+| Daten | Verfahren | Effektmaß |
+|---|---|---|
+| 0/1-Werte (bestanden/nicht) | z-Test über zwei Anteile | Cohen's h |
+| metrische Werte | Welch-t-Test | Cohen's d |
+
+Regeln, die einen Scheinerfolg verhindern:
+
+- **Ohne Messwerte keine Aussage.** `significance.significant` ist dann `null`
+  und die Kausalprüfung bleibt unverändert gültig — die Prüfung wertet
+  vorhandene Nachweise nicht ab, sie ergänzt eine Bedingung.
+- **Zu kleine Stichprobe.** Unter der für das beobachtete Effektmaß nötigen
+  Gruppe (power 0,8, α = 0,05) gilt die Aussage als `INSUFFICIENT`, auch wenn
+  der p-Wert klein aussieht; beide Grenzen werden als Gründe benannt.
+- **Nicht signifikanter Unterschied** blockiert `ESTABLISHED` ausdrücklich.
+- **Unterschiedliche Skalen** (binär gegen metrisch) sind nicht prüfbar.
+- **Kein externes Paket, kein Netzwerk.** Normalverteilung (Fehlerfunktion,
+  A&S 7.1.26, ≤1,5e-7), t-Verteilung über die unvollständige Beta-Funktion,
+  Quantile über Acklam bzw. Intervallschachtelung.
+
+`GET /api/science` liefert zusätzlich `significanceSummary` (Messwerte, prüfbare
+Experimente, signifikant/unentscheidbar); die Oberfläche zeigt sie unter
+„Wissenschaft".
+
+Ehrliche Grenze: Die Näherungen sind für eine Ja/Nein-Entscheidung im Rahmen der
+Kausalvalidierung ausreichend, ersetzen aber **keine** fachstatistische
+Auswertung (keine Mehrfachvergleiche, keine Kovariaten, kein Bayes-Faktor).
+
+## 7. Weitere Grenzen
+
 - Läufe sind lokal begrenzt (Timeout/Limits); sehr lange Experimente sind nicht möglich.
 
-## 7. Tests
+## 8. Tests
+
+- `tests/unit/significance.test.ts` (17 Tests) — Fehlerfunktion/Normal-/t-Verteilung
+  gegen bekannte Werte und gegenseitige Deckung, Quantilen-Umkehrung, Effektmaße,
+  erforderliche Stichprobe, Anteils- und Mittelwerttest, und die
+  Fail-closed-Fälle: keine Daten, zu kleine Gruppe, fehlende Streuung,
+  unterschiedliche Skalen, nicht-endliche Werte.
+- `tests/integration/science-significance.test.ts` (5 Tests) — Kausalprüfung ohne
+  Messwerte unverändert, Blockade bei nicht tragfähigem Unterschied, `ESTABLISHED`
+  nur mit tragfähigem Unterschied, Ablehnung ungültiger Messwerte, Übersicht.
+- `tests/unit/science-store-migration.test.ts` (2 Tests) — Bestand v2 → v3 mit
+  Sicherungskopie und Journaleintrag, Messwerte danach persistiert.
 
 - `tests/e2e/failure-recovery.test.ts` — Experiment + Evidenz im Fehlerpfad.
 - `tests/regression/regression-engine.test.ts` — Regression aus Erkenntnis.

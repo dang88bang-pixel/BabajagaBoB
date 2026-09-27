@@ -108,6 +108,47 @@ describe("API-Gate (Server-Authentifizierung der Oberfläche)", () => {
     if (!decision.allow) expect(decision.status).toBe(403);
   });
 
+  it("lässt den Enrollment-Weg nur mit Header und nur nach dem Bootstrap durch", () => {
+    const secret = "enrollment-secret-0123456789abcdef";
+    const withHeader = gate.apiGateDecision(
+      new Request("http://localhost:3000/api/devices", {
+        method: "POST",
+        headers: {host: "localhost", "x-bob-enrollment": secret}
+      })
+    );
+    expect(withHeader.allow).toBe(true);
+
+    // Ohne Header bleibt die Grenze zu: ein Discovery-Agent ohne Geheimnis hat
+    // keinen Weg in die Control Plane.
+    const withoutHeader = gate.apiGateDecision(
+      new Request("http://localhost:3000/api/devices", {method: "POST", headers: {host: "localhost"}})
+    );
+    expect(withoutHeader.allow).toBe(false);
+    if (!withoutHeader.allow) expect(withoutHeader.status).toBe(401);
+
+    // Ein zu kurzer Header gilt nicht (kein Umweg über ein leeres Geheimnis).
+    const shortHeader = gate.apiGateDecision(
+      new Request("http://localhost:3000/api/devices", {
+        method: "POST",
+        headers: {host: "localhost", "x-bob-enrollment": "kurz"}
+      })
+    );
+    expect(shortHeader.allow).toBe(false);
+
+    // Andere Methoden und andere Routen bleiben geschlossen.
+    const getWithHeader = gate.apiGateDecision(
+      new Request("http://localhost:3000/api/devices", {headers: {host: "localhost", "x-bob-enrollment": secret}})
+    );
+    expect(getWithHeader.allow).toBe(false);
+    const otherRoute = gate.apiGateDecision(
+      new Request("http://localhost:3000/api/governance", {
+        method: "POST",
+        headers: {host: "localhost", "x-bob-enrollment": secret}
+      })
+    );
+    expect(otherRoute.allow).toBe(false);
+  });
+
   it("verlängert und beendet Sessions kontrolliert", async () => {
     const issued = session.createSession({actorId: "CREATOR", role: "OWNER", ttlMs: 60_000});
     const cookie = `${session.SESSION_COOKIE}=${issued.token}`;

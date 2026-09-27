@@ -2,14 +2,22 @@
 
 **Stand:** 2026-09-26
 **Testrunner:** Vitest 3 (`vitest.config.ts`, Node ≥ 22)
-**Letzter verifizierter Lauf:** `npx vitest run` → **63 Dateien, 422 Tests, alle grün**
-(Unit 126, Security 135, Integration 122, Regression 15, UI 13, E2E 11); `./node_modules/.bin/tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler / 11 Warnungen; `npm run build` erfolgreich.
+**Letzter verifizierter Lauf:** `npx vitest run` → **71 Dateien, 484 Tests, davon 483 grün**
+(Unit 145, Security 152, Integration 148, Regression 15, UI 13, E2E 11).
+Der einzige Fehlschlag ist `tests/integration/oci-runtime.test.ts`: Er verlangt einen echten
+Docker-Daemon (`spawn docker ENOENT` in dieser Umgebung) und ist deshalb `UNVERIFIED`,
+nicht grün gerechnet. Ohne Container-Daemon sind **483/483** der übrigen Tests grün.
+Vor dieser Runde: 63 Dateien, 422 Tests (Unit 126, Security 135, Integration 122, Regression 15,
+UI 13, E2E 11). `./node_modules/.bin/tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler / 12 Warnungen; `npm run build` erfolgreich.
 Zusätzlich laufen zwei Nachweisprüfer gegen den **echten** Dienst: `node scripts/fault-injection.mjs`
 (SIGKILL + Neustart) → **28/28 Prüfungen in 2 Absturzzyklen**, und `node scripts/sabotage.mjs`
 (abgeschwächte Schutzregeln) → **25/25 Proben erkannt** (mit vorgeschalteter Grundprobe: die Suiten der Proben laufen zuerst **ohne** Mutation grün).
 Der Abnahmeprüfer `node scripts/acceptance.mjs` läuft mit **15 bestanden / 0 fehlgeschlagen**, der
 Selbsttest der Matrix mit 4/4 und der Kettentest mit 4/4; live gegen die Instanz `:3100`
 (Matrix-Nachweise) **84 bestanden / 0 fehlgeschlagen**, davon **68/68 Routen-Nachweise** (mit Sitzung).
+Live-Runde 2026-09-27 auf der frischen Instanz `:3103` (Tabelle in §8b): `audit-api.sh` **248 / 0**,
+`audit-ui.mjs` **89 / 0**, `audit-actions.mjs` **535 / 0**, `acceptance.mjs --live` **84 / 0**
+(68/68), `verify-live.sh` **171 / 0**.
 Zusätzlich live gegen den Produktionsserver geprüft (`BOB_NS_ISOLATION=on` mit gebautem Rootfs): `scripts/verify-live.sh` → **173 Prüfungen, 0 Fehler** beim ersten Lauf (**171** auf einer bereits initialisierten Instanz; der Bootstrap-Zweig zählt zwei Prüfungen mehr); ohne delegierten cgroup-Unterbaum **168 / 166** (drei Prüfungen entfallen dann). Mit verpflichtendem zweitem Faktor (TOTP) sind es **177 / 175**; siehe §4a. Negativnachweis derselben Instanz ohne Rootfs: Isolation wird als `FILESYSTEM_ONLY` ausgewiesen und **jede** Ausführung mit 409 verweigert (`kernel isolation is enforced … but unavailable`); das Skript meldet dann erwartungsgemäß 125 PASS / 22 FAIL, weil alle ausführungsabhängigen Schritte bewusst scheitern.
 
 **Runde 2026-09-26 (Wiederherstellung nach Sandbox-Reset, Betriebsgrenzen live):** Live auf der Instanz
@@ -462,3 +470,40 @@ Ergebnis der Runde: **63 Testdateien / 422 Tests grün**, `tsc --noEmit` fehlerf
 `npm run build` erfolgreich, **25/25 Sabotageproben erkannt**, alle Live-Suiten 0 Fehler
 (`verify-live.sh` 174/0, `audit-actions.mjs` 525/0, `audit-api.sh` 248/0, `audit-ui.mjs` 92/0,
 `acceptance.mjs --live` 84/0, `verify-rate-limit.sh` 6/0).
+
+## 8b. Gefundene und behobene Fehler (Runde „Computer Use über den Broker, Signifikanz, Geräte-Scan/Attestierung, Egress", 2026-09-27)
+
+| # | Befund | Ursache | Fix / Regressionstest |
+|---|---|---|---|
+| 50 | `tests/integration/computer-broker.test.ts` rief `executeComputerAuthorized` und eine 6-Argumente-Variante von `ensureExecutionCapability` auf — **beide existierten nicht** | Der Test war committet, die Implementierung nicht; `tsc --noEmit` lief in der Runde nicht über die Testdateien | Broker-Pfad `executeComputerAuthorized` implementiert (9 zusätzliche Prüfungen, Treiberprozess, Evidenz), `ensureExecutionCapability` um `extraCapabilities` erweitert, System-Delegation um `computer:execute`. 4 Tests, davon 3 neu (fail closed ohne Treiber, nicht unterstützte Aktion, Fremdbindung vor Tokenverbrauch) |
+| 51 | Nach dem Refactor der gemeinsamen Broker-Prüfungen schlugen **zwei Sabotageproben** fehl: `BROKER_SHELL_GUARD_SKIPPED` (Anker 2×) und `ALLOWLIST_FAIL_CLOSED` (Anker 0×) | Beim Zusammenfassen der argv-Prüfung und beim Einbau der Egress-Bedingung wurden die wörtlichen Ankerzeilen verändert — der Katalog prüft sie aber exakt | argv-Prüfung in **eine** Funktion `assertArgvAuthorized` gezogen (Anker genau einmal, beide Pfade nutzen dieselbe Regel); in der Fabric bleibt die Ankerzeile als Bedingung erhalten, die Egress-Prüfung steht dahinter. `tests/unit/sabotage-plan.test.ts` 30/30 grün |
+| 52 | Der Abnahmeprüfer meldete `npm run test:oci` als **fehlenden Skript-Nachweis** | `scripts/acceptance.mjs` prüfte jeden Skript-Nachweis mit `existsSync` — ein npm-Aufruf ist aber kein Dateipfad | `npm run <name>` wird gegen `package.json` aufgelöst; ein Dateipfad wird weiterhin geprüft. Prüfer: **15/0**, `tests/unit/acceptance-matrix.test.ts` 4/4 |
+| 53 | `erf(0)` lieferte `1e-9` statt `0`; daraus folgte `Φ(0) ≈ 0,5000000005` und `p(z=0) ≈ 0,999999999` | Die Näherung A&S 7.1.26 ist an der Nullstelle nicht exakt — genau dort liegt der häufigste Fall „kein Unterschied" | Sonderfall `x === 0 → 0` mit Kommentar; getestet wird jetzt die dokumentierte Schranke `≤1,5e-7` statt einer unerreichbaren Genauigkeit |
+| 54 | Das Konfidenzintervall einer Anteilsdifferenz ragte auf **1,006** hinaus | Das Wald-Intervall ist unbeschränkt, eine Anteilsdifferenz aber nicht | Auf `[−1, 1]` gekürzt; der Test prüft `lower > 0`, `upper ≤ 1` und `upper > lower` |
+| 55 | Drei Erwartungen in den neuen Signifikanz-Tests waren **falsch** (Cohen's h 0,5953 statt 0,6435; Cohen's d −2,4495 statt −3,0984; Stichprobe 64/26 statt 63/25) | h/d wurden mit falscher Formel bzw. Populations- statt Stichproben-SD erwartet; 64/26 sind Cohens **t-basierte** Tabellenwerte, die Normalapproximation ergibt 63/25 | Erwartungen auf die gerechneten Werte korrigiert und die Abweichung zur Tabelle im Test kommentiert. Die **Rechnung** war richtig, nicht der Test — geprüft mit unabhängiger Berechnung |
+| 56 | Der Science-Store bekam mit den Messwerten ein neues Feld — ein Bestand wäre unlesbar geworden | Schema-Wechsel ohne Migrationskette ist fail closed | Version 2 → 3 mit registrierter Migration, Sicherungskopie und Journaleintrag; `tests/unit/science-store-migration.test.ts` (2 Tests) prüft Bestandserhalt **und** Persistenz neuer Messwerte |
+
+| 57 | Der dokumentierte Enrollment-Weg über HTTP war **unerreichbar**: `scripts/discover-host.mjs` erhielt `401 SESSION_REQUIRED` | Die API-Grenze (Middleware) lässt nur `/api/auth` und `POST /api/runtime` ohne Session durch; ein Discovery-Agent hat aber keine Session. `docs/DEVICES.md` beschrieb den Weg als geprüft — er war es nicht | Neuer, enger Ausnahmeweg: `POST /api/devices` **mit** Header `x-bob-enrollment` (≥16 Zeichen) passiert die Grenze; den Wert prüft die Route fail closed in konstanter Zeit. Die Bootstrap-Pflicht bleibt erhalten (ohne Initialisierung `428`), andere Methoden/Routen bleiben geschlossen. `tests/security/api-gate.test.ts` (9 Tests), live nachgewiesen: `discover-host.mjs` → 201, `authorized: false` |
+| 58 | `POST /api/devices {action:"scan"}` lief ohne jedes Attribut durch — ein **stiller Erfolg** bei einer Aktion, die das Netz berührt | Der neue Zweig hatte keine Pflichtparameter; `audit-actions.mjs` prüft genau das | `confirm: true` ist jetzt Pflicht (`400 SCAN_CONFIRM_REQUIRED` sonst). Test in `tests/security/device-attestation.test.ts`; `audit-actions.mjs` **535/0** |
+
+Ergebnis der Runde: **71 Testdateien / 484 Tests, 483 grün** (einzig `tests/integration/oci-runtime.test.ts`
+rot — kein Docker-Daemon in dieser Umgebung, `spawn docker ENOENT`), `tsc --noEmit` fehlerfrei,
+`eslint .` 0 Fehler, `npm run build` erfolgreich, **25/25 Sabotageproben erkannt**,
+`scripts/acceptance.mjs` **15/0**.
+
+Live-Nachweise gegen eine frische Instanz auf Port 3103 (Kernel-Isolation aktiv, Rootfs gebaut,
+Prüfbudget `BOB_RATE_LIMIT_MAX=100000` gemäß `docs/OPERATIONS.md`, Reihenfolge: Discovery → API →
+Oberfläche → Aktionen → Abnahme → `verify-live.sh` zuletzt):
+
+| Suite | Ergebnis |
+|---|---|
+| `scripts/audit-api.sh` | **248 / 0** |
+| `scripts/audit-ui.mjs` | **89 / 0** |
+| `scripts/audit-actions.mjs` | **535 / 0** |
+| `scripts/acceptance.mjs --live` | **84 / 0**, 68/68 Routennachweise |
+| `scripts/verify-live.sh` | **171 / 0** |
+
+Hinweis zur Reihenfolge: `verify-live.sh` autorisiert das Seed-Gerät und verbraucht Rate-Limit-Budget.
+Läuft es **vor** `audit-ui.mjs`/`audit-api.sh`, schlagen deren Geräte- bzw. Statusprüfungen wegen
+Zustandspollution fehl (`429` bzw. „alle vorautorisiert") — das ist kein Produktfehler, sondern die
+falsche Reihenfolge.
