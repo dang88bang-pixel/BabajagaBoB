@@ -50,6 +50,11 @@ export async function executeComputerAction(req: ComputerExecutionRequest): Prom
     child.stdout.on("data",b=>{stdout+=String(b);if(stdout.length>1_000_000) child.kill("SIGKILL");});
     child.stderr.on("data",b=>{stderr+=String(b);if(stderr.length>1_000_000) child.kill("SIGKILL");});
     child.on("error",e=>{finish({code:null,stdout,stderr:stderr+(e instanceof Error?e.message:String(e))});});
+    child.stdin.on("error",e=>{
+      // A short-lived driver may exit immediately after producing its response.
+      // Treat a late EPIPE as transport noise; the child exit code remains authoritative.
+      if ((e as NodeJS.ErrnoException).code !== "EPIPE") finish({code:null,stdout,stderr:stderr+String(e)});
+    });
     child.on("close",code=>finish({code,stdout,stderr}));
     try {
       child.stdin.end(JSON.stringify({computerId:req.computerId,kind:instance.kind,action:req.action,input:req.input}));
