@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  prüfung:
+  pruefung:
     name: Fall ${{ matrix.case }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
