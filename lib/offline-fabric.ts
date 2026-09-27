@@ -151,8 +151,7 @@ export function exportOfflineBundle(resourceIds: string[], destination: string):
   });
   const base: Omit<OfflineBundleManifest,"manifestSha256"> = {schemaVersion:1,bundleId:`BND-${crypto.randomUUID().slice(0,10).toUpperCase()}`,createdAt:new Date().toISOString(),resources};
   const manifest: OfflineBundleManifest = {...base,manifestSha256:manifestDigest(base)};
-  fs.writeFileSync(path.join(target,"manifest.json"),JSON.stringify(manifest,null,2)+"
-",{mode:0o600});
+  fs.writeFileSync(path.join(target,"manifest.json"),JSON.stringify(manifest,null,2)+"\n",{mode:0o600});
   store.update(p => p.bundles.push(manifest.bundleId));
   recordAudit({actor:"CREATOR",action:"offline.bundle.export",resource:manifest.bundleId,decision:"ALLOW"},{resourceIds,manifestSha256:manifest.manifestSha256});
   observe({type:"offline.bundle.exported",message:`Offline-Bundle ${manifest.bundleId} erstellt`,status:"COMPLETED",actor:"CREATOR",action:"offline.bundle.export",resource:manifest.bundleId});
