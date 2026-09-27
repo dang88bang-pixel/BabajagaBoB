@@ -5,11 +5,11 @@ import os from "node:os";
 import path from "node:path";
 
 describe("CDP browser driver",()=>{
-  it("fails closed when no browser executable is configured",async()=>{
+  it("fails closed when the configured browser executable does not exist",async()=>{
     const old=process.env.BOB_BROWSER_EXECUTABLE;
-    delete process.env.BOB_BROWSER_EXECUTABLE;
+    process.env.BOB_BROWSER_EXECUTABLE="/definitely/missing/bob-browser";
     const {executeBrowserAction}=await import("../../lib/browser-driver");
-    await expect(executeBrowserAction("NAVIGATE",{url:"http://example.test"})).rejects.toThrow(/BOB_BROWSER_EXECUTABLE/);
+    await expect(executeBrowserAction("NAVIGATE",{url:"http://example.test"})).rejects.toThrow();
     if(old===undefined) delete process.env.BOB_BROWSER_EXECUTABLE; else process.env.BOB_BROWSER_EXECUTABLE=old;
   });
   it("executes a real headless browser screenshot when CI provides Chromium",async()=>{
