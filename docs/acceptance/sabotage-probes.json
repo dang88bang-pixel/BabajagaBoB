@@ -121,8 +121,8 @@
       "edits": [
         {
           "file": "lib/persistence/store.ts",
-          "find": "fd = fs.openSync(lock, \\\"wx\\\", 0o600);",
-          "replace": "fd = fs.openSync(lock, \\\"w\\\", 0o600);"
+          "find": "fs.openSync(lock, \"wx\", 0o600);",
+          "replace": "fs.openSync(lock, \"w\", 0o600);"
         },
         {
           "file": "lib/persistence/store.ts",
