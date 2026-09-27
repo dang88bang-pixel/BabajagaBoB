@@ -49,12 +49,16 @@ function command(browser: WebSocket, id:number, method:string, params:Record<str
 async function waitForWs(port:number, deadline:number):Promise<string>{
   while(Date.now()<deadline){
     try {
-      const r=await fetch(`http://127.0.0.1:${port}/json/version`);
-      if(r.ok){const j=await r.json() as {webSocketDebuggerUrl?:string};if(j.webSocketDebuggerUrl)return j.webSocketDebuggerUrl;}
+      const r=await fetch(`http://127.0.0.1:${port}/json/list`);
+      if(r.ok){
+        const targets=await r.json() as Array<{type?:string;webSocketDebuggerUrl?:string}>;
+        const page=targets.find(target=>target.type==="page" && typeof target.webSocketDebuggerUrl==="string");
+        if(page?.webSocketDebuggerUrl)return page.webSocketDebuggerUrl;
+      }
     } catch { /* endpoint not ready yet */ }
     await new Promise(r=>setTimeout(r,100));
   }
-  throw new Error("browser DevTools endpoint unavailable");
+  throw new Error("browser page DevTools endpoint unavailable");
 }
 
 async function freePort(): Promise<number> {
