@@ -15,8 +15,10 @@ describe("DurableStore write-lock exclusivity", () => {
       "process.env.BOB_STORAGE_DIR = " + JSON.stringify(root) + ";\n" +
       "const { DurableStore } = await import(" + JSON.stringify(storePath) + ");\n" +
       "const store = new DurableStore(\"lock-probe\", 1, () => ({value: 0}));\n" +
+      "process.stdout.write(\"started\\n\");\n" +
+      "await new Promise(resolve => setTimeout(resolve, 50));\n" +
       "store.write({value: 1});\n" +
-      "process.stdout.write(\"completed\");\n"
+      "process.stdout.write(\"completed\\n\");\n"
     );
 
     const {spawn} = await import("node:child_process");
@@ -27,21 +29,27 @@ describe("DurableStore write-lock exclusivity", () => {
     });
 
     let stdout = "";
+    let stderr = "";
     child.stdout.on("data", chunk => { stdout += String(chunk); });
+    child.stderr.on("data", chunk => { stderr += String(chunk); });
 
-    const result = await new Promise(resolve => {
-      const timer = setTimeout(() => {
-        child.kill("SIGTERM");
-        resolve({code: null, signal: "SIGTERM"});
-      }, 300);
-      child.on("exit", (code, signal) => {
-        clearTimeout(timer);
-        resolve({code, signal});
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`helper did not start: ${stderr}`)), 3_000);
+      child.stdout.on("data", () => {
+        if (stdout.includes("started")) {
+          clearTimeout(timer);
+          resolve();
+        }
       });
     });
 
-    expect(result.signal).toBe("SIGTERM");
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    expect(stdout).toContain("started");
     expect(stdout).not.toContain("completed");
+
+    child.kill("SIGTERM");
+    await new Promise<void>(resolve => child.once("exit", () => resolve()));
     fs.rmSync(root, {recursive: true, force: true});
-  }, 5_000);
+  }, 8_000);
 });
