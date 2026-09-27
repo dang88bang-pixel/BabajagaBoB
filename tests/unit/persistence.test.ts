@@ -48,6 +48,26 @@ describe("DurableStore (Persistenz)", () => {
     expect(() => store.read()).toThrow(storeModule.StoreIntegrityError);
   });
 
+  it("prüft Revision und atomisches Rename innerhalb derselben exklusiven Schreibsperre", () => {
+    const store = storeModule.createStore("unit-lock-window", 1, () => ({count: 0}));
+    const lockFile = path.join(root, ".unit-lock-window.lock");
+    const originalRename = fs.renameSync;
+    const rename = vi.spyOn(fs, "renameSync");
+    let observedLockDuringRename = false;
+    rename.mockImplementation((oldPath, newPath) => {
+      observedLockDuringRename = fs.existsSync(lockFile);
+      return originalRename(oldPath, newPath);
+    });
+    try {
+      store.write({count: 1});
+      expect(observedLockDuringRename).toBe(true);
+      expect(store.read()).toEqual({count: 1});
+    } finally {
+      rename.mockRestore();
+      fs.rmSync(lockFile, {force: true});
+    }
+  });
+
   /**
    * Regression: Ein nicht lesbarer Store wurde als „store file is not valid
    * JSON" gemeldet — also als Datenbeschädigung statt als Lese-/Rechteproblem.

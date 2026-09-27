@@ -81,6 +81,13 @@ describe("API-Gate (Server-Authentifizierung der Oberfläche)", () => {
     expect(decision.allow).toBe(true);
   });
 
+  it("lässt den Device-Enrollment-Pfad bis zur separaten Enrollment-Secret-Prüfung durch", () => {
+    const decision = gate.apiGateDecision(
+      new Request("http://localhost/api/devices", {method: "POST", headers: {"content-type": "application/json"}})
+    );
+    expect(decision.allow).toBe(true);
+  });
+
   it("akzeptiert weder Agent-Token noch Legacy-Token an der API-Grenze", () => {
     const agent = gate.apiGateDecision(
       new Request(API_URL, {headers: {authorization: "Bobcap CAP-TEST.secret"}})

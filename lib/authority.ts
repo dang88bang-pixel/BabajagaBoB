@@ -431,7 +431,8 @@ export function ensureExecutionCapability(
   taskId: string,
   sandboxId: string,
   risk: Risk,
-  environment = "development"
+  environment = "development",
+  requiredCapabilities: string[] = ["task:execute", "sandbox:run"]
 ): CapabilityToken {
   const payload = store.read();
   const existing = payload.tokens.find(
@@ -441,8 +442,7 @@ export function ensureExecutionCapability(
       t.taskId === taskId &&
       t.sandboxId === sandboxId &&
       t.environment === environment &&
-      t.capabilities.includes("task:execute") &&
-      t.capabilities.includes("sandbox:run") &&
+      requiredCapabilities.every(capability => t.capabilities.includes(capability)) &&
       // Erschöpfte Token sind nicht wiederverwendbar: sonst würde der Broker den
       // nächsten Lauf als Replay verweigern, obwohl eine gültige Autorisierung
       // vorzuliegen scheint (genau eine Autorisierung = eine Ausführung).
@@ -457,7 +457,7 @@ export function ensureExecutionCapability(
       taskId,
       sandboxId,
       environment,
-      capabilities: ["task:execute", "sandbox:run"],
+      capabilities: requiredCapabilities,
       risk,
       issuedBy: "SYSTEM-WORKER",
       issuedByKind: "SYSTEM",

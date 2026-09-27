@@ -239,7 +239,8 @@ export class DurableStore<T> {
 
   private appendMigrationRecord(record: MigrationRecord) {
     const journal = path.join(ensureRoot(), "migrations.jsonl");
-    fs.appendFileSync(journal, `${JSON.stringify(record)}\n`, {encoding: "utf8", mode: 0o600});
+    fs.appendFileSync(journal, `${JSON.stringify(record)}
+`, {encoding: "utf8", mode: 0o600});
   }
 
   /** Liest den Store. Fehlt die Datei, wird der Initialzustand erzeugt und geschrieben. */
@@ -355,7 +356,11 @@ export class DurableStore<T> {
               holderAlive = false;
             }
           }
-          stale = Date.now() - fs.statSync(lock).mtimeMs > LOCK_STALE_MS;
+          const ageMs = Date.now() - fs.statSync(lock).mtimeMs;
+          // Alter allein darf eine aktive Sperre niemals entwerten: ein lebender
+          // Prozess kann länger als LOCK_STALE_MS schreiben. Nur ein nicht mehr
+          // lebender Halter darf nach dem Stale-Fenster übernommen werden.
+          stale = !holderAlive && ageMs > LOCK_STALE_MS;
         } catch {
           /* Sperrdatei verschwand zwischenzeitlich — erneut versuchen. */
         }

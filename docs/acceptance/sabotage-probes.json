@@ -117,13 +117,35 @@
     {
       "id": "STORE_WRITE_LOCK_OFF",
       "title": "Schreibsperre des Stores entfernt (Prüfen und rename laufen auseinander)",
-      "guard": "Revisionsprüfung und Umbenennen liegen in derselben exklusiven Sperre; ohne Sperre ist die Prüfung keine Compare-and-Swap-Bedingung.",
-      "file": "lib/persistence/store.ts",
-      "find": "  private withWriteLock<R>(fn: () => R): R {",
-      "replace": "  private withWriteLock<R>(fn: () => R): R {\n    return fn();",
+      "guard": "Revisionsprüfung und rename liegen in derselben exklusiven Sperre; ohne Sperre ist die Prüfung keine Compare-and-Swap-Bedingung.",
+      "edits": [
+        {
+          "file": "lib/persistence/store.ts",
+          "find": "fs.openSync(lock, \"wx\", 0o600);",
+          "replace": "fs.openSync(lock, \"w\", 0o600);"
+        },
+        {
+          "file": "lib/persistence/store.ts",
+          "find": "stale = !holderAlive && ageMs > LOCK_STALE_MS;",
+          "replace": "stale = true;"
+        },
+        {
+          "file": "lib/persistence/store.ts",
+          "find": "return this.withWriteLock(() => {",
+          "replace": "return (() => {"
+        },
+        {
+          "file": "lib/persistence/store.ts",
+          "find": "fs.renameSync(tmp, this.file);",
+          "replace": "fs.writeFileSync(this.file, JSON.stringify(envelope), {encoding: \"utf8\"});"
+        }
+      ],
       "tests": [
+        "tests/security/store-lock-sabotage.test.ts",
+        "tests/integration/store-lock.test.ts",
         "tests/integration/fault-injection-processes.test.ts",
-        "tests/integration/load-broker.test.ts"
+        "tests/integration/load-broker.test.ts",
+        "tests/security/store-lock-sabotage-contract.test.ts"
       ]
     },
     {

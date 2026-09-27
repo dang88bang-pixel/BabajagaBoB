@@ -1,0 +1,61 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import {describe,expect,it,beforeEach,vi} from "vitest";
+
+describe("offline fabric",()=>{
+  let root:string;
+  beforeEach(()=>{root=fs.mkdtempSync(path.join(os.tmpdir(),"bob-offline-"));process.env.BOB_STORAGE_DIR=root;vi.resetModules();});
+  it("registriert und verifiziert lokale Ressourcen per SHA-256",async()=>{
+    const file=path.join(root,"model.bin");fs.writeFileSync(file,"offline-data");
+    const f=await import("../../lib/offline-fabric");
+    const r=f.registerOfflineResource({kind:"MODEL",name:"test-model",location:file,metadata:{scope:"local"}});
+    expect(r.verified).toBe(false);
+    expect(f.verifyOfflineResource(r.id).verified).toBe(true);
+    fs.writeFileSync(file,"tampered");
+    expect(()=>f.verifyOfflineResource(r.id)).toThrow(/digest mismatch/);
+  });
+  it("exportiert und importiert ein lokal verifiziertes Bundle herkunftstreu",async()=>{
+    const source=path.join(root,"package.tgz");fs.writeFileSync(source,"package-content");
+    const f=await import("../../lib/offline-fabric");
+    const r=f.verifyOfflineResource(f.registerOfflineResource({kind:"PACKAGE",name:"pkg",location:source,metadata:{origin:"local"}}).id);
+    const bundleDir=fs.mkdtempSync(path.join(os.tmpdir(),"bob-bundle-"));
+    const bundle=f.exportOfflineBundle([r.id],bundleDir);
+    expect(bundle.manifestSha256).toMatch(/^[a-f0-9]{64}$/);
+    const importedRoot=fs.mkdtempSync(path.join(os.tmpdir(),"bob-import-"));
+    process.env.BOB_STORAGE_DIR=importedRoot;
+    vi.resetModules();
+    const imported=await import("../../lib/offline-fabric");
+    expect(imported.importOfflineBundle(bundleDir).imported).toContain(r.id);
+    expect(imported.verifyOfflineResource(r.id).verified).toBe(true);
+    fs.writeFileSync(path.join(bundleDir,`${r.id}.resource`),"tampered");
+    expect(()=>imported.importOfflineBundle(bundleDir)).toThrow(/digest mismatch/);
+  });
+  it("verweigert Sync für unverifizierte Ressourcen und akzeptiert Digest-verifizierte Syncs",async()=>{
+    const file=path.join(root,"doc.md");fs.writeFileSync(file,"hello");
+    const f=await import("../../lib/offline-fabric");
+    const r=f.registerOfflineResource({kind:"DOCUMENTATION",name:"doc",location:file,metadata:{}});
+    expect(()=>f.prepareOfflineSync(r.id,"a".repeat(64))).toThrow(/verified/);
+    const verified=f.verifyOfflineResource(r.id);
+    const sync=f.prepareOfflineSync(verified.id,"b".repeat(64));
+    expect(f.verifyOfflineSync(sync.id,"b".repeat(64)).status).toBe("VERIFIED");
+  });
+
+
+  it("rejects a same-id bundle with a different digest instead of overwriting provenance",async()=>{
+    const {registerOfflineResource,verifyOfflineResource,exportOfflineBundle,importOfflineBundle,listOfflineConflicts}=await import("../../lib/offline-fabric");
+    const source=path.join(root,"source.txt"); fs.writeFileSync(source,"original");
+    const resource=registerOfflineResource({kind:"DOCUMENTATION",name:"conflict-source",location:source,metadata:{}});
+    verifyOfflineResource(resource.id);
+    const bundle=fs.mkdtempSync(path.join(os.tmpdir(),"bob-bundle-conflict-")); exportOfflineBundle([resource.id],bundle);
+    const manifest=JSON.parse(fs.readFileSync(path.join(bundle,"manifest.json"),"utf8"));
+    const item=manifest.resources[0]; fs.writeFileSync(path.join(bundle,item.file),"changed");
+    item.sha256=crypto.createHash("sha256").update("changed").digest("hex");
+    manifest.manifestSha256=crypto.createHash("sha256").update(JSON.stringify(((m)=>{const {manifestSha256:_ignored,...base}=m;return base})(manifest))).digest("hex");
+    fs.writeFileSync(path.join(bundle,"manifest.json"),JSON.stringify(manifest));
+    expect(()=>importOfflineBundle(bundle)).toThrow(/merge conflict/);
+    expect(listOfflineConflicts().length).toBeGreaterThan(0);
+  });
+
+});

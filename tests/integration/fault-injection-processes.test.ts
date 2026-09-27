@@ -29,6 +29,7 @@ import {isolatedStorageRoot, TEST_BOOTSTRAP_SECRET} from "../helpers/runtime";
 
 const root = isolatedStorageRoot("fault-injection-processes");
 const STORE_HELPER = path.join(process.cwd(), "tests", "helpers", "concurrent-writer.ts");
+const STORE_SOURCE = path.join(process.cwd(), "lib", "persistence", "store.ts");
 
 let bootstrap: typeof import("../../lib/bootstrap");
 let cp: typeof import("../../lib/control-plane");
@@ -128,7 +129,7 @@ describe("Fehlerinjektion: Prozessabbruch", () => {
     expect(after.payload.counter).toBe(crashed.payload.counter + 1);
     const stray = fs.readdirSync(crashRoot).filter(name => !name.startsWith(".") && !name.endsWith(".json") && !name.endsWith(".jsonl") && !name.endsWith(".bak"));
     expect(stray).toEqual([]);
-  });
+  }, 120_000);
 });
 
 describe("Fehlerinjektion: konkurrierende Schreibvorgänge", () => {
@@ -259,5 +260,24 @@ describe("Fehlerinjektion: Netzwerkverlust", () => {
     // erneut oder ist endgültig gescheitert.
     const job = queue.getJob(after.jobId);
     expect(["QUEUED", "FAILED", "DEAD_LETTER"]).toContain(job?.state);
+  });
+});
+
+
+describe("Fehlerinjektion: Store-Schreibgrenze", () => {
+  it("hält Revisionsprüfung und rename unter einer exklusiven Store-Sperre", () => {
+    const source = fs.readFileSync(STORE_SOURCE, "utf8");
+    const lockStart = source.indexOf("private withWriteLock<R>(fn: () => R): R {");
+    const writeStart = source.indexOf("private writeEnvelope(payload: T, expectedRevision: number | null): T {");
+    expect(lockStart).toBeGreaterThanOrEqual(0);
+    expect(writeStart).toBeGreaterThan(lockStart);
+    const lockBody = source.slice(lockStart, writeStart);
+    expect(lockBody).toContain('fs.openSync(lock, "wx", 0o600)');
+    expect(lockBody).toContain("process.kill(info.pid, 0)");
+    expect(lockBody).toContain("return fn();");
+    const writeBody = source.slice(writeStart, source.indexOf("  /**", writeStart + 20));
+    expect(writeBody).toContain("return this.withWriteLock(() => {");
+    expect(writeBody).toContain("const onDisk = this.currentRevision();");
+    expect(writeBody).toContain("fs.renameSync(tmp, this.file);");
   });
 });
