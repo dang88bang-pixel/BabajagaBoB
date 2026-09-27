@@ -57,7 +57,20 @@ async function waitForWs(port:number, deadline:number):Promise<string>{
   throw new Error("browser DevTools endpoint unavailable");
 }
 
-async function freePort(): Promise<number> {\n  const server = net.createServer();\n  await new Promise<void>((resolve, reject) => {\n    server.once("error", reject);\n    server.listen(0, "127.0.0.1", () => resolve());\n  });\n  const address = server.address();\n  const port = typeof address === "object" && address ? address.port : 0;\n  await new Promise<void>(resolve => server.close(() => resolve()));\n  if (!port) throw new Error("could not allocate browser debug port");\n  return port;\n}\n\nasync function launch(exe:string,timeoutMs:number){
+async function freePort(): Promise<number> {
+  const server = net.createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => resolve());
+  });
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  await new Promise<void>(resolve => server.close(() => resolve()));
+  if (!port) throw new Error("could not allocate browser debug port");
+  return port;
+}
+
+async function launch(exe:string,timeoutMs:number){
   const profile=await mkdtemp(path.join(os.tmpdir(),"bob-browser-"));
   const port=await freePort();
   const args=["--headless=new","--disable-gpu","--disable-software-rasterizer","--disable-dev-shm-usage","--no-sandbox","--disable-setuid-sandbox","--disable-crash-reporter","--disable-extensions","--disable-background-networking","--disable-sync","--no-first-run","--no-default-browser-check","--host-resolver-rules=MAP * ~NOTFOUND,EXCLUDE localhost","--remote-debugging-address=127.0.0.1","--remote-debugging-port="+String(port),`--user-data-dir=${profile}`,"about:blank"];
