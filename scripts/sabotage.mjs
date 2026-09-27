@@ -21,11 +21,16 @@
  *      Start-Hashes; jede Abweichung ist ein Abbruchgrund (Exit 2).
  *   4. Ein Anker, der nicht genau einmal vorkommt, ist `INVALID` und zählt als
  *      Fehlschlag — eine Probe, die nichts mutiert, wäre wertlos.
+ *   5. Vor dem Lauf wird der Arbeitsbaum gegen `git` geprüft: Ist eine
+ *      Katalog-Datei schon vorher verändert, bricht das Skript ab (Exit 2) —
+ *      ein verschmutzter Startzustand darf nie stillschweigend zur
+ *      „Wiederherstellungs"-Basis werden (Nachhärtung Befund B8, 2026-09-27).
+ *      Dasselbe prüft nach dem Lauf nochmal gegen `git`.
  *
  * Der Bericht landet in `${BOB_STORAGE_DIR:-.bob-data}/sabotage/report.json`,
  * damit die Oberfläche (Abschnitt „Fehlerinjektion“) denselben Stand zeigt.
  */
-import {execFile} from "node:child_process";
+import {execFile, execFileSync} from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -78,6 +83,21 @@ function editsOf(probe) {
     }
     return edit;
   });
+}
+
+/**
+ * Ermittelt über `git status --porcelain`, welche der angegebenen Dateien
+ * (Pfade relativ zum Repo-Root) verändert sind. Liefert `null`, wenn git
+ * nicht verfügbar ist — dann bleibt es bei den hash-basierten Prüfungen.
+ */
+function gitDirty(files) {
+  if (files.length === 0) return [];
+  try {
+    const output = execFileSync("git", ["status", "--porcelain", "--", ...files], {cwd: ROOT, encoding: "utf8", timeout: 15_000});
+    return output.split("\n").filter(Boolean).map(line => line.slice(3).trim());
+  } catch {
+    return null;
+  }
 }
 
 /** Prüft, ob eine Probe überhaupt anwendbar ist (jeder Anchor genau einmal vorhanden). */
@@ -158,6 +178,26 @@ const selected = only ? probes.filter(probe => probe.id === only) : probes;
 if (only && selected.length === 0) {
   console.error(`Unbekannte Probe: ${only}`);
   process.exit(2);
+}
+
+// Vorprüfung (Nachhärtung Befund B8): Ein verschmutzter Arbeitsbaum darf nie
+// stillschweigend als Start- und Wiederherstellungsbasis dienen — sonst würde
+// ein späterer Lauf die Verschmutzung als „Original" festschreiben und am Ende
+// scheinbar korrekt wiederherstellen. Fail closed: lieber abbrechen.
+if (!CHECK_ONLY) {
+  const allowDirty = process.env.SABOTAGE_ALLOW_DIRTY === "1";
+  const catalogFiles = [...new Set(probes.flatMap(probe => editsOf(probe).map(edit => edit.file)))];
+  const dirtyBefore = gitDirty(catalogFiles);
+  if (dirtyBefore === null) {
+    say("Hinweis: git nicht verfügbar — die Vorprüfung des Arbeitsbaums entfällt (nur Hash-Prüfungen aktiv).");
+  } else if (dirtyBefore.length > 0 && !allowDirty) {
+    console.error(`Sabotage: Ausgangszustand verschmutzt — verändert: ${dirtyBefore.join(", ")}.`);
+    console.error("Ein verschmutzter Startzustand wäre eine unsichere Wiederherstellungsbasis (Befund B8). Lauf abgebrochen (Exit 2).");
+    console.error("Behebung: eigene Änderungen sichern, dann `git checkout -- <dateien>` — oder bewusst SABOTAGE_ALLOW_DIRTY=1 setzen.");
+    process.exit(2);
+  } else if (dirtyBefore.length > 0) {
+    say(`WARNUNG: SABOTAGE_ALLOW_DIRTY=1 — Startbasis ist verschmutzt (${dirtyBefore.join(", ")}); Wiederherstellung geht auf diesen Zustand zurück.`);
+  }
 }
 
 // Startzustand aller beteiligten Dateien festhalten.
@@ -296,6 +336,17 @@ if (damaged.length > 0) {
   process.exit(2);
 }
 ok(`Alle ${originals.size} Dateien sind unverändert (sha256 geprüft).`);
+// Abschlussprüfung gegen git (Nachhärtung Befund B8): Selbst wenn die
+// Hash-Prüfung grün ist, muss der Arbeitsbaum für git sauber sein — die
+// Hash-Prüfung kennt nur den Zustand, den das Skript selbst gesehen hat.
+const dirtyAfter = gitDirty([...originals.keys()]);
+if (dirtyAfter === null) {
+  say("Hinweis: git nicht verfügbar — die git-Abschlussprüfung entfällt.");
+} else if (dirtyAfter.length > 0) {
+  bad(`Quellcode laut git nicht im Ausgangszustand: ${dirtyAfter.join(", ")} — Wiederherstellung unvollständig (Befund B8).`);
+  console.error("Sabotage: Lauf gilt als ungültig (Exit 2). `git status` prüfen und die Dateien gezielt wiederherstellen.");
+  process.exit(2);
+}
 
 const caught = results.filter(entry => entry.outcome === "CAUGHT").length;
 const missed = results.filter(entry => entry.outcome === "MISSED").length;

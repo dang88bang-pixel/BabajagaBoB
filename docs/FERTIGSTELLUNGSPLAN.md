@@ -276,7 +276,7 @@ Prüfer oder Matrix berührt.
 | B4 | **`startRun` aus `CREATED` warf** `invalid run transition CREATED -> RUNNING` (toter Zweig, inkonsistent zur Zustandsmaschine). | Sondiertest 2026-09-26 | ✅ **behoben 2026-09-26:** `CREATED` ist kein Startzustand mehr; saubere Verweigerung (`null`), Regressionstest in `tests/integration/queue-run-lifecycle.test.ts` |
 | B5 | **Zweiter `dispatchTask` desselben Tasks warf** statt idempotenter Antwort. | `dispatcher-worker.test.ts` | ✅ **behoben 2026-09-26:** vorhandene Bindung wird zurückgegeben (`created: false`, gleicher Run/Job/Sandbox, kein Doppel-Objekt, Observation `task.dispatch.deduplicated`); Regressionstest im selben File |
 | B6 | **Paralleler Arbeitszweig:** `fix/spec-compliance-computer-offline` mit roter CI (Typecheck, Produktionsbuild, Sabotageproben). | `gh run list` | ⚠️ offen — vor Merge abstimmen |
-| B8 | **Sabotage-Werkzeug hinterlässt vereinzelt unrestaurierte Mutationen:** Bei einem Gesamtdurchlauf (2026-09-27) blieb `STORE_WRITE_LOCK_OFF` „nicht erkannt" (Flackern unter Last, einzeln erkannt) und drei mutierte Dateien (`approvals.ts`, `store.ts`, `execution-broker.ts`) wurden trotz „wiederhergestellt"-Meldung nicht vollständig zurückgeschrieben; erst `git checkout` stellte die Integrität wieder her. | Lauf 2026-09-27, `git status` | ⚠️ offen — Kandidat; nicht gefixt (Fundregel). Arbeitsanweisung bis dahin: nach jedem Sabotage-Lauf `git status` prüfen. |
+| B8 | **Sabotage-Werkzeug hinterlässt vereinzelt unrestaurierte Mutationen:** Bei einem Gesamtdurchlauf (2026-09-27) blieb `STORE_WRITE_LOCK_OFF` „nicht erkannt" (Flackern unter Last, einzeln erkannt) und drei mutierte Dateien (`approvals.ts`, `store.ts`, `execution-broker.ts`) wurden trotz „wiederhergestellt"-Meldung nicht vollständig zurückgeschrieben; erst `git checkout` stellte die Integrität wieder her. | Lauf 2026-09-27, `git status` | ✅ **behoben 2026-09-27:** `scripts/sabotage.mjs` prüft jetzt **vor** dem Lauf den Arbeitsbaum gegen `git` (fail closed: verschmutzte Katalog-Dateien brechen den Lauf mit Exit 2 ab, bewusster Override nur über `SABOTAGE_ALLOW_DIRTY=1` mit Warnung) und **nach** dem Lauf zusätzlich gegen `git` — die Hash-Prüfung allein kennt nur den Zustand, den das Skript selbst gesehen hat. Verifiziert: Schmutz-Vorprüfung bricht korrekt ab, `--check` 25/25, voller Lauf 25/25 mit sauberem Baum. Das Erkennungs-Flackern von `STORE_WRITE_LOCK_OFF` unter Last bleibt als inhärente Timing-Abhängigkeit der Fehlerinjektion dokumentiert. |
 
 ## 14. Zweite Durchführung — Freigegebene Korrekturen und kompletter Live-Nachweis (2026-09-26/27)
 
@@ -337,3 +337,9 @@ Browser für `UI-003`, Dauerlauf über Stunden für `LOAD-001`), Phase 4
   „Real OCI Runtime"); `OCI-001` ehrlich von `NOT_VERIFIED` auf `PARTIAL`
   gesetzt — der Erzwingungsnachweis der Quota auf einem pquota-fähigen Host
   bleibt die einzige offene Bedingung für `PASS`.
+- 2026-09-27 (dritte Durchführung, Creator-Freigabe): Befund B8 behoben —
+  `scripts/sabotage.mjs` erhält eine git-Vorprüfung (verschmutzter Startbaum
+  bricht fail closed ab, Override `SABOTAGE_ALLOW_DIRTY=1`) und eine
+  git-Abschlussprüfung; verifiziert mit Schmutz-Probe, `--check` und vollem
+  Lauf (25/25). Freigabe für die Phase-4-Funktionsänderungen (7.1–7.5)
+  erteilt; Umsetzung erfolgt je Punkt mit Spezifikation, Tests, Doku, Nachweis.
