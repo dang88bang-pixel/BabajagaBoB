@@ -52,7 +52,7 @@ describe("offline fabric",()=>{
     const manifest=JSON.parse(fs.readFileSync(path.join(bundle,"manifest.json"),"utf8"));
     const item=manifest.resources[0]; fs.writeFileSync(path.join(bundle,item.file),"changed");
     item.sha256=crypto.createHash("sha256").update("changed").digest("hex");
-    manifest.manifestSha256=crypto.createHash("sha256").update(JSON.stringify(((m)=>{const {manifestSha256,...base}=m;return base})(manifest))).digest("hex");
+    manifest.manifestSha256=crypto.createHash("sha256").update(JSON.stringify(((m)=>{const {_manifestSha256,...base}=m;return base})(manifest))).digest("hex");
     fs.writeFileSync(path.join(bundle,"manifest.json"),JSON.stringify(manifest));
     await expect(importOfflineBundle(bundle)).rejects.toThrow(/merge conflict/);
     expect(listOfflineConflicts().length).toBeGreaterThan(0);
