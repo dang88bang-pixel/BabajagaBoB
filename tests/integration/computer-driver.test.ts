@@ -13,11 +13,11 @@ describe("Computer Use execution boundary",()=>{
     process.env.BOB_COMPUTER_DRIVER=driver;
     const computers=await import("../../lib/computer-use");
     const exec=await import("../../lib/computer-driver");
-    const c=computers.listComputers()[0];
+    const c=computers.registerComputer({name:"CLI test computer",kind:"CLI",os:"linux",arch:"x64",network:"DENY",capabilities:[{kind:"CLI",actions:["TERMINAL_EXECUTE"],environments:["test"],network:"DENY",risk:"LOW"}],authorized:false});
     computers.authorizeComputer(c.id,true,"CREATOR");
     computers.allocateComputer(c.id,"TASK-CU","SB-CU");
     computers.startComputer(c.id);
-    const result=await exec.executeComputerAction({computerId:c.id,action:"SCREENSHOT",input:{url:"http://example.test"}});
+    const result=await exec.executeComputerAction({computerId:c.id,action:"TERMINAL_EXECUTE",input:{command:"test"}});
     expect(result.status).toBe("SUCCEEDED");
     expect(result.stdoutDigest).toMatch(/^[a-f0-9]{64}$/);
     expect(result.stdoutLength).toBeGreaterThan(0);
