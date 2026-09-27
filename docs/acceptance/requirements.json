@@ -1644,15 +1644,52 @@
       "area": "Offline Fabric",
       "phase": "P2",
       "requirement": "Arbeiten ohne Internet mit lokalem Paket-/Modell-/Wissensbestand und späterem, herkunftstreuem Abgleich.",
-      "implementation": [],
-      "tests": [],
-      "ui": [],
-      "evidence": [],
+      "implementation": [
+        "lib/offline/offline-fabric.ts",
+        "app/api/offline/route.ts",
+        "lib/system-execution.ts"
+      ],
+      "tests": [
+        {
+          "file": "tests/unit/offline-fabric.test.ts",
+          "min": 11
+        },
+        {
+          "file": "tests/integration/offline-fabric.test.ts",
+          "min": 3
+        }
+      ],
+      "ui": [
+        "OfflineFabric"
+      ],
+      "evidence": [
+        {
+          "kind": "file",
+          "path": "lib/offline/offline-fabric.ts",
+          "note": "Bestand mit Digest+Linie, Task-Pakete, Offline-Ausführung nur in DENY-Sandboxes, herkunftstreuer Sync/Merge"
+        },
+        {
+          "kind": "route",
+          "path": "/api/offline",
+          "note": "GET offline:read; POST creatorOnly offline:manage (register-asset/create-package/execute/sync/resolve-conflict/import-remote)"
+        },
+        {
+          "kind": "file",
+          "path": "tests/integration/offline-fabric.test.ts",
+          "note": "Flow: Bestand -> Paket -> DENY-Sandbox -> autorisierte Ausfuehrung -> Evidenz -> Provenance -> Audit; Sync mit Konflikt und manipuliertem Import"
+        },
+        {
+          "kind": "file",
+          "path": "docs/OFFLINE.md",
+          "note": "Doku: Flow gemaess MASTER 36, API, ehrliche Grenzen"
+        }
+      ],
       "docs": [
+        "docs/OFFLINE.md",
         "docs/TODO.md"
       ],
-      "status": "NOT_IMPLEMENTED",
-      "note": "Es gibt keinen Offline-Paketbestand, keinen lokalen Modell-/Vektorindex und keinen Sync-/Merge-Pfad."
+      "status": "PASS",
+      "note": "Phase 4 / 7.4 (2026-09-27): kompletter Offline-Flow gemaess MASTER 36. Ehrliche Grenzen: Inhalte bis 1 MiB im Bestandsspeicher (BOB_OFFLINE_MAX_CONTENT_BYTES), darueber Digest-/Metadaten-Referenz; der Netz-Transport nach Wiederkehr liegt ausserhalb des Systems und wird ueber Manifest+Inhalt geprueft. Sabotage-Probe OFFLINE_DIGEST_IGNORED."
     },
     {
       "id": "OPR-001",

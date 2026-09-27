@@ -320,6 +320,21 @@
       "tests": [
         "tests/security/ops-enforcement.test.ts"
       ]
+    },
+    {
+      "id": "OFFLINE_DIGEST_IGNORED",
+      "title": "Offline-Import ignoriert den Manifest-Digest",
+      "guard": "Offline-Importe aus Remote-Manifesten werden nur uebernommen, wenn der Inhalt den deklarierten Digest erfuellt (Herkunftstreue, OFF-001).",
+      "edits": [
+        {
+          "file": "lib/offline/offline-fabric.ts",
+          "find": "if (computed !== input.item.digest) throw",
+          "replace": "if (false) throw"
+        }
+      ],
+      "tests": [
+        "tests/unit/offline-fabric.test.ts"
+      ]
     }
   ],
   "_changes": "Proben müssen die wirksame Schutzregel entfernen. Proben mit mehreren Änderungen (edits) entfernen redundante Ebenen gemeinsam; eine Probe, die nur eine von zwei Ebenen schwächt, belegt nichts."

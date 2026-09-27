@@ -30,6 +30,7 @@ type SectionId =
   | "Runs"
   | "Sandboxes"
   | "Egress"
+  | "OfflineFabric"
   | "Runtimes"
   | "Evidence"
   | "Audit"
@@ -76,6 +77,7 @@ const NAV: {id: SectionId; label: string; group: string}[] = [
   {id: "Runs", label: "Runs", group: "Ausführung"},
   {id: "Sandboxes", label: "Sandboxes", group: "Ausführung"},
   {id: "Egress", label: "Egress", group: "Ausführung"},
+  {id: "OfflineFabric", label: "Offline-Fabric", group: "Ausführung"},
   {id: "Runtimes", label: "Runtimes", group: "Ausführung"},
   {id: "Evidence", label: "Evidenz", group: "Nachweis"},
   {id: "Audit", label: "Audit", group: "Nachweis"},
@@ -244,6 +246,21 @@ const SOURCES: Partial<Record<SectionId, {url: string; path?: string[]; columns:
       {key: "addedBy", label: "Angelegt von"},
       {key: "addedAt", label: "Angelegt am"},
       {key: "reason", label: "Begründung"}
+    ]
+  },
+  OfflineFabric: {
+    url: "/api/offline",
+    path: ["assets"],
+    note:
+      "Offline-Betrieb (MASTER §36 / OFF-001, Phase 4 / 7.4): Bestand (Pakete/Modelle/Wissen/Doku/Datasets) wird lokal mit Digest geführt, als Task-Paket gebündelt und ausschließlich in netzlosen DENY-Sandboxes über den autorisierten Systempfad ausgeführt — mit Evidenz und Herkunftstreue. Nach Wiederkehr entscheidet ein Abgleich (UNCHANGED / IMPORT_PENDING / CONFLICT / LOCAL_ONLY); Konflikte werden nie still überschrieben.",
+    columns: [
+      {key: "kind", label: "Kategorie"},
+      {key: "name", label: "Name"},
+      {key: "version", label: "Version"},
+      {key: "digest", label: "Digest", render: row => (typeof row.digest === "string" ? `${row.digest.slice(0, 12)}…` : "—")},
+      {key: "source", label: "Quelle"},
+      {key: "status", label: "Status"},
+      {key: "addedAt", label: "Erfasst am"}
     ]
   },
   Runtimes: {
