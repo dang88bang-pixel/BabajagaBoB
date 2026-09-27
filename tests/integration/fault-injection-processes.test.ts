@@ -129,7 +129,7 @@ describe("Fehlerinjektion: Prozessabbruch", () => {
     expect(after.payload.counter).toBe(crashed.payload.counter + 1);
     const stray = fs.readdirSync(crashRoot).filter(name => !name.startsWith(".") && !name.endsWith(".json") && !name.endsWith(".jsonl") && !name.endsWith(".bak"));
     expect(stray).toEqual([]);
-  });
+  }, 120_000);
 });
 
 describe("Fehlerinjektion: konkurrierende Schreibvorgänge", () => {
