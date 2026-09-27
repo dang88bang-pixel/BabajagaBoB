@@ -355,7 +355,7 @@ export class DurableStore<T> {
               holderAlive = false;
             }
           }
-          stale = Date.now() - fs.statSync(lock).mtimeMs > LOCK_STALE_MS;
+          const ageMs = Date.now() - fs.statSync(lock).mtimeMs;\n          // Alter allein darf eine aktive Sperre niemals entwerten: ein lebender\n          // Prozess kann länger als LOCK_STALE_MS schreiben. Nur ein nicht mehr\n          // lebender Halter darf nach dem Stale-Fenster übernommen werden.\n          stale = !holderAlive && ageMs > LOCK_STALE_MS;
         } catch {
           /* Sperrdatei verschwand zwischenzeitlich — erneut versuchen. */
         }
