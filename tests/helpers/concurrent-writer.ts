@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
 
 /**
  * Kindprozess für die Nebenläufigkeitsprobe (Fehlerinjektion, Abschnitt 37/49).
@@ -19,7 +20,7 @@ import crypto from "node:crypto";
  *                       (SIGKILL mitten im Schreibvorgang).
  */
 
-const [, , storageDir, storeName, iterationsRaw, modeRaw] = process.argv;
+const [, , storageDir, storeName, iterationsRaw, modeRaw, barrierPath] = process.argv;
 const iterations = Number(iterationsRaw ?? "50");
 const mode = modeRaw ?? "update";
 
@@ -33,6 +34,21 @@ process.env.BOB_STORAGE_DIR = storageDir;
 const workerId = `W-${process.pid}-${crypto.randomBytes(3).toString("hex")}`;
 
 async function main() {
+  // Optionale Start-Barriere: Alle Writer-Prozesse warten, bis die Datei
+  // existiert, und starten dann gleichzeitig. Ohne Barriere können die
+  // Prozesse durch unterschiedliche Startzeit nacheinander laufen — dann wäre
+  // die Nebenläufigkeitsprobe keine echte Probe.
+  if (barrierPath) {
+    const deadline = Date.now() + 30_000;
+    while (!fs.existsSync(barrierPath)) {
+      if (Date.now() > deadline) {
+        console.error("barrier timeout");
+        process.exit(2);
+      }
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+  }
+
   // Absichtlich dynamisch: Der Pfad wird zur Laufzeit übergeben, damit dieser
   // Helfer auch außerhalb von tsconfig-Aliasen direkt startbar ist.
   const modulePath = process.env.BOB_STORE_MODULE ?? new URL("../../lib/persistence/store.ts", import.meta.url).pathname;

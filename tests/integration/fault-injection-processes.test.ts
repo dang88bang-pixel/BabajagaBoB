@@ -1,4 +1,5 @@
 import {spawn} from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -47,9 +48,9 @@ function writerEnv(storeRoot: string) {
 }
 
 /** Startet n gleichzeitige Writer-Prozesse und wartet auf alle. */
-function spawnWriters(storeRoot: string, count: number, iterations: number, mode: "update" | "write") {
+function spawnWriters(storeRoot: string, count: number, iterations: number, mode: "update" | "write", barrierPath?: string) {
   const children = Array.from({length: count}, () =>
-    spawn(process.execPath, ["--experimental-strip-types", STORE_HELPER, storeRoot, "fault-counter", String(iterations), mode], {
+    spawn(process.execPath, ["--experimental-strip-types", STORE_HELPER, storeRoot, "fault-counter", String(iterations), mode, ...(barrierPath ? [barrierPath] : [])], {
       env: writerEnv(storeRoot),
       stdio: ["ignore", "pipe", "pipe"]
     })
@@ -135,7 +136,14 @@ describe("Fehlerinjektion: konkurrierende Schreibvorgänge", () => {
   it("verliert bei vier echten Writer-Prozessen keine Aktualisierung", async () => {
     const concurrentRoot = fs.mkdtempSync(path.join(root, "concurrent-"));
     const perWriter = 60;
-    const codes = await spawnWriters(concurrentRoot, 4, perWriter, "update");
+    // Start-Barriere: erst wenn alle vier Writer-Prozesse bereitstehen, werden
+    // sie gleichzeitig losgelassen — sonst könnten sie durch unterschiedliche
+    // Startzeiten zufällig nacheinander laufen und die Probe wäre keine echte.
+    const barrier = path.join(root, `barrier-concurrent-${crypto.randomUUID()}.start`);
+    const done = spawnWriters(concurrentRoot, 4, perWriter, "update", barrier);
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    fs.writeFileSync(barrier, "start");
+    const codes = await done;
     expect(codes).toEqual([0, 0, 0, 0]);
 
     const result = readCounter(concurrentRoot);
@@ -154,7 +162,11 @@ describe("Fehlerinjektion: konkurrierende Schreibvorgänge", () => {
     // liefen.
     const lossyRoot = fs.mkdtempSync(path.join(root, "lossy-"));
     const perWriter = 60;
-    const codes = await spawnWriters(lossyRoot, 4, perWriter, "write");
+    const barrier = path.join(root, `barrier-lossy-${crypto.randomUUID()}.start`);
+    const done = spawnWriters(lossyRoot, 4, perWriter, "write", barrier);
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    fs.writeFileSync(barrier, "start");
+    const codes = await done;
     expect(codes).toEqual([0, 0, 0, 0]);
     const result = readCounter(lossyRoot);
     expect(result.payload.writers.length).toBeLessThan(4 * perWriter);
