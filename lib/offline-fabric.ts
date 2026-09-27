@@ -174,6 +174,11 @@ export function importOfflineBundle(bundleDirectory: string): {bundleId:string; 
     const destination=path.join(destinationRoot,safeId(item.id));
     fs.copyFileSync(sourceFile,destination);
     const now=new Date().toISOString();
+    const existingBeforeMerge = store.read().resources.find(r=>r.id===item.id);
+    if (existingBeforeMerge && existingBeforeMerge.sha256 !== item.sha256) {
+      recordAudit({actor:"CREATOR",action:"offline.bundle.merge",resource:item.id,decision:"DENY"},{reason:"DIGEST_CONFLICT",existingDigest:existingBeforeMerge.sha256,incomingDigest:item.sha256,bundleId:manifest.bundleId});
+      throw new Error(`offline bundle resource conflict: ${item.id}`);
+    }
     store.update(p=>{
       const existing=p.resources.find(r=>r.id===item.id);
       const resource:OfflineResource={id:item.id,kind:item.kind,name:item.name,version:item.version,location:destination,sha256:item.sha256,sizeBytes:item.sizeBytes,source:item.source,metadata:{...item.metadata,bundleId:manifest.bundleId},verified:true,createdAt:existing?.createdAt??now,updatedAt:now};
@@ -182,6 +187,7 @@ export function importOfflineBundle(bundleDirectory: string): {bundleId:string; 
     imported.push(item.id);
   }
   store.update(p=>p.bundles.push(manifest.bundleId));
+  recordAudit({actor:"CREATOR",action:"offline.bundle.merge",resource:manifest.bundleId,decision:"ALLOW"},{imported,conflictPolicy:"DIGEST_EQUAL_ONLY"});
   recordAudit({actor:"CREATOR",action:"offline.bundle.import",resource:manifest.bundleId,decision:"ALLOW"},{imported});
   observe({type:"offline.bundle.imported",message:`Offline-Bundle ${manifest.bundleId} importiert`,status:"COMPLETED",actor:"CREATOR",action:"offline.bundle.import",resource:manifest.bundleId});
   return {bundleId:manifest.bundleId,imported};
