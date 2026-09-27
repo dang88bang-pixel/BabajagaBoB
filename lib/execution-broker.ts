@@ -9,6 +9,7 @@ import {observe} from "./observability";
 import {addProvenanceEdge, addProvenanceNode} from "./provenance";
 import {MAX_ARGV_LENGTH, firstMetacharacterArg, isShellInterpreter} from "./argv-policy";
 import {executeComputerAction, type ComputerExecutionResult} from "./computer-driver";
+import {listComputers} from "./computer-use";
 import type {ExecutionResult} from "./runtime";
 import type {Risk} from "./types";
 
@@ -405,22 +406,66 @@ export function preflight(request: Omit<ExecutionRequest, "argv">): {allowed: bo
   const sandbox = state.sandboxes.find(s => s.sandboxId === request.sandboxId);
   checks.push("SANDBOX_EXISTS");
   if (!sandbox) reasons.push("sandbox not found");
-  if (task && sandbox && sandbox.taskId !== task.taskId) reasons.push("sandbox/task mismatch");
   const token = capabilityTokens().find(t => t.id === request.capabilityTokenId);
   checks.push("TOKEN_EXISTS");
   if (!token) reasons.push("capability token not found");
-  if (task && token) {
+
+  if (task && agent) {
+    checks.push("AGENT_TASK_BINDING");
+    if (task.assignedAgent !== request.agentId) reasons.push("task is assigned to another agent");
+    checks.push("AGENT_CAPABILITY");
+    if (!agent.capabilities.includes("task:execute")) reasons.push("agent lacks task:execute");
+    checks.push("AGENT_RISK");
+    if (riskRank[agent.maxRisk] < riskRank[task.risk]) reasons.push("agent risk scope is insufficient");
+  }
+  if (task && sandbox) {
+    checks.push("SANDBOX_TASK_BINDING");
+    if (sandbox.taskId !== task.taskId) reasons.push("sandbox/task mismatch");
+    checks.push("SANDBOX_AGENT_BINDING");
+    if (sandbox.agentId !== request.agentId) reasons.push("sandbox/agent mismatch");
+  }
+  if (task && token && sandbox) {
+    const environment = request.environment ?? sandbox.type;
     const validation = validateCapabilityToken(request.capabilityTokenId, ["task:execute", "sandbox:run"], {
       subject: request.agentId,
       taskId: task.taskId,
-      sandboxId: sandbox?.sandboxId,
+      sandboxId: sandbox.sandboxId,
       risk: task.risk
     });
     checks.push("TOKEN_VALIDATION");
     if (!validation.valid) reasons.push(validation.reason);
+    checks.push("TOKEN_SUBJECT");
+    if (token.subject !== request.agentId) reasons.push("token subject mismatch");
+    checks.push("TOKEN_TASK");
+    if (token.taskId !== request.taskId) reasons.push("token task scope mismatch");
+    checks.push("TOKEN_SANDBOX");
+    if (token.sandboxId !== request.sandboxId) reasons.push("token sandbox scope mismatch");
+    checks.push("TOKEN_RISK");
+    if (riskRank[token.risk] < riskRank[task.risk]) reasons.push("token risk scope is insufficient");
+    checks.push("ENVIRONMENT");
+    if (token.environment && token.environment !== environment) reasons.push("token environment mismatch");
+
     const gate = executionGate(task, request.approvalId, state.locked, request.agentId, request.experimentId, request.sandboxId);
     checks.push("EXECUTION_GATE");
     if (!gate.allowed) reasons.push(...gate.reasons);
+    if (task.requiresApproval) {
+      checks.push("APPROVAL");
+      const approval = request.approvalId ? state.approvals.find(a => a.approvalId === request.approvalId) : undefined;
+      if (!approval || approval.status !== "GRANTED") reasons.push("approval is required but not granted");
+      else if (approval.taskId !== task.taskId) reasons.push("approval belongs to a different task");
+    }
+
+    checks.push("NETWORK_POLICY");
+    if (sandbox.network === "ALLOWLIST") reasons.push("ALLOWLIST networking is fail-closed");
+    const handle = runtimeHandle(request.sandboxId);
+    if (handle?.network.mode === "ALLOWLIST") reasons.push("runtime network allowlist is unavailable");
+    checks.push("RESOURCE_LIMITS");
+    if (handle?.limits) {
+      if (handle.limits.timeoutMs <= 0 || handle.limits.timeoutMs > MAX_RESOURCE_LIMITS.timeoutMs) reasons.push("timeout outside allowed range");
+      if (handle.limits.memoryMb <= 0 || handle.limits.memoryMb > MAX_RESOURCE_LIMITS.memoryMb) reasons.push("memory outside allowed range");
+      if (handle.limits.cpuMillicores <= 0 || handle.limits.cpuMillicores > MAX_RESOURCE_LIMITS.cpuMillicores) reasons.push("cpu outside allowed range");
+      if (handle.limits.processes <= 0 || handle.limits.processes > MAX_RESOURCE_LIMITS.processes) reasons.push("process limit outside allowed range");
+    }
   }
   return {allowed: reasons.length === 0, checks, reasons};
 }
