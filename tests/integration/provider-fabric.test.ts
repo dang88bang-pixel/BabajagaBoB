@@ -55,14 +55,14 @@ describe("Provider Fabric (persistent, fail closed)", () => {
   });
 
   it("verweigert Verbindung ohne explizite Freigabe", async () => {
-    await expect(providers.connectProvider("prov-temporal", "https://provider.example/health")).rejects.toThrow(/approval/i);
-    await expect(providers.connectProvider("prov-temporal", "https://provider.example/health", undefined, "APR-UNBEKANNT")).rejects.toThrow(/approval/i);
+    await expect(providers.connectProvider("prov-temporal", "https://1.1.1.1/health")).rejects.toThrow(/approval/i);
+    await expect(providers.connectProvider("prov-temporal", "https://1.1.1.1/health", undefined, "APR-UNBEKANNT")).rejects.toThrow(/approval/i);
     expect(providers.getProvider("prov-temporal")?.enabled).toBe(false);
   });
 
   it("verbindet erst mit erteilter Freigabe und persistiert den Zustand", async () => {
     const approvalId = grantApproval("prov-temporal");
-    const connected = await providers.connectProvider("prov-temporal", "https://provider.example/health", "secret-ref-temporal", approvalId);
+    const connected = await providers.connectProvider("prov-temporal", "https://1.1.1.1/health", "secret-ref-temporal", approvalId);
     expect(connected.lifecycle).toBe("CONNECTED");
     expect(connected.enabled).toBe(true);
     // Persistenz: unabhängiger Lesepfad liefert denselben Zustand.
@@ -85,12 +85,12 @@ describe("Provider Fabric (persistent, fail closed)", () => {
     expect(revoked.lifecycle).toBe("REVOKED");
     expect(providers.listBindings().filter(entry => entry.providerId === "prov-temporal").every(entry => !entry.active)).toBe(true);
     const approvalId = grantApproval("prov-temporal");
-    await expect(providers.connectProvider("prov-temporal", "https://provider.example/health", undefined, approvalId)).rejects.toThrow(/revoked/i);
+    await expect(providers.connectProvider("prov-temporal", "https://1.1.1.1/health", undefined, approvalId)).rejects.toThrow(/revoked/i);
   });
 
   it("verfolgt Health über Heartbeats und blockiert ungesunde Provider", async () => {
     const approvalId = grantApproval("prov-e2b");
-    await providers.connectProvider("prov-e2b", "https://provider.example/health", undefined, approvalId);
+    await providers.connectProvider("prov-e2b", "https://1.1.1.1/health", undefined, approvalId);
     expect(providers.heartbeatProvider("prov-e2b", {health: "DEGRADED", latencyMs: 120}).lifecycle).toBe("DEGRADED");
     expect(providers.heartbeatProvider("prov-e2b", {health: "UNHEALTHY", message: "timeout"}).lifecycle).toBe("BLOCKED");
     expect(providers.providerSnapshot().telemetry["prov-e2b"].health).toBe("UNHEALTHY");
