@@ -4,6 +4,7 @@ import {recordAudit} from "./audit";
 import {observe} from "./observability";
 import {listComputers} from "./computer-use";
 import {executeBrowserAction} from "./browser-driver";
+import {executeBrowserAction} from "./browser-driver";
 
 export type ComputerExecutionRequest = {
   computerId: string;
@@ -64,6 +65,46 @@ export async function executeComputerAction(req: ComputerExecutionRequest): Prom
         stdoutDigest:digest(""), stderrDigest:digest(stderr), stdoutLength:0, stderrLength:stderr.length, durationMs:Date.now()-started
       };
       recordAudit({actor:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:"DENY"}, {action:req.action,driver:"browser-driver",stderrDigest:out.stderrDigest});
+      return out;
+    }
+  }
+
+  // Browser-Computer können den integrierten, isolierten CDP-Treiber verwenden.
+  // Dadurch bleibt auch der konkrete Browserpfad innerhalb des bereits validierten
+  // Computer-Use-Brokers; ein separater, unautorisierter Browserpfad existiert nicht.
+  if (instance.kind === "BROWSER" && process.env.BOB_BROWSER_EXECUTABLE) {
+    const started = Date.now();
+    try {
+      const browserResult = await executeBrowserAction(req.action, req.input, req.timeoutMs ?? 30000);
+      const serialized = JSON.stringify(browserResult);
+      const out: ComputerExecutionResult = {
+        computerId: req.computerId,
+        action: req.action,
+        status: "SUCCEEDED",
+        exitCode: 0,
+        stdoutDigest: digest(serialized),
+        stderrDigest: digest(""),
+        stdoutLength: serialized.length,
+        stderrLength: 0,
+        durationMs: Date.now() - started
+      };
+      recordAudit({actor:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:"ALLOW"}, {
+        action:req.action, exitCode:0, stdoutDigest:out.stdoutDigest, stderrDigest:out.stderrDigest,
+        durationMs:out.durationMs, driver:"builtin-cdp"
+      });
+      observe({type:"computer.executed",message:`Computer ${req.computerId} ${req.action} -> SUCCEEDED`,status:"COMPLETED",actor:"AG-BROWSER",agentId:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:"ALLOW",argumentsValue:{action:req.action,exitCode:0,driver:"builtin-cdp"}});
+      return out;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const out: ComputerExecutionResult = {
+        computerId:req.computerId, action:req.action, status:"FAILED", exitCode:null,
+        stdoutDigest:digest(""), stderrDigest:digest(message), stdoutLength:0,
+        stderrLength:message.length, durationMs:Date.now()-started
+      };
+      recordAudit({actor:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:"DENY"}, {
+        action:req.action, exitCode:null, stderrDigest:out.stderrDigest, durationMs:out.durationMs, driver:"builtin-cdp"
+      });
+      observe({type:"computer.executed",message:`Computer ${req.computerId} ${req.action} -> FAILED`,status:"ERROR",actor:"AG-BROWSER",agentId:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:"DENY",argumentsValue:{action:req.action,exitCode:null,driver:"builtin-cdp"}});
       return out;
     }
   }
