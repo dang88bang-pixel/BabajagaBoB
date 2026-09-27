@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import {recordAudit} from "./audit";
 import {observe} from "./observability";
 import {listComputers} from "./computer-use";
+import {executeBrowserAction} from "./browser-driver";
 
 export type ComputerExecutionRequest = {
   computerId: string;
@@ -33,6 +34,24 @@ export async function executeComputerAction(req: ComputerExecutionRequest): Prom
   if(instance.state!=="EXECUTING") throw new Error("computer must be executing");
   if(!ALLOWED.has(req.action)) throw new Error("computer action is not allowed");
   if(!instance.capabilities.some(c=>c.kind===instance.kind && c.actions.includes(req.action as never))) throw new Error("computer capability does not permit action");
+  if (instance.kind === "BROWSER") {
+    const result = await executeBrowserAction(req.action, req.input, req.timeoutMs);
+    const stdout = JSON.stringify(result);
+    const out: ComputerExecutionResult = {
+      computerId: req.computerId,
+      action: req.action,
+      status: result.ok ? "SUCCEEDED" : "FAILED",
+      exitCode: result.ok ? 0 : 1,
+      stdoutDigest: digest(stdout),
+      stderrDigest: digest(""),
+      stdoutLength: stdout.length,
+      stderrLength: 0,
+      durationMs: result.durationMs ?? 0
+    };
+    recordAudit({actor:"AG-BROWSER",action:"computer.execute.browser",resource:req.computerId,decision:out.status==="SUCCEEDED"?"ALLOW":"DENY"},{action:req.action,stdoutDigest:out.stdoutDigest,stdoutLength:out.stdoutLength,durationMs:out.durationMs});
+    observe({type:"computer.browser.executed",message:`Browser ${req.computerId} ${req.action} -> ${out.status}`,status:out.status==="SUCCEEDED"?"COMPLETED":"ERROR",actor:"AG-BROWSER",agentId:"AG-BROWSER",action:"computer.execute.browser",resource:req.computerId,decision:out.status==="SUCCEEDED"?"ALLOW":"DENY",argumentsValue:{action:req.action,stdoutDigest:out.stdoutDigest}});
+    return out;
+  }
   const command=(process.env.BOB_COMPUTER_DRIVER ?? "").trim();
   if (/\s/.test(command) || command.includes(";") || command.includes("|") || command.includes("&")) throw new Error("computer driver path is invalid");
   if(!command) {
