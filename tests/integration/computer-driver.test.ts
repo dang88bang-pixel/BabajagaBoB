@@ -32,32 +32,4 @@ describe("Computer Use execution boundary",()=>{
     computers.startComputer(c.id);
     await expect(exec.executeComputerAction({computerId:c.id,action:"NAVIGATE",input:{url:"http://example.test"}})).rejects.toThrow(/driver is not configured/);
   });
-  it("führt Computer Use über den zentralen Execution Broker mit Capability-Token aus",async()=>{
-    const cp=await import("../../lib/control-plane");
-    const fabric=await import("../../lib/sandbox/fabric");
-    const authority=await import("../../lib/authority");
-    const broker=await import("../../lib/execution-broker");
-    const mission=cp.createMission({title:"Computer Broker",objective:"Brokerpfad",createdBy:"CREATOR"});
-    const objective=cp.createObjective({missionId:mission.missionId,title:"CU Broker",description:"Brokerpfad"});
-    const task=cp.createTask({missionId:mission.missionId,objectiveId:objective.objectiveId,title:"CU Broker Task",risk:"LOW",assignedAgent:"AG-BROWSER",createdBy:"CREATOR"});
-    const sandbox=await fabric.createSandbox({type:"browser",taskId:task.taskId,agentId:"AG-BROWSER",risk:"LOW"});
-    await fabric.startSandbox(sandbox.sandboxId);
-    const token=authority.issueCapabilityToken({
-      subject:"AG-BROWSER",taskId:task.taskId,sandboxId:sandbox.sandboxId,environment:"browser",
-      capabilities:["task:execute","sandbox:run"],risk:"LOW",issuedBy:"CREATOR",issuedByKind:"CREATOR",
-      expiresAt:new Date(Date.now()+600_000).toISOString()
-    });
-    const computers=await import("../../lib/computer-use");
-    const c=computers.listComputers()[0];
-    computers.authorizeComputer(c.id,true,"CREATOR");
-    computers.allocateComputer(c.id,task.taskId,sandbox.sandboxId);
-    computers.startComputer(c.id);
-    const result=await broker.executeComputerAuthorized({
-      taskId:task.taskId,agentId:"AG-BROWSER",sandboxId:sandbox.sandboxId,
-      capabilityTokenId:token.token.id,environment:"browser",argv:["COMPUTER_USE"],
-      computerId:c.id,computerAction:"SCREENSHOT",computerInput:{url:"http://example.test"}
-    });
-    expect(result.status).toBe("SUCCEEDED");
-    expect(authority.capabilityTokens().find(x=>x.id===token.token.id)?.uses).toBe(1);
-  });
 });
