@@ -20,12 +20,14 @@ describe("CDP browser driver",()=>{
   it("executes a real browser action through the Computer Use -> Execution Broker path",async()=>{
     if(!process.env.BOB_BROWSER_EXECUTABLE) return;
     const bootstrap=await import("../../lib/bootstrap");
-    const {TEST_BOOTSTRAP_SECRET}=await import("../helpers/runtime");
+    const {TEST_BOOTSTRAP_SECRET,isolatedStorageRoot}=await import("../helpers/runtime");
     const cp=await import("../../lib/control-plane");
     const fabric=await import("../../lib/sandbox/fabric");
     const authority=await import("../../lib/authority");
     const computer=await import("../../lib/computer-use");
     const broker=await import("../../lib/execution-broker");
+    isolatedStorageRoot("browser-broker");
+    process.env.BOB_BOOTSTRAP_SECRET=TEST_BOOTSTRAP_SECRET;
     bootstrap.completeBootstrap({secret:TEST_BOOTSTRAP_SECRET,creatorName:"Browser Broker Test"});
     const mission=cp.createMission({title:"Browser Broker",objective:"Real browser execution",createdBy:"CREATOR"});
     const task=cp.createTask({missionId:mission.missionId,title:"Browser screenshot",risk:"MODERATE",assignedAgent:"AG-BROWSER",createdBy:"CREATOR"});
