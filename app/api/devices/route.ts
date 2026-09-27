@@ -3,6 +3,7 @@ import {allocateDevice, authorizeDevice, discoverDevice, heartbeatDevice, listDe
 import {guardOrDeny} from "@/lib/api/api-gate";
 import {authorizeEnrollment, enrollmentAvailable, recordEnrollment, recordEnrollmentDenial} from "../../../lib/device-enrollment";
 import {objectField} from "@/lib/request-validation";
+import {issueAttestationChallenge, registerDeviceAttestation, verifyDeviceAttestation} from "../../../lib/device-attestation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,13 +28,23 @@ export async function GET(request: Request) {
  *  3. Fremde/fehlende Zugangsdaten: 401/403, kein Datensatz.
  */
 export async function POST(request: Request) {
-  const body = (await request.clone().json().catch(() => ({}))) as {action?: string; secret?: unknown; device?: Record<string, unknown>};
+  const body = (await request.clone().json().catch(() => ({}))) as {action?: string; secret?: unknown; device?: Record<string, unknown>; id?: string; nonce?: string; signature?: string; publicKeyPem?: string};
   const action = String(body.action ?? "");
-  const enrollmentActions = action === "enroll" || action === "heartbeat";
+  const enrollmentActions = action === "enroll" || action === "heartbeat" || action === "attestation-challenge" || action === "attestation-verify";
 
   // Discovery über den Agentenweg: das Enrollment-Geheimnis wird hier geprüft,
   // bevor die übliche Session-Grenze greift (das Gerät hat keine Session).
   if (enrollmentActions) {
+    if ((action === "attestation-challenge" || action === "attestation-verify") && typeof body.id === "string") {
+      const identity = {id: body.id, name: body.id, os: "attestation", arch: "ed25519"};
+      const verdict = authorizeEnrollment(body.secret, identity);
+      if (!verdict.ok) { recordEnrollmentDenial(verdict.code, body.id); return NextResponse.json({error: verdict.code, message: verdict.message}, {status: verdict.status}); }
+      try {
+        if (action === "attestation-challenge") return NextResponse.json({challenge: issueAttestationChallenge(body.id)});
+        if (typeof body.nonce !== "string" || typeof body.signature !== "string") return NextResponse.json({error:"nonce and signature required"},{status:400});
+        return NextResponse.json({attestation: verifyDeviceAttestation(body.id,body.nonce,body.signature)});
+      } catch(error) { return NextResponse.json({error:error instanceof Error?error.message:"attestation error"},{status:400}); }
+    }
     const identity = {
       id: String(body.device?.id ?? ""),
       name: String(body.device?.name ?? ""),
@@ -53,6 +64,7 @@ export async function POST(request: Request) {
     }
     try {
       if (action === "enroll") {
+        if (typeof body.device?.publicKeyPem === "string") registerDeviceAttestation(identity.id, body.device.publicKeyPem);
         // `authorized` aus dem Aufruf wird verworfen: Discovery ist keine
         // Autorisierung, unabhängig davon, was das Gerät behauptet.
         const created = discoverDevice({...identity, cpu: identity.cpu || 1, ramMb: identity.ramMb || 1} as never);

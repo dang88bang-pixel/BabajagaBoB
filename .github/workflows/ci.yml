@@ -112,6 +112,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Install real Chromium for browser verification
+        run: sudo apt-get update && sudo apt-get install -y chromium
+      - name: Real Chromium CDP driver
+        run: npm run test:browser
+        env:
+          BOB_BROWSER_EXECUTABLE: /usr/bin/chromium
       - name: Security Regression Suite (Privilege Escalation, Token, Kill Switch, Secret Leakage)
         run: npm run test:security
       - name: End-to-End (Creator -> Mission -> ... -> Knowledge)

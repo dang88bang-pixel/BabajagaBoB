@@ -16,7 +16,8 @@
     "test:e2e": "vitest run tests/e2e",
     "test:ui": "vitest run tests/ui",
     "verify": "npm run lint && npm run typecheck && npm run test && npm run build",
-    "test:oci": "vitest run tests/integration/oci-runtime.test.ts"
+    "test:oci": "vitest run tests/integration/oci-runtime.test.ts",
+    "test:browser": "vitest run tests/integration/browser-driver.test.ts"
   },
   "dependencies": {
     "next": "16.3.6",

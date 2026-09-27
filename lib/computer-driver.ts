@@ -43,7 +43,9 @@ export async function executeComputerAction(req: ComputerExecutionRequest): Prom
   const started=Date.now();
   const result=await new Promise<{code:number|null;stdout:string;stderr:string}>((resolve)=>{
     const safeEnv: NodeJS.ProcessEnv={NODE_ENV:process.env.NODE_ENV ?? "production",PATH:process.env.PATH,LANG:process.env.LANG,LC_ALL:process.env.LC_ALL,TZ:process.env.TZ};
-    const child=spawn(command,[],{shell:false,stdio:["pipe","pipe","pipe"],env:safeEnv});
+    const driverArgs=command.endsWith(".mjs")?[command]:[];
+    const executable=driverArgs.length?process.execPath:command;
+    const child=spawn(executable,driverArgs,{shell:false,stdio:["pipe","pipe","pipe"],env:safeEnv});
     let stdout="",stderr="",settled=false;
     const finish=(value:{code:number|null;stdout:string;stderr:string})=>{if(!settled){settled=true;clearTimeout(timer);resolve(value);}};
     const timer=setTimeout(()=>{child.kill("SIGKILL");finish({code:null,stdout,stderr:stderr+"timeout"});},timeout);
