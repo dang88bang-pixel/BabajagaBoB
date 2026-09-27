@@ -1,4 +1,4 @@
-import {spawn} from "node:child_process";
+import {spawn, type ChildProcess} from "node:child_process";
 import {mkdtemp, rm, readFile} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -41,10 +41,10 @@ async function waitForWs(port:number, deadline:number):Promise<string>{
 async function launch(exe:string,timeoutMs:number){
   const profile=await mkdtemp(path.join(os.tmpdir(),"bob-browser-"));
   const args=["--headless=new","--disable-gpu","--disable-software-rasterizer","--disable-dev-shm-usage","--no-sandbox","--disable-setuid-sandbox","--disable-crash-reporter","--disable-extensions","--disable-background-networking","--disable-sync","--no-first-run","--no-default-browser-check","--host-resolver-rules=MAP * ~NOTFOUND,EXCLUDE localhost","--remote-debugging-address=127.0.0.1","--remote-debugging-port=9222",`--user-data-dir=${profile}`,"about:blank"];
-  const child=spawn(exe,args,{shell:false,stdio:["ignore","pipe","pipe"],env:{PATH:process.env.PATH,LANG:process.env.LANG,HOME:profile}});
+  const child:ChildProcess=spawn(exe,args,{shell:false,stdio:"pipe",env:{NODE_ENV:process.env.NODE_ENV ?? "production",PATH:process.env.PATH,LANG:process.env.LANG,HOME:profile}});
   let text="";
   const collect=(b:Buffer)=>{text+=String(b);if(text.length>128000)text=text.slice(-128000);};
-  child.stdout.on("data",collect); child.stderr.on("data",collect);
+  child.stdout?.on("data",collect); child.stderr?.on("data",collect);
   const deadline=Date.now()+Math.min(Math.max(timeoutMs,1000),120000);
   const port=9222;
   while(Date.now()<deadline && child.exitCode===null){
@@ -68,7 +68,7 @@ async function launch(exe:string,timeoutMs:number){
 async function screenshotFallback(exe:string,timeoutMs:number){
   const dir=await mkdtemp(path.join(os.tmpdir(),"bob-browser-shot-"));
   const file=path.join(dir,"screenshot.png");
-  const child=spawn(exe,["--headless=new","--disable-gpu","--disable-dev-shm-usage","--no-sandbox","--disable-setuid-sandbox","--disable-extensions",`--screenshot=${file}`,"about:blank"],{shell:false,stdio:["ignore","pipe","pipe"],env:{PATH:process.env.PATH,LANG:process.env.LANG,HOME:dir}});
+  const child:ChildProcess=spawn(exe,["--headless=new","--disable-gpu","--disable-dev-shm-usage","--no-sandbox","--disable-setuid-sandbox","--disable-extensions",`--screenshot=${file}`,"about:blank"],{shell:false,stdio:"pipe",env:{NODE_ENV:process.env.NODE_ENV ?? "production",PATH:process.env.PATH,LANG:process.env.LANG,HOME:dir}});
   const started=Date.now();
   try {
     await new Promise<void>((resolve,reject)=>{
