@@ -1,5 +1,6 @@
 import {spawn, type ChildProcess} from "node:child_process";
 import {mkdtemp, rm, readFile} from "node:fs/promises";
+import {statSync} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -20,7 +21,7 @@ const executable=()=>{
   ];
   for(const candidate of candidates){
     try {
-      const stat=require("node:fs").statSync(candidate);
+      const stat=statSync(candidate);
       if(stat.isFile()) return candidate;
     } catch { /* candidate unavailable */ }
   }
