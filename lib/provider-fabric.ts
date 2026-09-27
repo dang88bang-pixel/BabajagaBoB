@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import dns from "node:dns/promises";
+import net from "node:net";
 import {createStore} from "./persistence/store";
 import {observe} from "./observability";
 import {recordAudit} from "./audit";
@@ -158,12 +160,54 @@ export function setProviderState(id: string, lifecycle: ProviderLifecycle, healt
   return provider;
 }
 
-export function connectProvider(id: string, endpoint?: string, credentialRef?: string, approvalId?: string) {
+async function assertSafeProviderEndpoint(endpoint: string): Promise<URL> {
+  let url: URL;
+  try { url = new URL(endpoint); } catch { throw new Error("provider endpoint must be a valid URL"); }
+  if (url.protocol !== "https:") throw new Error("provider endpoint must use HTTPS");
+  if (url.username || url.password) throw new Error("provider endpoint must not contain credentials");
+  const host = url.hostname.toLowerCase();
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) throw new Error("provider endpoint host is not allowed");
+  if (net.isIP(host)) {
+    if (net.isIPv4(host) && (/^(10\\.|127\\.|169\\.254\\.)/.test(host) || /^192\\.168\\./.test(host) || /^172\\.(1[6-9]|2[0-9]|3[0-1])\\./.test(host))) throw new Error("provider endpoint address is private");
+    if (net.isIPv6(host) && (host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80:"))) throw new Error("provider endpoint address is private");
+  } else {
+    const addresses = await dns.lookup(host, {all:true, verbatim:true});
+    if (!addresses.length) throw new Error("provider endpoint DNS resolution returned no address");
+    for (const address of addresses) {
+      if ((net.isIPv4(address.address) && (/^(10\\.|127\\.|169\\.254\\.)/.test(address.address) || /^192\\.168\\./.test(address.address) || /^172\\.(1[6-9]|2[0-9]|3[0-1])\\./.test(address.address))) || (net.isIPv6(address.address) && (address.address === "::1" || address.address.startsWith("fc") || address.address.startsWith("fd") || address.address.startsWith("fe80:")))) throw new Error("provider endpoint resolves to a private address");
+    }
+  }
+  return url;
+}
+
+export async function probeProvider(id: string, endpoint?: string): Promise<ProviderTelemetry> {
+  const provider = getProvider(id);
+  if (!provider) throw new Error("provider not found");
+  if (!endpoint) throw new Error("provider endpoint is required for live connection");
+  const url = await assertSafeProviderEndpoint(endpoint);
+  const started = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(url, {method:"GET", headers:{"Accept":"application/json"}, signal:controller.signal, redirect:"error"});
+    const telemetry: ProviderTelemetry = {providerId:id,time:new Date().toISOString(),health:response.ok?"HEALTHY":"UNHEALTHY",latencyMs:Date.now()-started,message:response.ok?"live probe succeeded":`HTTP ${response.status}`};
+    return telemetry;
+  } catch (error) {
+    return {providerId:id,time:new Date().toISOString(),health:"UNHEALTHY",latencyMs:Date.now()-started,message:error instanceof Error?error.message:"provider probe failed"};
+  } finally { clearTimeout(timer); }
+}
+
+export async function connectProvider(id: string, endpoint?: string, credentialRef?: string, approvalId?: string) {
   const provider = getProvider(id);
   if (!provider) throw new Error("provider not found");
   if (provider.lifecycle === "REVOKED") throw new Error("provider is revoked");
   if (provider.requiresApproval && !approvalId) throw new Error("third-party provider connection requires explicit approval");
   if (provider.requiresApproval && approvalId && !approvalGranted(approvalId)) throw new Error("provider connection approval is not granted");
+  const probe = await probeProvider(id, endpoint);
+  if (probe.health !== "HEALTHY") {
+    heartbeatProvider(id, probe);
+    throw new Error(`provider live probe failed: ${probe.message ?? "unhealthy"}`);
+  }
   mutate(id, p => {
     p.endpoint = endpoint;
     p.credentialRef = credentialRef;
