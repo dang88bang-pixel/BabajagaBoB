@@ -131,7 +131,7 @@ export function completeBootstrap(input: {secret: string; creatorName: string}) 
     {
       from: "CREATOR",
       to: "SYSTEM-WORKER",
-      capabilities: ["task:execute", "sandbox:run", "sandbox:snapshot", "regression:run"],
+      capabilities: ["task:execute", "sandbox:run", "sandbox:snapshot", "regression:run", "computer:execute"],
       maxRisk: "HIGH",
       expiresAt: new Date(Date.now() + 365 * 24 * 3600_000).toISOString()
     },
