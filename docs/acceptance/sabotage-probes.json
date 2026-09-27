@@ -117,10 +117,19 @@
     {
       "id": "STORE_WRITE_LOCK_OFF",
       "title": "Schreibsperre des Stores entfernt (Prüfen und rename laufen auseinander)",
-      "guard": "Revisionsprüfung und Umbenennen liegen in derselben exklusiven Sperre; ohne Sperre ist die Prüfung keine Compare-and-Swap-Bedingung.",
-      "file": "lib/persistence/store.ts",
-      "find": "fd = fs.openSync(lock, \"wx\", 0o600);",
-      "replace": "fd = fs.openSync(lock, \"w\", 0o600);",
+      "guard": "Revisionsprüfung und rename liegen in derselben exklusiven Sperre; ohne Sperre ist die Prüfung keine Compare-and-Swap-Bedingung.",
+      "edits": [
+        {
+          "file": "lib/persistence/store.ts",
+          "find": "fd = fs.openSync(lock, \\\"wx\\\", 0o600);",
+          "replace": "fd = fs.openSync(lock, \\\"w\\\", 0o600);"
+        },
+        {
+          "file": "lib/persistence/store.ts",
+          "find": "return this.withWriteLock(() => {",
+          "replace": "return (() => {"
+        }
+      ],
       "tests": [
         "tests/integration/store-lock.test.ts",
         "tests/integration/fault-injection-processes.test.ts",
