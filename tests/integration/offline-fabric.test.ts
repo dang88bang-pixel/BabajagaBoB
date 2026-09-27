@@ -19,7 +19,7 @@ describe("offline fabric",()=>{
     const source=path.join(root,"package.tgz");fs.writeFileSync(source,"package-content");
     const f=await import("../../lib/offline-fabric");
     const r=f.verifyOfflineResource(f.registerOfflineResource({kind:"PACKAGE",name:"pkg",location:source,metadata:{origin:"local"}}).id);
-    const bundleDir=path.join(root,"bundle-outside");
+    const bundleDir=fs.mkdtempSync(path.join(os.tmpdir(),"bob-bundle-"));
     const bundle=f.exportOfflineBundle([r.id],bundleDir);
     expect(bundle.manifestSha256).toMatch(/^[a-f0-9]{64}$/);
     const importedRoot=fs.mkdtempSync(path.join(os.tmpdir(),"bob-import-"));
