@@ -105,7 +105,9 @@ export async function executeBrowserAction(action:string,input:Input,timeoutMs=3
       case "NAVIGATE": {
         const url=typeof input.url==="string"?input.url:"";
         await command(browser.ws,++id,"Page.navigate",{url});
-        return {ok:true,action,url};
+        await new Promise(resolve => setTimeout(resolve, 200));
+        const titleResult = await command(browser.ws,++id,"Runtime.evaluate",{expression:"document.title",returnByValue:true});
+        return {ok:true,action,url,title:typeof titleResult.result?.value==="string"?titleResult.result.value:""};
       }
       case "CLICK": {
         const selector=typeof input.selector==="string"?input.selector:"";
