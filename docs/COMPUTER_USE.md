@@ -59,3 +59,10 @@ Zeitverläufe, Varianten, Vergleiche und Was-wäre-wenn-Fragen. Die Ergebnisse s
 - `tests/integration/computer-use.test.ts` — Registrierung, Autorisierungspflicht,
   Allokation, Start-Reihenfolge, Freigabe.
 - `scripts/verify-live.sh` — Computer-Use-Routen über HTTP.
+
+
+## Reale Aktionsausführung (2026-09-27)
+
+Computer Use verwaltet nicht mehr nur Instanzen: autorisierte und laufende Instanzen können Aktionen über `lib/computer-driver.ts` an einen explizit konfigurierten Child-Process-Driver delegieren. Der Driver wird ohne Shell, mit minimaler Umgebung, Timeout und Größenbegrenzung ausgeführt. Eingabe erfolgt als strukturierte JSON-Nachricht über stdin; stdout/stderr werden nicht als Klartext in Audit/Events übernommen, sondern über SHA-256-Digests und Längen nachgewiesen.
+
+`BOB_COMPUTER_DRIVER` ist absichtlich nicht automatisch gesetzt. Ohne Driver bleibt die Ausführung **fail closed**. Der Driver muss seinerseits die konkreten Browser-/Desktop-/CLI-Aktionen in der autorisierten Sandbox ausführen; die Plattform erteilt ihm keine zusätzlichen Rechte.

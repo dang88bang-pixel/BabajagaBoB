@@ -8,6 +8,8 @@ import {activeSandboxRuntime, runtimeHandle} from "./runtime-factory";
 import {observe} from "./observability";
 import {addProvenanceEdge, addProvenanceNode} from "./provenance";
 import {MAX_ARGV_LENGTH, firstMetacharacterArg, isShellInterpreter} from "./argv-policy";
+import {executeComputerAction, type ComputerExecutionResult} from "./computer-driver";
+import {listComputers} from "./computer-use";
 import type {ExecutionResult} from "./runtime";
 import type {Risk} from "./types";
 
@@ -348,6 +350,53 @@ export async function executeAuthorized(request: ExecutionRequest): Promise<Exec
   };
 }
 
+/**
+ * Computer Use muss denselben zentralen Broker passieren wie normale Ausführung.
+ * Die eigentliche Geräte-/Browseraktion bleibt im spezialisierten Driver; dieser
+ * Adapter erzwingt davor den kanonischen Preflight, bindet Task/Agent/Sandbox/
+ * Capability-Token und verbraucht das Einmal-Token unmittelbar vor dem Driver.
+ */
+export async function executeComputerAuthorized(request: ExecutionRequest & {
+  computerId: string;
+  computerAction: string;
+  computerInput: Record<string, unknown>;
+}): Promise<ComputerExecutionResult> {
+  const gate = preflight(request);
+  if (!gate.allowed) throw new ExecutionDeniedError("COMPUTER_EXECUTION_GATE", gate.reasons.join("; "));
+  const computer = listComputers().find(x => x.id === request.computerId);
+  if (!computer) throw new ExecutionDeniedError("COMPUTER_EXISTS", "computer not found");
+  if (!computer.authorized) throw new ExecutionDeniedError("COMPUTER_AUTHORIZATION", "computer is not authorized");
+  if (computer.state !== "EXECUTING") throw new ExecutionDeniedError("COMPUTER_STATE", "computer must be executing");
+  if (!computer.capabilities.some(cap => cap.kind === computer.kind && cap.actions.includes(request.computerAction as never))) throw new ExecutionDeniedError("COMPUTER_CAPABILITY", "computer capability does not permit action");
+  const token = capabilityTokens().find(t => t.id === request.capabilityTokenId);
+  if (!token) throw new ExecutionDeniedError("TOKEN_EXISTS", "capability token not found");
+  try {
+    consumeCapabilityToken(request.capabilityTokenId, request.agentId);
+  } catch (error) {
+    throw new ExecutionDeniedError("TOKEN_REPLAY", error instanceof Error ? error.message : "capability token could not be consumed");
+  }
+  const result = await executeComputerAction({
+    computerId: request.computerId,
+    action: request.computerAction,
+    input: request.computerInput,
+    timeoutMs: request.timeoutMs
+  });
+  if (request.runId) {
+    addProvenanceNode({id: request.runId, kind: "RUN", label: request.runId, runId: request.runId});
+    addProvenanceNode({id: request.computerId, kind: "DEVICE", label: request.computerId, runId: request.runId});
+    addProvenanceEdge({from: request.runId, to: request.computerId, relation: "EXECUTED_IN"});
+  }
+  observe({
+    type: result.status === "SUCCEEDED" ? "computer.authorized.completed" : "computer.authorized.failed",
+    message: "Computer Use " + request.computerId + "/" + request.computerAction + ": " + result.status,
+    status: result.status === "SUCCEEDED" ? "COMPLETED" : "ERROR",
+    actor: request.agentId, agentId: request.agentId, taskId: request.taskId, runId: request.runId, sandboxId: request.sandboxId,
+    action: "computer.execute", resource: request.computerId, decision: result.status === "SUCCEEDED" ? "ALLOW" : "ERROR",
+    authorizationRef: token.id,
+    argumentsValue: {action: request.computerAction, exitCode: result.exitCode, stdoutDigest: result.stdoutDigest, stderrDigest: result.stderrDigest}
+  });
+  return result;
+}
 /** Prüfprotokoll ohne Ausführung (Dry-Run für UI/Governance). */
 export function preflight(request: Omit<ExecutionRequest, "argv">): {allowed: boolean; checks: string[]; reasons: string[]} {
   const state = getControlState();
@@ -362,22 +411,66 @@ export function preflight(request: Omit<ExecutionRequest, "argv">): {allowed: bo
   const sandbox = state.sandboxes.find(s => s.sandboxId === request.sandboxId);
   checks.push("SANDBOX_EXISTS");
   if (!sandbox) reasons.push("sandbox not found");
-  if (task && sandbox && sandbox.taskId !== task.taskId) reasons.push("sandbox/task mismatch");
   const token = capabilityTokens().find(t => t.id === request.capabilityTokenId);
   checks.push("TOKEN_EXISTS");
   if (!token) reasons.push("capability token not found");
-  if (task && token) {
+
+  if (task && agent) {
+    checks.push("AGENT_TASK_BINDING");
+    if (task.assignedAgent !== request.agentId) reasons.push("task is assigned to another agent");
+    checks.push("AGENT_CAPABILITY");
+    if (!agent.capabilities.includes("task:execute")) reasons.push("agent lacks task:execute");
+    checks.push("AGENT_RISK");
+    if (riskRank[agent.maxRisk] < riskRank[task.risk]) reasons.push("agent risk scope is insufficient");
+  }
+  if (task && sandbox) {
+    checks.push("SANDBOX_TASK_BINDING");
+    if (sandbox.taskId !== task.taskId) reasons.push("sandbox/task mismatch");
+    checks.push("SANDBOX_AGENT_BINDING");
+    if (sandbox.agentId !== request.agentId) reasons.push("sandbox/agent mismatch");
+  }
+  if (task && token && sandbox) {
+    const environment = request.environment ?? sandbox.type;
     const validation = validateCapabilityToken(request.capabilityTokenId, ["task:execute", "sandbox:run"], {
       subject: request.agentId,
       taskId: task.taskId,
-      sandboxId: sandbox?.sandboxId,
+      sandboxId: sandbox.sandboxId,
       risk: task.risk
     });
     checks.push("TOKEN_VALIDATION");
     if (!validation.valid) reasons.push(validation.reason);
+    checks.push("TOKEN_SUBJECT");
+    if (token.subject !== request.agentId) reasons.push("token subject mismatch");
+    checks.push("TOKEN_TASK");
+    if (token.taskId !== request.taskId) reasons.push("token task scope mismatch");
+    checks.push("TOKEN_SANDBOX");
+    if (token.sandboxId !== request.sandboxId) reasons.push("token sandbox scope mismatch");
+    checks.push("TOKEN_RISK");
+    if (riskRank[token.risk] < riskRank[task.risk]) reasons.push("token risk scope is insufficient");
+    checks.push("ENVIRONMENT");
+    if (token.environment && token.environment !== environment) reasons.push("token environment mismatch");
+
     const gate = executionGate(task, request.approvalId, state.locked, request.agentId, request.experimentId, request.sandboxId);
     checks.push("EXECUTION_GATE");
     if (!gate.allowed) reasons.push(...gate.reasons);
+    if (task.requiresApproval) {
+      checks.push("APPROVAL");
+      const approval = request.approvalId ? state.approvals.find(a => a.approvalId === request.approvalId) : undefined;
+      if (!approval || approval.status !== "GRANTED") reasons.push("approval is required but not granted");
+      else if (approval.taskId !== task.taskId) reasons.push("approval belongs to a different task");
+    }
+
+    checks.push("NETWORK_POLICY");
+    if (sandbox.network === "ALLOWLIST") reasons.push("ALLOWLIST networking is fail-closed");
+    const handle = runtimeHandle(request.sandboxId);
+    if (handle?.network.mode === "ALLOWLIST") reasons.push("runtime network allowlist is unavailable");
+    checks.push("RESOURCE_LIMITS");
+    if (handle?.limits) {
+      if (handle.limits.timeoutMs <= 0 || handle.limits.timeoutMs > MAX_RESOURCE_LIMITS.timeoutMs) reasons.push("timeout outside allowed range");
+      if (handle.limits.memoryMb <= 0 || handle.limits.memoryMb > MAX_RESOURCE_LIMITS.memoryMb) reasons.push("memory outside allowed range");
+      if (handle.limits.cpuMillicores <= 0 || handle.limits.cpuMillicores > MAX_RESOURCE_LIMITS.cpuMillicores) reasons.push("cpu outside allowed range");
+      if (handle.limits.processes <= 0 || handle.limits.processes > MAX_RESOURCE_LIMITS.processes) reasons.push("process limit outside allowed range");
+    }
   }
   return {allowed: reasons.length === 0, checks, reasons};
 }

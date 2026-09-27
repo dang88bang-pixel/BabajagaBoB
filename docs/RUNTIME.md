@@ -156,7 +156,7 @@ jede Ausführung trägt denselben Zustand in der Evidenz (`resourceLimits`).
 Belegte Grenzen (ehrlich, nicht „Container"): kein OCI-Image-Format, kein `runc`, kein eigener
 Kernel, Rootfs wird aus dem Host-Binärbaum kopiert, keine Namensraum-übergreifende Netzwerk-
 oder Dateisystem-Policy. Diese Isolationsstufe ist daher `NAMESPACES` und **nicht** `CONTAINER`;
-OCI bleibt in dieser Umgebung `NOT_VERIFIED`.
+OCI bleibt in dieser Umgebung `NOT_VERIFIED`, bis der echte Docker-CI-Lifecycle erfolgreich durchgelaufen ist.
 
 ## 3. Runtime-Registry (viele Sprachen/Umgebungen)
 
@@ -182,7 +182,7 @@ instanziiert sie. Eine Registrierung allein startet nichts und erteilt keine Rec
   `executeAuthorized` auf.
 - Fehlt der Runtime-Handle einer Sandbox im OCI-Modus, verweigert der Worker die
   Ausführung (`sandbox runtime handle is missing`).
-- Ressourcenlimits werden vor der Ausführung gegen die Handle-Limits geprüft.
+- Ressourcenlimits werden vor der Ausführung gegen die Handle-Limits geprüft. Beim OCI-Adapter ist der Root read-only; der einzige writable Bereich ist ein begrenztes `/tmp`-tmpfs mit Größe aus `storageMb` (16–1024 MiB), damit die Speichergrenze portable auch auf Docker-Runnern ohne XFS/pquota erzwungen wird. `--storage-opt size=...` wird bewusst nicht verwendet, weil Docker dies auf üblichen overlay2/ext4-Runnern ablehnt.
 
 ## 5. Tests und Nachweise
 

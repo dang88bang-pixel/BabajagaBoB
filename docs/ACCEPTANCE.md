@@ -11,11 +11,11 @@ Eingefroren: 2026-09-25. Quellen: GESAMTAUFTRAG (53 Punkte); docs/MASTER_COMPLET
 
 | Status | Anzahl | Bedeutung |
 |---|---|---|
-| ✅ PASS | 79 | Implementierung + Test + Nachweis vorhanden |
-| 🟡 PARTIAL | 2 | Teilweise umgesetzt, Lücke benannt |
+| ✅ PASS | 80 | Implementierung + Test + Nachweis vorhanden |
+| 🟡 PARTIAL | 4 | Teilweise umgesetzt, Lücke benannt |
 | ❌ FAIL | 0 | Umgesetzt, aber Nachweis fehlgeschlagen |
-| ⚪ NOT_IMPLEMENTED | 1 | Bewusst nicht gebaut (Begründung) |
-| 🔵 NOT_VERIFIED | 3 | Vorhanden, aber Umgebung erlaubt keinen Nachweis |
+| ⚪ NOT_IMPLEMENTED | 0 | keine |
+| 🔵 NOT_VERIFIED | 2 | Vorhanden, aber Umgebung erlaubt keinen Nachweis |
 | ⛔ BLOCKED | 0 | Durch äußere Abhängigkeit blockiert |
 
 ## Zielkette
@@ -85,7 +85,7 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 | DEV-002 | Device Fabric | Selbstmeldende Geräte-Registrierung (Enrollment) ist minimal berechtigt, fail closed und ohne Selbst-Grant. | `lib/device-enrollment.ts`<br>`scripts/discover-host.mjs` | `tests/security/device-enrollment.test.ts` (8) | `GET /api/devices` | Devices | ✅ |
 | CU-001 | Computer Use | Browser-, Desktop- und CLI-Instanzen sind registriert, erzwungen unautorisiert und nur über Gate/Broker nutzbar.<br><small>Registrierung, Autorisierung und Belegungsgrenze sind umgesetzt; echte Treiber (Browser-Automation, Desktop-Eingabe, Screenshots) fehlen, deshalb kein Ausführungsnachweis.</small> | `lib/computer-use.ts` | `tests/integration/computer-use.test.ts` (4) | `GET /api/computer-use` | ComputerUse | 🟡 |
 | SIM-001 | Simulation/Visualisierung | Visualisierung erzeugt aus dem echten Zustand passive Artefakte (7 Arten) mit Digest und Szenario-Bezug. | `lib/visualization.ts` | `tests/integration/visualization.test.ts` (11) | `GET /api/simulation`<br>`GET /api/simulation/render` | Simulation, Gallery | ✅ |
-| OFF-001 | Offline Fabric | Arbeiten ohne Internet mit lokalem Paket-/Modell-/Wissensbestand und späterem, herkunftstreuem Abgleich.<br><small>Es gibt keinen Offline-Paketbestand, keinen lokalen Modell-/Vektorindex und keinen Sync-/Merge-Pfad.</small> | — | — | — | — | ⚪ |
+| OFF-001 | Offline Fabric | Arbeiten ohne Internet mit lokalem Paket-/Modell-/Wissensbestand und späterem, herkunftstreuem Abgleich.<br><small>Lokale Ressourcen + SHA-256-Verifikation + herkunftstreuer Bundle-Export/Import sind umgesetzt; vollständiger paket-/modell-/wissensspezifischer Merge bleibt offen.</small> | `lib/offline-fabric.ts`<br>`app/api/offline/route.ts` | `tests/integration/offline-fabric.test.ts` (3) | `GET /api/offline` | Offline Fabric | 🟡 |
 | OPR-001 | Betriebliche Wiederherstellung | Sicherungen laufen geplant und verifiziert, mit Aufbewahrungsgrenze und schützendem Verhalten für das neueste Backup. | `lib/backup-policy.ts`<br>`lib/persistence/store.ts` | `tests/integration/backup-automation.test.ts` (9) | `GET /api/persistence` | Operations | ✅ |
 | OPR-002 | Persistenz | Jeder Store ist ein digest-geprüfter Envelope mit atomarem Schreiben, Migration und Reparaturpfad. | `lib/persistence/store.ts` | `tests/unit/persistence.test.ts` (5)<br>`tests/unit/store-migration.test.ts` (22) | `GET /api/persistence` | — | ✅ |
 
