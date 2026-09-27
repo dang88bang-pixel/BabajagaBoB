@@ -19,7 +19,7 @@ describe("CDP browser driver",()=>{
 
   it("executes a real browser action through the Computer Use -> Execution Broker path",async()=>{
     if(!process.env.BOB_BROWSER_EXECUTABLE) return;
-    const {bootstrap}=await import("../../lib/bootstrap");
+    const bootstrap=await import("../../lib/bootstrap");
     const {TEST_BOOTSTRAP_SECRET}=await import("../helpers/runtime");
     const cp=await import("../../lib/control-plane");
     const fabric=await import("../../lib/sandbox/fabric");
