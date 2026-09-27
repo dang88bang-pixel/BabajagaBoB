@@ -8,6 +8,7 @@ import {activeSandboxRuntime, runtimeHandle} from "./runtime-factory";
 import {observe} from "./observability";
 import {addProvenanceEdge, addProvenanceNode} from "./provenance";
 import {MAX_ARGV_LENGTH, firstMetacharacterArg, isShellInterpreter} from "./argv-policy";
+import {executeComputerAction, type ComputerExecutionResult} from "./computer-driver";
 import type {ExecutionResult} from "./runtime";
 import type {Risk} from "./types";
 
@@ -348,6 +349,48 @@ export async function executeAuthorized(request: ExecutionRequest): Promise<Exec
   };
 }
 
+/**
+ * Computer Use muss denselben zentralen Broker passieren wie normale Ausführung.
+ * Die eigentliche Geräte-/Browseraktion bleibt im spezialisierten Driver; dieser
+ * Adapter erzwingt davor den kanonischen Preflight, bindet Task/Agent/Sandbox/
+ * Capability-Token und verbraucht das Einmal-Token unmittelbar vor dem Driver.
+ */
+export async function executeComputerAuthorized(request: ExecutionRequest & {
+  computerId: string;
+  computerAction: string;
+  computerInput: Record<string, unknown>;
+}): Promise<ComputerExecutionResult> {
+  const gate = preflight(request);
+  if (!gate.allowed) throw new ExecutionDeniedError("COMPUTER_EXECUTION_GATE", gate.reasons.join("; "));
+  const token = capabilityTokens().find(t => t.id === request.capabilityTokenId);
+  if (!token) throw new ExecutionDeniedError("TOKEN_EXISTS", "capability token not found");
+  try {
+    consumeCapabilityToken(request.capabilityTokenId, request.agentId);
+  } catch (error) {
+    throw new ExecutionDeniedError("TOKEN_REPLAY", error instanceof Error ? error.message : "capability token could not be consumed");
+  }
+  const result = await executeComputerAction({
+    computerId: request.computerId,
+    action: request.computerAction,
+    input: request.computerInput,
+    timeoutMs: request.timeoutMs
+  });
+  if (request.runId) {
+    addProvenanceNode({id: request.runId, kind: "RUN", label: request.runId, runId: request.runId});
+    addProvenanceNode({id: request.computerId, kind: "DEVICE", label: request.computerId, runId: request.runId});
+    addProvenanceEdge({from: request.runId, to: request.computerId, relation: "EXECUTED_IN"});
+  }
+  observe({
+    type: result.status === "SUCCEEDED" ? "computer.authorized.completed" : "computer.authorized.failed",
+    message: "Computer Use " + request.computerId + "/" + request.computerAction + ": " + result.status,
+    status: result.status === "SUCCEEDED" ? "COMPLETED" : "ERROR",
+    actor: request.agentId, agentId: request.agentId, taskId: request.taskId, runId: request.runId, sandboxId: request.sandboxId,
+    action: "computer.execute", resource: request.computerId, decision: result.status === "SUCCEEDED" ? "ALLOW" : "ERROR",
+    authorizationRef: token.id,
+    argumentsValue: {action: request.computerAction, exitCode: result.exitCode, stdoutDigest: result.stdoutDigest, stderrDigest: result.stderrDigest}
+  });
+  return result;
+}
 /** Prüfprotokoll ohne Ausführung (Dry-Run für UI/Governance). */
 export function preflight(request: Omit<ExecutionRequest, "argv">): {allowed: boolean; checks: string[]; reasons: string[]} {
   const state = getControlState();
