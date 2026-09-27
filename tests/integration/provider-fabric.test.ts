@@ -55,8 +55,8 @@ describe("Provider Fabric (persistent, fail closed)", () => {
   });
 
   it("verweigert Verbindung ohne explizite Freigabe", async () => {
-    expect(() => providers.connectProvider("prov-temporal", "https://provider.example/health")).toThrow(/approval/i);
-    expect(() => providers.connectProvider("prov-temporal", "https://provider.example/health", undefined, "APR-UNBEKANNT")).toThrow(/approval/i);
+    await expect(providers.connectProvider("prov-temporal", "https://provider.example/health")).rejects.toThrow(/approval/i);
+    await expect(providers.connectProvider("prov-temporal", "https://provider.example/health", undefined, "APR-UNBEKANNT")).rejects.toThrow(/approval/i);
     expect(providers.getProvider("prov-temporal")?.enabled).toBe(false);
   });
 
