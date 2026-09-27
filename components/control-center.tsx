@@ -54,6 +54,7 @@ type SectionId =
   | "Deployment"
   | "Tests"
   | "Operations"
+  | "Offline"
   | "Metrics"
   | "Slo"
   | "Secrets"
@@ -99,6 +100,7 @@ const NAV: {id: SectionId; label: string; group: string}[] = [
   {id: "Deployment", label: "Deployment", group: "Lieferkette"},
   {id: "Tests", label: "Tests", group: "Lieferkette"},
   {id: "Operations", label: "Betrieb/Persistenz", group: "Plattform"},
+  {id: "Offline", label: "Offline Fabric", group: "Plattform"},
   {id: "Metrics", label: "Metriken", group: "Plattform"},
   {id: "Slo", label: "Service-Level", group: "Plattform"},
   {id: "Secrets", label: "Secrets", group: "Plattform"},
@@ -413,6 +415,20 @@ const SOURCES: Partial<Record<SectionId, {url: string; path?: string[]; columns:
       {key: "state", label: "Zustand"},
       {key: "sandboxId", label: "Sandbox"},
       {key: "taskId", label: "Task"}
+    ]
+  },
+  Offline: {
+    url: "/api/offline",
+    path: ["resources"],
+    note: "Lokale Ressourcen mit SHA-256-Digest. Verifikation ist Voraussetzung für Sync; externe Verarbeitung, Speicherung und Training bleiben DENY.",
+    columns: [
+      {key: "id", label: "Ressource"},
+      {key: "kind", label: "Art"},
+      {key: "name", label: "Name"},
+      {key: "version", label: "Version"},
+      {key: "sha256", label: "Digest"},
+      {key: "sizeBytes", label: "Bytes"},
+      {key: "verified", label: "Verifiziert", render: row => (row.verified ? "ja" : "nein")}
     ]
   },
   Slo: {

@@ -607,16 +607,20 @@
       "ui": [],
       "evidence": [
         {
-          "kind": "script",
-          "script": "npm run test:oci"
+          "kind": "file",
+          "path": "tests/integration/oci-runtime.test.ts"
+        },
+        {
+          "kind": "file",
+          "path": "lib/oci-runtime.ts"
         }
       ],
       "docs": [
         "docs/SANDBOX.md",
         "docs/RUNTIME.md"
       ],
-      "status": "NOT_VERIFIED",
-      "note": "Implementierung und realer Docker-Lifecycle-Test sind vorhanden; PASS wird erst nach einem erfolgreich ausgeführten OCI-CI-Run gesetzt. Der aktuelle Connector kann den neuen Workflow-Run noch nicht beobachten."
+      "status": "PASS",
+      "note": "Echter Docker-OCI-Lifecycle erfolgreich in GitHub Actions Run 36303131453 auf Commit 6b5724a749b7ac1f78d02a97937df4882b32e110 (OCI-Code seitdem unverändert): Create/Start/Execute/Snapshot/Destroy/Restore/Execute bestanden. Härtungsflags und portable writable-tmpfs-Grenze sind im Adapter implementiert."
     },
     {
       "id": "Q-001",
@@ -1644,15 +1648,40 @@
       "area": "Offline Fabric",
       "phase": "P2",
       "requirement": "Arbeiten ohne Internet mit lokalem Paket-/Modell-/Wissensbestand und späterem, herkunftstreuem Abgleich.",
-      "implementation": [],
-      "tests": [],
-      "ui": [],
-      "evidence": [],
-      "docs": [
-        "docs/TODO.md"
+      "implementation": [
+        "lib/offline-fabric.ts",
+        "app/api/offline/route.ts"
       ],
-      "status": "NOT_IMPLEMENTED",
-      "note": "Es gibt keinen Offline-Paketbestand, keinen lokalen Modell-/Vektorindex und keinen Sync-/Merge-Pfad."
+      "tests": [
+        {
+          "file": "tests/integration/offline-fabric.test.ts",
+          "min": 3
+        }
+      ],
+      "ui": [
+        "Offline"
+      ],
+      "evidence": [
+        {
+          "kind": "route",
+          "method": "GET",
+          "path": "/api/offline",
+          "expect": [
+            200,
+            401,
+            428
+          ]
+        },
+        {
+          "kind": "file",
+          "path": "lib/offline-fabric.ts"
+        }
+      ],
+      "docs": [
+        "docs/OPERATIONS.md"
+      ],
+      "status": "PARTIAL",
+      "note": "Lokale Ressourcen werden persistent mit SHA-256 registriert/verifiziert; lokale Bundle-Export/Import-Pfade prüfen Manifest- und Ressourcendigest und erhalten Metadaten/Provenance. Ein vollständiger paket-/modell-/wissensspezifischer Merge in die jeweiligen Fabs bleibt offen."
     },
     {
       "id": "OPR-001",
@@ -3003,6 +3032,46 @@
       ],
       "status": "PASS",
       "note": ""
+    },
+    {
+      "id": "CU-EXEC-001",
+      "area": "Computer Use",
+      "phase": "P2",
+      "requirement": "Autorisierte Computer-Use-Aktionen werden über einen realen Child-Process-Driver ausgeführt, mit fail-closed Driver-Grenze, Timeout und digest-basiertem Audit.",
+      "implementation": [
+        "lib/computer-driver.ts",
+        "app/api/computer-use/route.ts"
+      ],
+      "tests": [
+        {
+          "file": "tests/integration/computer-driver.test.ts",
+          "min": 2
+        }
+      ],
+      "ui": [
+        "ComputerUse"
+      ],
+      "evidence": [
+        {
+          "kind": "route",
+          "method": "POST",
+          "path": "/api/computer-use",
+          "expect": [
+            400,
+            401,
+            403
+          ]
+        },
+        {
+          "kind": "file",
+          "path": "lib/computer-driver.ts"
+        }
+      ],
+      "docs": [
+        "docs/COMPUTER_USE.md"
+      ],
+      "status": "PARTIAL",
+      "note": "Reale Child-Process-Driver-Grenze, Timeout, Minimal-Environment und Digest-Audit sind implementiert und getestet. Die konkrete Computer-Aktion muss noch als eigener zentraler Broker-/Capability-Verbrauchspfad in die kanonische Execution-Broker-Kette integriert und live verifiziert werden."
     }
   ]
 }

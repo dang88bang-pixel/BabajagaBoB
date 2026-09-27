@@ -15,6 +15,7 @@ export type ApiGateDecision = {allow: true} | {allow: false; status: number; cod
 export const API_GATE_ACTION = "control-plane:access";
 export const AUTH_PATH = "/api/auth";
 export const AGENT_EXECUTION_PATH = "/api/runtime";
+export const DEVICE_ENROLLMENT_PATH = "/api/devices";
 
 export function isAuthPath(pathname: string): boolean {
   return pathname === AUTH_PATH || pathname.startsWith(`${AUTH_PATH}/`);
@@ -22,6 +23,16 @@ export function isAuthPath(pathname: string): boolean {
 
 export function isAgentExecutionPath(method: string, pathname: string): boolean {
   return method.toUpperCase() === "POST" && pathname === AGENT_EXECUTION_PATH;
+}
+
+/**
+ * Geräte-Enrollment ist die einzige nicht-sessionbasierte Control-Plane-Ausnahme
+ * neben Auth: Der Handler verlangt zusätzlich ein separates Enrollment-Secret und
+ * erlaubt ausschließlich enroll/heartbeat. Alle anderen /api/devices-Aktionen
+ * werden dort weiterhin über die Creator-/Session-Grenze geschützt.
+ */
+export function isDeviceEnrollmentPath(method: string, pathname: string): boolean {
+  return method.toUpperCase() === "POST" && pathname === DEVICE_ENROLLMENT_PATH;
 }
 
 function cookieValue(request: Request, name: string): string | undefined {
@@ -81,6 +92,7 @@ export function apiGateDecision(request: Request): ApiGateDecision {
   const limited = rateDecision(request);
   if (!limited.allow) return limited;
   if (isAgentExecutionPath(method, pathname)) return agentExecutionDecision(request);
+  if (isDeviceEnrollmentPath(method, pathname)) return {allow: true};
 
   try {
     guardRequest(request, {action: API_GATE_ACTION, requireSession: true});
