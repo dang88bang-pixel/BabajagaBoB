@@ -12,7 +12,7 @@ export async function POST(req:Request){
  if (denied) return denied;
 
  try{const b=await req.json();
- if(b.action==="connect")return NextResponse.json({provider:connectProvider(b.id,b.endpoint,b.credentialRef,b.approvalId)});
+ if(b.action==="connect")return NextResponse.json({provider:await connectProvider(b.id,b.endpoint,b.credentialRef,b.approvalId)});
  if(b.action==="disconnect")return NextResponse.json({provider:disconnectProvider(b.id)});
  if(b.action==="revoke")return NextResponse.json({provider:revokeProvider(b.id)});
  if(b.action==="state")return NextResponse.json({provider:setProviderState(b.id,b.lifecycle,b.health,b.message)});
