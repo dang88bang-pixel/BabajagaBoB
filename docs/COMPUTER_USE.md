@@ -66,3 +66,19 @@ Zeitverläufe, Varianten, Vergleiche und Was-wäre-wenn-Fragen. Die Ergebnisse s
 Computer Use verwaltet nicht mehr nur Instanzen: autorisierte und laufende Instanzen können Aktionen über `lib/computer-driver.ts` an einen explizit konfigurierten Child-Process-Driver delegieren. Der Driver wird ohne Shell, mit minimaler Umgebung, Timeout und Größenbegrenzung ausgeführt. Eingabe erfolgt als strukturierte JSON-Nachricht über stdin; stdout/stderr werden nicht als Klartext in Audit/Events übernommen, sondern über SHA-256-Digests und Längen nachgewiesen.
 
 `BOB_COMPUTER_DRIVER` ist absichtlich nicht automatisch gesetzt. Ohne Driver bleibt die Ausführung **fail closed**. Der Driver muss seinerseits die konkreten Browser-/Desktop-/CLI-Aktionen in der autorisierten Sandbox ausführen; die Plattform erteilt ihm keine zusätzlichen Rechte.
+
+
+## Native Browser Driver (CDP)
+
+Für `BROWSER`-Computer kann der Execution Broker den eingebauten isolierten CDP-Treiber verwenden.
+
+- Konfiguration: `BOB_BROWSER_EXECUTABLE` auf eine lokale Chrome-/Chromium-Binärdatei setzen.
+- Der Broker verlangt weiterhin Task-, Agent-, Sandbox-, Capability-Token-, Approval-, Netzwerk- und Ressourcenprüfungen.
+- Der Browser wird als eigener Child Process mit `shell:false`, temporärem Profil und begrenztem Prozesslebenszyklus gestartet.
+- Standard-Netzwerk bleibt DENY. Externe Navigation wird im eingebauten Treiber abgewiesen; nur lokale HTTP(S)-Ziele sind zulässig.
+- Unterstützte native Aktionen: `NAVIGATE`, `CLICK`, `TYPE`, `SELECT`, `SCREENSHOT`.
+- `OCR` wird nicht als Browser-Textsuche ausgegeben: ohne explizite OCR-Capability bleibt OCR fail closed.
+- Screenshot-Ausgaben werden als Digest-/Längen-Nachweis auditiert; Bilddaten werden nicht in das Audit geschrieben.
+- CI verifiziert den realen Headless-Browserpfad über `tests/integration/browser-driver.test.ts`.
+
+Der Browser-Treiber ist damit eine echte Ausführungskomponente, aber kein stillschweigender Netzwerkzugang: Egress bleibt eine separate, explizite Policy-Grenze.
