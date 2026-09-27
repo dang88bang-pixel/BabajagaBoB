@@ -13,7 +13,7 @@ describe("Computer Use canonical execution broker",()=>{
 
   it("führt eine autorisierte Computer-Aktion erst nach dem Execution-Broker aus",async()=>{
     fs.writeFileSync(process.env.BOB_COMPUTER_DRIVER!,
-      'process.stdin.on("data",b=>{const x=JSON.parse(String(b)); process.stdout.write(JSON.stringify({ok:true,action:x.action})); process.exit(0);});'
+      '#!/usr/bin/env node\nprocess.stdin.on("data",b=>{const x=JSON.parse(String(b)); process.stdout.write(JSON.stringify({ok:true,action:x.action})); process.exit(0);});'
     );
     fs.chmodSync(process.env.BOB_COMPUTER_DRIVER!,0o700);
 
