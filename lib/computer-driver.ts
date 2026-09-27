@@ -42,7 +42,7 @@ export async function executeComputerAction(req: ComputerExecutionRequest): Prom
   const timeout=Math.min(Math.max(Number(req.timeoutMs??30000),1000),120000);
   const started=Date.now();
   const result=await new Promise<{code:number|null;stdout:string;stderr:string}>((resolve,reject)=>{
-    const safeEnv: NodeJS.ProcessEnv={PATH:process.env.PATH,LANG:process.env.LANG,LC_ALL:process.env.LC_ALL,TZ:process.env.TZ};
+    const safeEnv: NodeJS.ProcessEnv={NODE_ENV:process.env.NODE_ENV ?? "production",PATH:process.env.PATH,LANG:process.env.LANG,LC_ALL:process.env.LC_ALL,TZ:process.env.TZ};
     const child=spawn(command,[],{shell:false,stdio:["pipe","pipe","pipe"],env:safeEnv});
     let stdout="",stderr="",settled=false;
     const finish=(value:{code:number|null;stdout:string;stderr:string})=>{if(!settled){settled=true;resolve(value);}};
