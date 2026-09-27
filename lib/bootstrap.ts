@@ -124,7 +124,7 @@ export function completeBootstrap(input: {secret: string; creatorName: string}) 
   const rootAuthorityId = `ROOT-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
   setRootAuthority(rootAuthorityId, "CREATOR");
   addAuthorityEdge(
-    {id: `EDGE-ROOT-${rootAuthorityId}`, from: "CREATOR", to: "SYSTEM-WORKER", kind: "DELEGATES", capabilities: ["task:execute", "sandbox:run", "sandbox:snapshot", "regression:run"], maxRisk: "HIGH", expiresAt: null},
+    {id: `EDGE-ROOT-${rootAuthorityId}`, from: "CREATOR", to: "SYSTEM-WORKER", kind: "DELEGATES", capabilities: ["task:execute", "sandbox:run", "sandbox:snapshot", "regression:run", "computer:execute"], maxRisk: "HIGH", expiresAt: null},
     "CREATOR"
   );
   createDelegation(
