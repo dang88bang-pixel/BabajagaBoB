@@ -110,6 +110,10 @@ Produktionsreife:
    wird ohne verfügbare Kernel-Isolation **nichts** ausgeführt (fail closed, HTTP 409).
 10. Geschützte Daten gehen nicht implizit an externe Provider.
 
+## Soak-/Dauerlastnachweis
+
+Die verbindliche, agentenübergebbare Spezifikation für den mehrstündigen Dauerlastnachweis liegt in `docs/SOAK_DAUERLASTNACHWEIS.md`. LOAD-001 darf erst nach einem reproduzierbaren SOAK-6H-Nachweis auf PASS gesetzt werden.
+
 ## Offene Restarbeiten (faktisch, ohne Wertung)
 
 - Aktionsspezifische `guardRequest`-Prüfungen für die restlichen, noch nicht verdrahteten Routen ergänzen
