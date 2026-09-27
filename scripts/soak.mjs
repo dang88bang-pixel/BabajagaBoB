@@ -115,7 +115,6 @@ async function main() {
   const sandboxId = sandbox.sandbox.sandboxId;
   requireOk(await mutate("/api/sandboxes", {action: "start", sandboxId}), "Sandbox-Start");
 
-  const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
   const latencies = [];
   const issueLatencies = [];
   const failures = [];
@@ -134,7 +133,9 @@ async function main() {
           risk: "LOW",
           issuedBy: "CREATOR",
           issuedByKind: "CREATOR",
-          expiresAt
+          // Frisch je Token berechnet: Einmal-Berechnung vor dem Lauf würde
+          // längere Soak-Läufe nach Ablauf der Frist hart abbrechen lassen.
+          expiresAt: new Date(Date.now() + 10 * 60_000).toISOString()
         }
       }),
       `Token ${index}`
