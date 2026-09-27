@@ -59,3 +59,30 @@ Zeitverläufe, Varianten, Vergleiche und Was-wäre-wenn-Fragen. Die Ergebnisse s
 - `tests/integration/computer-use.test.ts` — Registrierung, Autorisierungspflicht,
   Allokation, Start-Reihenfolge, Freigabe.
 - `scripts/verify-live.sh` — Computer-Use-Routen über HTTP.
+
+## Treiber-Schicht (Phase 4 / 7.2)
+
+`lib/computer-use-drivers.ts`, API-Aktion `execute` auf `/api/computer-use` (creatorOnly `computer:execute`).
+
+- **Treiber** bauen aus einer Computer-Use-Aktion ein Shell-freies argv[] und
+  melden ihre Verfügbarkeit ehrlich:
+  - `browser-headless-chromium` (BROWSER): `--headless --dump-dom` /
+    `--screenshot`; nur Protokolle http/https/file/data; ohne Chromium-Binary
+    `UNAVAILABLE`.
+  - `desktop-x11-tools` (DESKTOP): `xdotool` (Click/Type), `import`/`scrot`
+    (Screenshot); ohne Werkzeuge `UNAVAILABLE`.
+  - `cli-node` (CLI): Prozess-/Datei-Lesezugriffe und Terminal-Ausführung;
+    immer verfügbar.
+- **Ausführung ausschließlich über den autorisierten Systempfad**:
+  `executeSystemAuthorized` mit Zweck `COMPUTER_USE` und Capability
+  `computer:use` (CREATOR → SYSTEM-WORKER-Delegation), Gate/Broker-Prüfung,
+  Sandbox-Bindung, Evidenz, Audit (`computer-use:action`) und Provenance
+  (`EXECUTED_IN`-Kante zur Instanz).
+- **Grenzen**: Instanz muss autorisiert und allokiert sein; unavailable Treiber
+  werden fail closed verweigert und als DENY auditiert — nichts wird simuliert.
+- **Nachweis**: `tests/unit/computer-use-drivers.test.ts` (9),
+  `tests/integration/computer-use-drivers.test.ts` (2, echte CLI-Ausführung mit
+  Evidenz); Sabotage-Probe `CU_EXECUTES_UNAUTHORIZED`.
+- **Ehrlicher Stand dieser Umgebung**: kein Chromium und keine X11-Werkzeuge
+  installiert — Browser-/Desktop-Aktionen melden `UNAVAILABLE`; der
+  Ausführungsnachweis liegt für den CLI-Treiber vor.

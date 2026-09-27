@@ -1,5 +1,6 @@
 import {NextResponse} from "next/server";
-import {allocateComputer, authorizeComputer, listComputers, registerComputer, releaseComputer, startComputer} from "@/lib/computer-use";
+import {allocateComputer, authorizeComputer, listComputers, registerComputer, releaseComputer, startComputer, type ComputerUseAction} from "@/lib/computer-use";
+import {cuDriverAvailabilityMatrix, executeCuAction, listCuActionAttempts} from "@/lib/computer-use-drivers";
 import {guardOrDeny} from "@/lib/api/api-gate";
 import {objectField} from "@/lib/request-validation";
 
@@ -16,7 +17,10 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const denied = guardOrDeny(request, {action: "computer:read"});
   if (denied) return denied;
-  return NextResponse.json({computers: listComputers()}, {headers: {"Cache-Control": "no-store"}});
+  return NextResponse.json(
+    {computers: listComputers(), drivers: cuDriverAvailabilityMatrix(), attempts: listCuActionAttempts().slice(-100)},
+    {headers: {"Cache-Control": "no-store"}}
+  );
 }
 
 export async function POST(request: Request) {
@@ -31,6 +35,18 @@ export async function POST(request: Request) {
       const denied = guardOrDeny(request, {action: "computer:allocate", taskId: body.taskId, sandboxId: body.sandboxId});
       if (denied) return denied;
       return NextResponse.json({computer: allocateComputer(body.id, body.taskId, body.sandboxId)});
+    }
+    if (body.action === "execute") {
+      const denied = guardOrDeny(request, {action: "computer:execute", creatorOnly: true});
+      if (denied) return denied;
+      const attempt = await executeCuAction({
+        instanceId: String(body.id ?? ""),
+        action: String(body.actionName ?? "") as ComputerUseAction,
+        ...(body.params && typeof body.params === "object" ? {params: body.params as Record<string, unknown>} : {}),
+        ...(typeof body.sandboxId === "string" ? {sandboxId: body.sandboxId} : {}),
+        requestedBy: "CREATOR"
+      });
+      return NextResponse.json({attempt});
     }
     const denied = guardOrDeny(request, {action: body.action === "authorize" ? "computer:authorize" : "computer:manage", creatorOnly: true});
     if (denied) return denied;

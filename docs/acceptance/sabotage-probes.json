@@ -350,6 +350,21 @@
       "tests": [
         "tests/unit/device-scan.test.ts"
       ]
+    },
+    {
+      "id": "CU_EXECUTES_UNAUTHORIZED",
+      "title": "Computer-Use fuehrt auf nicht autorisierter Instanz aus",
+      "guard": "Computer-Use-Aktionen laufen nur auf autorisierten Instanzen und ausschliesslich ueber den autorisierten Systempfad (Phase 4 / 7.2).",
+      "edits": [
+        {
+          "file": "lib/computer-use-drivers.ts",
+          "find": "if (!instance.authorized) throw new Error(\"computer is not authorized\");",
+          "replace": "if (false) throw new Error(\"computer is not authorized\");"
+        }
+      ],
+      "tests": [
+        "tests/unit/computer-use-drivers.test.ts"
+      ]
     }
   ],
   "_changes": "Proben müssen die wirksame Schutzregel entfernen. Proben mit mehreren Änderungen (edits) entfernen redundante Ebenen gemeinsam; eine Probe, die nur eine von zwei Ebenen schwächt, belegt nichts."

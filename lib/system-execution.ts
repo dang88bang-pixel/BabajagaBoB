@@ -33,7 +33,7 @@ import type {Risk} from "./types";
 
 export type SystemExecutionRequest = {
   /** Zweck im Klartext — erscheint in Audit, Event und Verweigerungsgrund. */
-  purpose: "REGRESSION" | "SMOKE_TEST" | "OFFLINE_PACKAGE";
+  purpose: "REGRESSION" | "SMOKE_TEST" | "OFFLINE_PACKAGE" | "COMPUTER_USE";
   sandboxId: string;
   argv: string[];
   timeoutMs?: number;
@@ -45,7 +45,10 @@ const PURPOSE_CAPABILITY: Record<SystemExecutionRequest["purpose"], string> = {
   SMOKE_TEST: "sandbox:run",
   // Offline-Pakete (MASTER §36 / OFF-001) laufen wie alle Systemläufe über
   // Gate, Broker und Evidenz — ausschließlich in DENY-Sandboxes.
-  OFFLINE_PACKAGE: "offline:execute"
+  OFFLINE_PACKAGE: "offline:execute",
+  // Computer-Use-Aktionen (MASTER §24 / CU-001) laufen ausschließlich über
+  // Treiber-argv und den autorisierten Systempfad in einer gebundenen Sandbox.
+  COMPUTER_USE: "computer:use"
 };
 
 const SYSTEM_ISSUER = "SYSTEM-WORKER";

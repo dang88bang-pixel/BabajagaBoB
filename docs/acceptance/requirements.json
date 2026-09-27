@@ -1612,12 +1612,23 @@
       "phase": "P2",
       "requirement": "Browser-, Desktop- und CLI-Instanzen sind registriert, erzwungen unautorisiert und nur über Gate/Broker nutzbar.",
       "implementation": [
-        "lib/computer-use.ts"
+        "lib/computer-use.ts",
+        "lib/computer-use-drivers.ts",
+        "app/api/computer-use/route.ts",
+        "lib/system-execution.ts"
       ],
       "tests": [
         {
           "file": "tests/integration/computer-use.test.ts",
           "min": 4
+        },
+        {
+          "file": "tests/unit/computer-use-drivers.test.ts",
+          "min": 9
+        },
+        {
+          "file": "tests/integration/computer-use-drivers.test.ts",
+          "min": 2
         }
       ],
       "ui": [
@@ -1637,7 +1648,7 @@
         "docs/COMPUTER_USE.md"
       ],
       "status": "PARTIAL",
-      "note": "Registrierung, Autorisierung und Belegungsgrenze sind umgesetzt; echte Treiber (Browser-Automation, Desktop-Eingabe, Screenshots) fehlen, deshalb kein Ausführungsnachweis."
+      "note": "Phase 4 / 7.2 (2026-09-27): Registrierung/Autorisierung/Belegungsgrenze plus Treiber-Schicht umgesetzt (Browser=headless Chromium, Desktop=xdotool/import, CLI=Node). Aktionen laufen ausschliesslich ueber den autorisierten Systempfad (Purpose COMPUTER_USE, Capability computer:use) mit Evidenz/Audit/Provenance; CLI-Ausfuehrung echt nachgewiesen. PARTIAL bleibt: Browser-/Desktop-Ausfuehrungsnachweis erfordert Chromium- bzw. X11-Binaries, die in dieser Umgebung fehlen — Treiber melden dann ehrlich UNAVAILABLE. Sabotage-Probe CU_EXECUTES_UNAUTHORIZED."
     },
     {
       "id": "SIM-001",

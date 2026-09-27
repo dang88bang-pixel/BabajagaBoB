@@ -454,7 +454,8 @@ const SOURCES: Partial<Record<SectionId, {url: string; path?: string[]; columns:
   ComputerUse: {
     url: "/api/computer-use",
     path: ["computers"],
-    note: "Browser-, Desktop- und CLI-Instanzen mit expliziter Autorisierung.",
+    note:
+      "Browser-, Desktop- und CLI-Instanzen mit expliziter Autorisierung (Phase 4 / 7.2): Aktionen laufen ausschließlich über Treiber-argv und den autorisierten Systempfad (Purpose COMPUTER_USE, Capability computer:use) in einer gebundenen Sandbox. Treiber-Verfügbarkeit wird ehrlich gemeldet — ohne Werkzeug (Chromium/X11) fail closed statt Simulation. GET liefert zusätzlich `drivers` (Verfügbarkeitsmatrix) und `attempts` (Ausführungsversuche).",
     columns: [
       {key: "id", label: "Instanz"},
       {key: "name", label: "Name"},
