@@ -126,6 +126,11 @@
         },
         {
           "file": "lib/persistence/store.ts",
+          "find": "stale = !holderAlive && ageMs > LOCK_STALE_MS;",
+          "replace": "stale = true;"
+        },
+        {
+          "file": "lib/persistence/store.ts",
           "find": "return this.withWriteLock(() => {",
           "replace": "return (() => {"
         },
