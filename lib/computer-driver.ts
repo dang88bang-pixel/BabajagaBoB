@@ -41,17 +41,21 @@ export async function executeComputerAction(req: ComputerExecutionRequest): Prom
   }
   const timeout=Math.min(Math.max(Number(req.timeoutMs??30000),1000),120000);
   const started=Date.now();
-  const result=await new Promise<{code:number|null;stdout:string;stderr:string}>((resolve,reject)=>{
+  const result=await new Promise<{code:number|null;stdout:string;stderr:string}>((resolve)=>{
     const safeEnv: NodeJS.ProcessEnv={NODE_ENV:process.env.NODE_ENV ?? "production",PATH:process.env.PATH,LANG:process.env.LANG,LC_ALL:process.env.LC_ALL,TZ:process.env.TZ};
     const child=spawn(command,[],{shell:false,stdio:["pipe","pipe","pipe"],env:safeEnv});
     let stdout="",stderr="",settled=false;
-    const finish=(value:{code:number|null;stdout:string;stderr:string})=>{if(!settled){settled=true;resolve(value);}};
+    const finish=(value:{code:number|null;stdout:string;stderr:string})=>{if(!settled){settled=true;clearTimeout(timer);resolve(value);}};
     const timer=setTimeout(()=>{child.kill("SIGKILL");finish({code:null,stdout,stderr:stderr+"timeout"});},timeout);
     child.stdout.on("data",b=>{stdout+=String(b);if(stdout.length>1_000_000) child.kill("SIGKILL");});
     child.stderr.on("data",b=>{stderr+=String(b);if(stderr.length>1_000_000) child.kill("SIGKILL");});
-    child.on("error",e=>{clearTimeout(timer);reject(e);});
-    child.on("close",code=>{clearTimeout(timer);finish({code,stdout,stderr});});
-    child.stdin.end(JSON.stringify({computerId:req.computerId,kind:instance.kind,action:req.action,input:req.input}));
+    child.on("error",e=>{finish({code:null,stdout,stderr:stderr+(e instanceof Error?e.message:String(e))});});
+    child.on("close",code=>finish({code,stdout,stderr}));
+    try {
+      child.stdin.end(JSON.stringify({computerId:req.computerId,kind:instance.kind,action:req.action,input:req.input}));
+    } catch (e) {
+      finish({code:null,stdout,stderr:stderr+(e instanceof Error?e.message:String(e))});
+    }
   });
   const out:ComputerExecutionResult={
     computerId:req.computerId,action:req.action,status:result.code===0?"SUCCEEDED":"FAILED",exitCode:result.code,
