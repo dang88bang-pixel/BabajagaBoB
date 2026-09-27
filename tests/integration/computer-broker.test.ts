@@ -52,7 +52,7 @@ describe("Computer Use through Execution Broker",()=>{
     const broker=await import("../../lib/execution-broker");
 
     const context=await harness.buildSandboxContext("computer-broker-binding");
-    const computer=computers.listComputers()[0];
+    const computer=computers.registerComputer({name:"Binding Isolation CLI",kind:"CLI",os:"linux",arch:"x64",network:"DENY",capabilities:[{kind:"CLI",actions:["SCREENSHOT"],environments:["test"],network:"DENY",risk:"LOW"}],authorized:false});
     computers.authorizeComputer(computer.id,true,"CREATOR");
     computers.allocateComputer(computer.id,"OTHER-TASK","OTHER-SANDBOX");
     computers.startComputer(computer.id);
