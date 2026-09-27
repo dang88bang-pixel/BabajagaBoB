@@ -27,11 +27,14 @@ describe("Computer Use canonical execution broker",()=>{
     computers.allocateComputer(computer.id,context.taskId,context.sandboxId);
     computers.startComputer(computer.id);
 
+    const authority=await import("../../lib/authority");
+    const issued=authority.issueCapabilityToken({subject:context.agentId,taskId:context.taskId,sandboxId:context.sandboxId,environment:"test",capabilities:["task:execute","sandbox:run","computer:execute"],risk:"LOW",issuedBy:"CREATOR",issuedByKind:"CREATOR",expiresAt:new Date(Date.now()+300000).toISOString()});
+
     const result=await broker.executeComputerAuthorized({
       taskId:context.taskId,
       agentId:context.agentId,
       sandboxId:context.sandboxId,
-      capabilityTokenId:context.tokenId,
+      capabilityTokenId:issued.token.id,
       runId:context.runId,
       environment:"test",
       argv:["COMPUTER_USE"],
