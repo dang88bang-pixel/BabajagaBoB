@@ -143,3 +143,7 @@ Eine Produktionsreife-Aussage wird bewusst nicht getroffen; maßgeblich sind die
 - Gefundene und reparierte Befunde: Computer-Driver-Typecheck, OCI-Storage-Option auf Standard-Runnern, Device-Enrollment-Middleware-Grenze, Acceptance-Matrix-Duplikat/Nachweisvertrag.
 - Offline-Fabric ist jetzt **PARTIAL** statt `NOT_IMPLEMENTED`: lokale Ressourcenverifikation und provenance-erhaltender Bundle-Export/Import sind vorhanden; vollständiger paket-/modell-/wissensspezifischer Merge bleibt offen.
 - Offene Kernpunkte bleiben: echte Computer-Use-Treiber/Broker-Verbrauchskette, externe Provider-Liveverbindung, echter Browser-E2E-Nachweis und Dauer-Soak.
+
+
+### Reparatur 2026-09-27
+- `STORE_WRITE_LOCK_OFF`-Sabotageprobe wurde korrigiert: die Mutation entfernt nun die Sperrwirkung syntaktisch gültig, sodass die Lock-/Concurrency-Suiten eine geschwächte Store-Sperre tatsächlich erkennen können. Der produktive Store-Code wurde dabei nicht verändert.
