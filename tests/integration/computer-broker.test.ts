@@ -1,43 +1,39 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import {beforeEach,describe,expect,it,vi} from "vitest";
+import {describe,expect,it,beforeEach,vi} from "vitest";
 
 describe("Computer Use through Execution Broker",()=>{
-  let root:string;
-  beforeEach(()=>{
-    root=fs.mkdtempSync(path.join(os.tmpdir(),"bob-computer-broker-"));
-    process.env.BOB_STORAGE_DIR=root;
-    vi.resetModules();
-  });
+  beforeEach(()=>{vi.resetModules();});
 
-  it("issues a scoped computer capability and executes only through the broker",async()=>{
-    const driver=path.join(root,"driver.mjs");
-    fs.writeFileSync(driver,'process.stdin.on("data",b=>{const x=JSON.parse(String(b)); process.stdout.write(JSON.stringify({ok:true,action:x.action})); process.exit(0);});');
-    fs.chmodSync(driver,0o700);
-    process.env.BOB_COMPUTER_DRIVER=driver;
-
+  it("issues a Creator-scoped computer capability and executes only through the broker",async()=>{
+    const harness=await import("../../lib/fault-harness");
     const computers=await import("../../lib/computer-use");
     const authority=await import("../../lib/authority");
     const broker=await import("../../lib/execution-broker");
 
+    const context=await harness.buildSandboxContext("computer-broker");
     const computer=computers.listComputers()[0];
     computers.authorizeComputer(computer.id,true,"CREATOR");
-    computers.allocateComputer(computer.id,"TASK-001","SB-001");
+    computers.allocateComputer(computer.id,context.taskId,context.sandboxId);
     computers.startComputer(computer.id);
 
-    const capability=authority.ensureExecutionCapability(
-      "AG-BUILD","TASK-001","SB-001","LOW","development",
-      ["task:execute","sandbox:run","computer:execute"]
-    );
+    const issued=authority.issueCapabilityToken({
+      subject:context.agentId,
+      taskId:context.taskId,
+      sandboxId:context.sandboxId,
+      environment:"test",
+      capabilities:["task:execute","sandbox:run","computer:execute"],
+      risk:"LOW",
+      issuedBy:"CREATOR",
+      issuedByKind:"CREATOR",
+      expiresAt:new Date(Date.now()+300000).toISOString()
+    });
 
     const result=await broker.executeComputerAuthorized({
-      taskId:"TASK-001",
-      agentId:"AG-BUILD",
-      sandboxId:"SB-001",
-      capabilityTokenId:capability.id,
-      runId:"RUN-CU-BROKER",
-      environment:"development",
+      taskId:context.taskId,
+      agentId:context.agentId,
+      sandboxId:context.sandboxId,
+      capabilityTokenId:issued.token.id,
+      runId:context.runId,
+      environment:"test",
       argv:["COMPUTER_USE"],
       computerId:computer.id,
       computerAction:"SCREENSHOT",
@@ -45,35 +41,46 @@ describe("Computer Use through Execution Broker",()=>{
     });
 
     expect(result.status).toBe("SUCCEEDED");
-    expect(authority.getCapabilityToken(capability.id)?.uses).toBe(1);
+    expect(authority.getCapabilityToken(issued.token.id)?.uses).toBe(1);
   });
 
   it("rejects a computer allocated to another task before consuming the capability",async()=>{
+    const harness=await import("../../lib/fault-harness");
     const computers=await import("../../lib/computer-use");
     const authority=await import("../../lib/authority");
     const broker=await import("../../lib/execution-broker");
 
+    const context=await harness.buildSandboxContext("computer-broker-binding");
     const computer=computers.listComputers()[0];
     computers.authorizeComputer(computer.id,true,"CREATOR");
-    computers.allocateComputer(computer.id,"OTHER-TASK","SB-OTHER");
+    computers.allocateComputer(computer.id,"OTHER-TASK","OTHER-SANDBOX");
     computers.startComputer(computer.id);
 
-    const capability=authority.ensureExecutionCapability(
-      "AG-BUILD","TASK-001","SB-001","LOW","development",
-      ["task:execute","sandbox:run","computer:execute"]
-    );
+    const issued=authority.issueCapabilityToken({
+      subject:context.agentId,
+      taskId:context.taskId,
+      sandboxId:context.sandboxId,
+      environment:"test",
+      capabilities:["task:execute","sandbox:run","computer:execute"],
+      risk:"LOW",
+      issuedBy:"CREATOR",
+      issuedByKind:"CREATOR",
+      expiresAt:new Date(Date.now()+300000).toISOString()
+    });
 
     await expect(broker.executeComputerAuthorized({
-      taskId:"TASK-001",
-      agentId:"AG-BUILD",
-      sandboxId:"SB-001",
-      capabilityTokenId:capability.id,
+      taskId:context.taskId,
+      agentId:context.agentId,
+      sandboxId:context.sandboxId,
+      capabilityTokenId:issued.token.id,
+      runId:context.runId,
+      environment:"test",
       argv:["COMPUTER_USE"],
       computerId:computer.id,
       computerAction:"SCREENSHOT",
       computerInput:{}
     })).rejects.toThrow(/different task/);
 
-    expect(authority.getCapabilityToken(capability.id)?.uses).toBe(0);
+    expect(authority.getCapabilityToken(issued.token.id)?.uses).toBe(0);
   });
 });
