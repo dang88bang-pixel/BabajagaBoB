@@ -37,9 +37,10 @@ describe("Computer Use execution boundary",()=>{
     computers.allocateComputer(c.id,task.taskId,sandbox.sandboxId);
     computers.startComputer(c.id);
     const issued=authority.issueCapabilityToken({subject:"AG-BROWSER",taskId:task.taskId,sandboxId:sandbox.sandboxId,environment:sandbox.type,capabilities:["task:execute","sandbox:run","computer:execute"],risk:"LOW",issuedBy:"CREATOR",issuedByKind:"CREATOR",expiresAt:new Date(Date.now()+120000).toISOString()});
-    process.env.BOB_COMPUTER_DRIVER=path.join(root,"driver.mjs");
-    fs.writeFileSync(process.env.BOB_COMPUTER_DRIVER,'process.stdin.on("data",()=>{process.stdout.write("broker-computer-ok");process.exit(0);});');
-    fs.chmodSync(process.env.BOB_COMPUTER_DRIVER,0o700);
+    const driverPath=path.join(root,"driver.mjs");
+    process.env.BOB_COMPUTER_DRIVER=driverPath;
+    fs.writeFileSync(driverPath,'process.stdin.on("data",()=>{process.stdout.write("broker-computer-ok");process.exit(0);});');
+    fs.chmodSync(driverPath,0o700);
     const result=await broker.executeComputerAuthorized({taskId:task.taskId,agentId:"AG-BROWSER",sandboxId:sandbox.sandboxId,capabilityTokenId:issued.token.id,computerId:c.id,computerAction:"SCREENSHOT",computerInput:{}});
     expect(result.status).toBe("SUCCEEDED");
     expect(authority.getCapabilityToken(issued.token.id)?.uses).toBe(1);
