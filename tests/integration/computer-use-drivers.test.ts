@@ -1,3 +1,7 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {beforeAll, describe, expect, it, vi} from "vitest";
 import {isolatedStorageRoot, TEST_BOOTSTRAP_SECRET} from "../helpers/runtime";
 
@@ -93,11 +97,16 @@ describe("CLI-Aktion über den autorisierten Systempfad", () => {
     cu.allocateComputer(instance.id, task.taskId, sandbox.sandboxId);
 
     if (availability.available) {
-      const attempt = await drivers.executeCuAction({instanceId: instance.id, action: "NAVIGATE", params: {url: "data:text/html,<h1>cu</h1>"}, requestedBy: "CREATOR"});
+      // Metazeichenfreie URL über eine temporäre Datei — die argv-Policy
+      // verbietet Shell-Metazeichen, deshalb kein data:-Markup im Test.
+      const page = path.join(os.tmpdir(), `cu-browser-${crypto.randomUUID().slice(0, 8)}.html`);
+      fs.writeFileSync(page, "<html><body><h1>cu</h1></body></html>");
+      const attempt = await drivers.executeCuAction({instanceId: instance.id, action: "NAVIGATE", params: {url: `file://${page}`}, timeoutMs: 45_000, requestedBy: "CREATOR"});
       expect(attempt.driverId).toBe("browser-headless-chromium");
+      expect(typeof attempt.accepted).toBe("boolean");
     } else {
       await expect(
-        drivers.executeCuAction({instanceId: instance.id, action: "NAVIGATE", params: {url: "data:text/html,<h1>cu</h1>"}, requestedBy: "CREATOR"})
+        drivers.executeCuAction({instanceId: instance.id, action: "NAVIGATE", params: {url: "file:///tmp/cu-never.html"}, requestedBy: "CREATOR"})
       ).rejects.toThrow(/driver unavailable/);
       expect(availability.reason).toMatch(/Chromium|PATH/);
     }

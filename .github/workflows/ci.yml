@@ -63,14 +63,16 @@ jobs:
       # mit "Produktionsbuild fehlt" fehl — laut und mit klarer Ursache statt Timeout.
       - name: Produktionsbuild (Voraussetzung des Prozesstests)
         run: npm run build
+      # github-actions-Reporter: Fehlschläge landen als Check-Run-Annotationen
+      # (lesbar über die API), zusätzlich zur Konsolenausgabe.
       - name: Unit-Tests (Authority, Policy, Governance, Persistenz, Knowledge, Science, Recovery)
-        run: npm run test:unit
+        run: npx vitest run tests/unit --reporter=default --reporter=github-actions
       - name: Integrationstests (Broker, Runtime, Sandbox, Queue, Runs, Error Intelligence)
-        run: npm run test:integration
+        run: npx vitest run tests/integration --reporter=default --reporter=github-actions
       - name: Regressionstests
-        run: npm run test:regression
-      - name: UI-Vertragstests (Control Center, 42 Abschnitte)
-        run: npm run test:ui
+        run: npx vitest run tests/regression --reporter=default --reporter=github-actions
+      - name: UI-Vertragstests (Control Center)
+        run: npx vitest run tests/ui --reporter=default --reporter=github-actions
 
   sabotage:
     name: Sabotageproben (TEST-004)

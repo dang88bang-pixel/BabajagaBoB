@@ -192,7 +192,7 @@ export function cuDriverAvailabilityMatrix(drivers: CuDriver[] = cuDrivers()): C
  * Sandbox-Bindung werden vorher geprüft; jede Verweigerung wird auditiert.
  */
 export async function executeCuAction(
-  input: {instanceId: string; action: ComputerUseAction; params?: Record<string, unknown>; sandboxId?: string; requestedBy: string},
+  input: {instanceId: string; action: ComputerUseAction; params?: Record<string, unknown>; sandboxId?: string; requestedBy: string; timeoutMs?: number},
   drivers: CuDriver[] = cuDrivers()
 ): Promise<CuActionAttempt> {
   const instance: ComputerInstance | undefined = listComputers().find(computer => computer.id === input.instanceId);
@@ -216,7 +216,7 @@ export async function executeCuAction(
   const startedAt = new Date().toISOString();
   let result: ExecutionResult;
   try {
-    result = await executeSystemAuthorized({purpose: "COMPUTER_USE", sandboxId, argv});
+    result = await executeSystemAuthorized({purpose: "COMPUTER_USE", sandboxId, argv, ...(input.timeoutMs !== undefined ? {timeoutMs: input.timeoutMs} : {})});
   } catch (error) {
     recordAudit({actor: input.requestedBy, action: "computer-use:action", decision: "DENY", resource: instance.id}, {action: input.action, driverId: driver.driverId, reason: error instanceof Error ? error.message : String(error)});
     throw error;
