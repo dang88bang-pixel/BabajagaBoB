@@ -4,6 +4,7 @@ import {recordAudit} from "./audit";
 import {observe} from "./observability";
 import {listComputers} from "./computer-use";
 import {executeBrowserAction} from "./browser-driver";
+import {executeBrowserAction} from "./browser-driver";
 
 export type ComputerExecutionRequest = {
   computerId: string;
@@ -48,6 +49,38 @@ export async function executeComputerAction(req: ComputerExecutionRequest): Prom
     observe({type:"computer.executed",message:`Browser ${req.computerId} ${req.action} -> SUCCEEDED`,status:"COMPLETED",actor:"AG-BROWSER",agentId:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:"ALLOW",argumentsValue:{action:req.action,driver:"CDP"}});
     return out;
   }
+  if (instance.kind === "BROWSER" && process.env.BOB_BROWSER_EXECUTABLE) {
+    const started = Date.now();
+    try {
+      const browserResult = await executeBrowserAction(req.action, req.input, req.timeoutMs);
+      const stdout = JSON.stringify(browserResult);
+      const out: ComputerExecutionResult = {
+        computerId: req.computerId,
+        action: req.action,
+        status: "SUCCEEDED",
+        exitCode: 0,
+        stdoutDigest: digest(stdout),
+        stderrDigest: digest(""),
+        stdoutLength: stdout.length,
+        stderrLength: 0,
+        durationMs: Date.now() - started
+      };
+      recordAudit({actor:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:"ALLOW"}, {
+        action:req.action, driver:"browser-driver", stdoutDigest:out.stdoutDigest, stdoutLength:out.stdoutLength, durationMs:out.durationMs
+      });
+      observe({type:"computer.browser-driver.completed",message:`Browser driver ${req.action} -> SUCCEEDED`,status:"COMPLETED",actor:"AG-BROWSER",agentId:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:"ALLOW",argumentsValue:{action:req.action,stdoutDigest:out.stdoutDigest}});
+      return out;
+    } catch (error) {
+      const stderr = error instanceof Error ? error.message : String(error);
+      const out: ComputerExecutionResult = {
+        computerId:req.computerId, action:req.action, status:"FAILED", exitCode:null,
+        stdoutDigest:digest(""), stderrDigest:digest(stderr), stdoutLength:0, stderrLength:stderr.length, durationMs:Date.now()-started
+      };
+      recordAudit({actor:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:"DENY"}, {action:req.action,driver:"browser-driver",stderrDigest:out.stderrDigest});
+      return out;
+    }
+  }
+
   const command=(process.env.BOB_COMPUTER_DRIVER ?? "").trim();
   if (/\s/.test(command) || command.includes(";") || command.includes("|") || command.includes("&")) throw new Error("computer driver path is invalid");
   if(!command) {
