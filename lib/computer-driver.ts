@@ -49,7 +49,7 @@ export async function executeComputerAction(req: ComputerExecutionRequest): Prom
     return out;
   }
   const command=(process.env.BOB_COMPUTER_DRIVER ?? "").trim();
-  if (/\\s/.test(command) || command.includes(";") || command.includes("|") || command.includes("&")) throw new Error("computer driver path is invalid");
+  if (/\s/.test(command) || command.includes(";") || command.includes("|") || command.includes("&")) throw new Error("computer driver path is invalid");
   if(!command) {
     recordAudit({actor:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:"DENY"},{reason:"DRIVER_NOT_CONFIGURED",action:req.action});
     throw new Error("computer driver is not configured; execution remains fail closed");
