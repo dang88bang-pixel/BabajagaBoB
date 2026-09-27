@@ -59,11 +59,14 @@ describe("CDP browser driver",()=>{
     await new Promise<void>(resolve=>probe.close(()=>resolve()));
     expect(port).toBeGreaterThan(0);
     const child=spawn(process.execPath,["server.mjs"],{env:{...process.env,NODE_ENV:"production",PORT:String(port),BOB_SESSION_SECRET:"browser-e2e-session-secret-0123456789",BOB_STORAGE_DIR:root},stdio:["ignore","pipe","pipe"]});
+    let serverOutput="";
+    child.stdout?.on("data",chunk=>{serverOutput+=String(chunk);});
+    child.stderr?.on("data",chunk=>{serverOutput+=String(chunk);});
     try {
       const deadline=Date.now()+15000;
       let ready=false;
       while(Date.now()<deadline){try{const response=await fetch("http://127.0.0.1:"+port+"/");if(response.ok){ready=true;break;}}catch{ /* server is still starting */ } await new Promise(r=>setTimeout(r,100));}
-      expect(ready).toBe(true);
+      expect(ready,`Control-Center server did not become ready on port ${port}: ${serverOutput.slice(-4000)}`).toBe(true);
       const {executeBrowserAction}=await import("../../lib/browser-driver");
       const result=await executeBrowserAction("NAVIGATE",{url:"http://127.0.0.1:"+port+"/"}) as {ok:boolean; title?:string};
       expect(result.ok).toBe(true);
