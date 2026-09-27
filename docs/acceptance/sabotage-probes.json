@@ -4,11 +4,16 @@
     {
       "id": "ALLOWLIST_FAIL_CLOSED",
       "title": "Egress-Allowlist wird nicht mehr verweigert",
-      "guard": "Netzwerk bleibt standardmaessig DENY; ALLOWLIST bleibt ohne laufenden Egress-Proxy fail closed (Fabric und lokale Laufzeit, Phase 4 / 7.1).",
+      "guard": "Netzwerk bleibt standardmaessig DENY; ALLOWLIST bleibt ohne laufenden Egress-Proxy und ohne Allowlist-Deckung fail closed (Fabric und lokale Laufzeit, Phase 4 / 7.1).",
       "edits": [
         {
           "file": "lib/sandbox/fabric.ts",
           "find": "if (!egressProxyUrl()) {",
+          "replace": "if (false) {"
+        },
+        {
+          "file": "lib/sandbox/fabric.ts",
+          "find": "if (!egressCoversHost(host)) {",
           "replace": "if (false) {"
         },
         {
