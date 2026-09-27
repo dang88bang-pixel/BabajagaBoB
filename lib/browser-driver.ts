@@ -92,7 +92,7 @@ export async function executeBrowserAction(action:string,input:Input,timeoutMs=3
   if(action==="SCREENSHOT") return screenshotFallback(exe,timeoutMs);
   if(action==="NAVIGATE") {
     const url=typeof input.url==="string"?input.url:"";
-    if(!/^https?:\\/\\//i.test(url)) throw new Error("NAVIGATE requires an http(s) URL");
+    if(!/^https?:\/\//i.test(url)) throw new Error("NAVIGATE requires an http(s) URL");
     const parsed=new URL(url);
     if(!["localhost","127.0.0.1","[::1]"].includes(parsed.hostname)) throw new Error("external browser navigation is blocked by default-deny network policy");
   }
