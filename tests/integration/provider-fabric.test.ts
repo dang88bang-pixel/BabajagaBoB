@@ -18,6 +18,7 @@ beforeAll(async () => {
   cp = await import("../../lib/control-plane");
   audit = await import("../../lib/audit");
   dataBoundary = await import("../../lib/data-boundary");
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", {status: 200}));
   bootstrap.completeBootstrap({secret: TEST_BOOTSTRAP_SECRET, creatorName: "Test Creator"});
 });
 
@@ -53,15 +54,15 @@ describe("Provider Fabric (persistent, fail closed)", () => {
     expect(providers.providerStoreReport().ok).toBe(true);
   });
 
-  it("verweigert Verbindung ohne explizite Freigabe", () => {
-    expect(() => providers.connectProvider("prov-temporal", "https://temporal.local")).toThrow(/approval/i);
-    expect(() => providers.connectProvider("prov-temporal", "https://temporal.local", undefined, "APR-UNBEKANNT")).toThrow(/approval/i);
+  it("verweigert Verbindung ohne explizite Freigabe", async () => {
+    expect(() => providers.connectProvider("prov-temporal", "https://provider.example/health")).toThrow(/approval/i);
+    expect(() => providers.connectProvider("prov-temporal", "https://provider.example/health", undefined, "APR-UNBEKANNT")).toThrow(/approval/i);
     expect(providers.getProvider("prov-temporal")?.enabled).toBe(false);
   });
 
-  it("verbindet erst mit erteilter Freigabe und persistiert den Zustand", () => {
+  it("verbindet erst mit erteilter Freigabe und persistiert den Zustand", async () => {
     const approvalId = grantApproval("prov-temporal");
-    const connected = providers.connectProvider("prov-temporal", "https://temporal.local", "secret-ref-temporal", approvalId);
+    const connected = await providers.connectProvider("prov-temporal", "https://provider.example/health", "secret-ref-temporal", approvalId);
     expect(connected.lifecycle).toBe("CONNECTED");
     expect(connected.enabled).toBe(true);
     // Persistenz: unabhängiger Lesepfad liefert denselben Zustand.
@@ -79,17 +80,17 @@ describe("Provider Fabric (persistent, fail closed)", () => {
     expect(providers.listBindings().some(entry => entry.id === binding.id)).toBe(true);
   });
 
-  it("deaktiviert Bindungen bei Widerruf und erlaubt keine Wiederverbindung", () => {
+  it("deaktiviert Bindungen bei Widerruf und erlaubt keine Wiederverbindung", async () => {
     const revoked = providers.revokeProvider("prov-temporal");
     expect(revoked.lifecycle).toBe("REVOKED");
     expect(providers.listBindings().filter(entry => entry.providerId === "prov-temporal").every(entry => !entry.active)).toBe(true);
     const approvalId = grantApproval("prov-temporal");
-    expect(() => providers.connectProvider("prov-temporal", "https://temporal.local", undefined, approvalId)).toThrow(/revoked/i);
+    await expect(providers.connectProvider("prov-temporal", "https://provider.example/health", undefined, approvalId)).rejects.toThrow(/revoked/i);
   });
 
-  it("verfolgt Health über Heartbeats und blockiert ungesunde Provider", () => {
+  it("verfolgt Health über Heartbeats und blockiert ungesunde Provider", async () => {
     const approvalId = grantApproval("prov-e2b");
-    providers.connectProvider("prov-e2b", "https://e2b.local", undefined, approvalId);
+    await providers.connectProvider("prov-e2b", "https://provider.example/health", undefined, approvalId);
     expect(providers.heartbeatProvider("prov-e2b", {health: "DEGRADED", latencyMs: 120}).lifecycle).toBe("DEGRADED");
     expect(providers.heartbeatProvider("prov-e2b", {health: "UNHEALTHY", message: "timeout"}).lifecycle).toBe("BLOCKED");
     expect(providers.providerSnapshot().telemetry["prov-e2b"].health).toBe("UNHEALTHY");
