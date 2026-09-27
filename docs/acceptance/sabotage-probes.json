@@ -122,8 +122,6 @@
       "find": "  private withWriteLock<R>(fn: () => R): R {",
       "replace": "  private withWriteLock<R>(fn: () => R): R {\n    return fn();",
       "tests": [
-        "tests/integration/fault-injection-processes.test.ts",
-        "tests/integration/load-broker.test.ts",
         "tests/integration/store-lock.test.ts"
       ]
     },
