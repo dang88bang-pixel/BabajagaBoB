@@ -1,4 +1,5 @@
 import {beforeAll, beforeEach, describe, expect, it, vi} from "vitest";
+import os from "node:os";
 import {isolatedStorageRoot, TEST_BOOTSTRAP_SECRET} from "../helpers/runtime";
 
 /**
@@ -263,9 +264,11 @@ describe("Aktiver Netz-Scan", () => {
       expect(report.probed).toBeGreaterThan(0);
       expect(report.probed).toBeLessThanOrEqual(4 * scannable.length);
     } else {
-      // Kein /24 am Rechner → kein einziges Paket, und der Bericht verschweigt das nicht.
+      // Kein /24 am Rechner (z. B. ein CI-Runner in einem /16 oder /20) → kein
+      // einziges Paket. Dass es Netze gibt, ist dabei unerheblich: Ohne /24 gibt
+      // es keine Ziele, und der Bericht zählt dann null Prüfungen.
       expect(report.probed).toBe(0);
-      expect(subnets.length).toBe(0);
+      expect(report.interfaces.length).toBe(subnets.length);
     }
 
     // Kein Fund wird zu einem Gerät: die Flotte bleibt unverändert.
@@ -284,6 +287,37 @@ describe("Aktiver Netz-Scan", () => {
     expect(report.entries).toHaveLength(0);
     // Kein Fund, keine Zielmenge — und trotzdem kein Gerät und keine Autorisierung.
     expect(devices.listDevices().some(device => device.id.startsWith("SCAN-"))).toBe(false);
+  });
+
+  it("scannt in einem breiteren Netz nichts aktiv und sagt das offen", async () => {
+    // Der Fall, der auf einem CI-Runner eintritt: Die Maschine liegt in einem /16.
+    // `subnetTargets` liefert dann bewusst keine Ziele — der Scan darf nicht
+    // vorgaukeln, er habe etwas geprüft, und er darf kein Netz fluten.
+    const spy = vi.spyOn(os, "networkInterfaces").mockReturnValue({
+      eth0: [{address: "10.1.2.3", netmask: "255.255.0.0", family: "IPv4", mac: "00:00:00:00:00:00", internal: false, cidr: "10.1.0.0/16"}] as unknown as os.NetworkInterfaceInfo[]
+    });
+    try {
+      const report = await scan.scanDevices({active: true, maxTargets: 4, concurrency: 4, timeoutMs: 250});
+      expect(report.interfaces).toHaveLength(1);
+      expect(report.probed).toBe(0);
+      // Kein Fund, kein Gerät, keine Autorisierung.
+      expect(report.entries.filter(entry => entry.source === "ACTIVE_PROBE")).toHaveLength(0);
+      expect(devices.listDevices().some(device => device.id.startsWith("SCAN-"))).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("meldet null Ziele, wenn der Rechner kein IPv4-Netz außerhalb von Loopback hat", async () => {
+    const spy = vi.spyOn(os, "networkInterfaces").mockReturnValue({});
+    try {
+      const report = await scan.scanDevices({active: true, maxTargets: 4, concurrency: 4, timeoutMs: 250});
+      expect(report.interfaces).toHaveLength(0);
+      expect(report.probed).toBe(0);
+      expect(report.entries).toHaveLength(0);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("verweigert den Scan ohne Creator-Session", async () => {

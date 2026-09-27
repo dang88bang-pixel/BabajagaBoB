@@ -2,11 +2,11 @@
 
 **Stand:** 2026-09-26
 **Testrunner:** Vitest 3 (`vitest.config.ts`, Node ≥ 22)
-**Letzter verifizierter Lauf:** `npx vitest run` → **71 Dateien, 485 Tests, davon 484 grün**
-(Unit 145, Security 153, Integration 148, Regression 15, UI 13, E2E 11).
+**Letzter verifizierter Lauf:** `npx vitest run` → **71 Dateien, 487 Tests, davon 486 grün**
+(Unit 145, Security 155, Integration 148, Regression 15, UI 13, E2E 11).
 Der einzige Fehlschlag ist `tests/integration/oci-runtime.test.ts`: Er verlangt einen echten
 Docker-Daemon (`spawn docker ENOENT` in dieser Umgebung) und ist deshalb `UNVERIFIED`,
-nicht grün gerechnet. Ohne Container-Daemon sind **484/484** der übrigen Tests grün.
+nicht grün gerechnet. Ohne Container-Daemon sind **486/486** der übrigen Tests grün.
 Vor dieser Runde: 63 Dateien, 422 Tests (Unit 126, Security 135, Integration 122, Regression 15,
 UI 13, E2E 11). `./node_modules/.bin/tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler / 12 Warnungen; `npm run build` erfolgreich.
 Zusätzlich laufen zwei Nachweisprüfer gegen den **echten** Dienst: `node scripts/fault-injection.mjs`
@@ -485,9 +485,9 @@ Ergebnis der Runde: **63 Testdateien / 422 Tests grün**, `tsc --noEmit` fehlerf
 
 | 57 | Der dokumentierte Enrollment-Weg über HTTP war **unerreichbar**: `scripts/discover-host.mjs` erhielt `401 SESSION_REQUIRED` | Die API-Grenze (Middleware) lässt nur `/api/auth` und `POST /api/runtime` ohne Session durch; ein Discovery-Agent hat aber keine Session. `docs/DEVICES.md` beschrieb den Weg als geprüft — er war es nicht | Neuer, enger Ausnahmeweg: `POST /api/devices` **mit** Header `x-bob-enrollment` (≥16 Zeichen) passiert die Grenze; den Wert prüft die Route fail closed in konstanter Zeit. Die Bootstrap-Pflicht bleibt erhalten (ohne Initialisierung `428`), andere Methoden/Routen bleiben geschlossen. `tests/security/api-gate.test.ts` (9 Tests), live nachgewiesen: `discover-host.mjs` → 201, `authorized: false` |
 | 58 | `POST /api/devices {action:"scan"}` lief ohne jedes Attribut durch — ein **stiller Erfolg** bei einer Aktion, die das Netz berührt | Der neue Zweig hatte keine Pflichtparameter; `audit-actions.mjs` prüft genau das | `confirm: true` ist jetzt Pflicht (`400 SCAN_CONFIRM_REQUIRED` sonst). Test in `tests/security/device-attestation.test.ts`; `audit-actions.mjs` **535/0** |
-| 59 | Der CI-Job „Security- und End-to-End-Suite" wurde durch die neue Scan-Prüfung rot — auf `main` war er grün | `expect(report.probed).toBeGreaterThan(0)` setzte ein **/24-Netz am Testrechner** voraus. Die hiesige Sandbox hat `eth0 169.254.0.21/30` (≥ /24 → Ziele), ein CI-Runner liegt dagegen üblicherweise in einem breiteren Netz; dort liefert `subnetTargets` bewusst `[]` und `probed` bleibt 0. Der Test maß also die Umgebung, nicht die Regel | Prüfung folgt jetzt der **gemessenen** Maske: mit /24 gilt `0 < probed ≤ 4 · scannbare Netze`, ohne /24 gilt `probed === 0`. Zusätzlich eine umgebungsunabhängige Prüfung über eine nicht vorhandene Schnittstelle (`interfaces: […]` → keine Ziele, keine Pakete, kein Gerät). `tests/security/device-attestation.test.ts` 17 Tests |
+| 59 | Der CI-Job „Security- und End-to-End-Suite" wurde durch die neue Scan-Prüfung rot — auf `main` war er grün | `expect(report.probed).toBeGreaterThan(0)` setzte ein **/24-Netz am Testrechner** voraus. Die hiesige Sandbox hat `eth0 169.254.0.21/30` (≥ /24 → Ziele), ein CI-Runner liegt dagegen üblicherweise in einem breiteren Netz; dort liefert `subnetTargets` bewusst `[]` und `probed` bleibt 0. Der Test maß also die Umgebung, nicht die Regel | Prüfung folgt jetzt der **gemessenen** Maske: mit /24 gilt `0 < probed ≤ 4 · scannbare Netze`, ohne /24 gilt `probed === 0`. Zusätzlich eine umgebungsunabhängige Prüfung über eine nicht vorhandene Schnittstelle (`interfaces: […]` → keine Ziele, keine Pakete, kein Gerät). **Der erste Korrekturversuch (Commit `5e52816`) war selbst falsch**: Er ersetzte die unhaltbare Erwartung durch `expect(subnets.length).toBe(0)` — ein Runner mit `eth0/20` hat aber sehr wohl ein Netz, nur kein /24; `subnets.length` ist dort 1, der Job blieb rot. Jetzt wird der Zweig „kein /24" **gesteuert** geprüft (`vi.spyOn(os, "networkInterfaces")` mit /16 bzw. mit leerer Schnittstellenliste) statt aus der Umgebung gefolgert; der ungefährte Fall prüft nur noch `probed === 0` und `interfaces.length === subnets.length`. `tests/security/device-attestation.test.ts` 19 Tests |
 
-Ergebnis der Runde: **71 Testdateien / 485 Tests, 484 grün** (einzig `tests/integration/oci-runtime.test.ts`
+Ergebnis der Runde: **71 Testdateien / 487 Tests, 486 grün** (einzig `tests/integration/oci-runtime.test.ts`
 rot — kein Docker-Daemon in dieser Umgebung, `spawn docker ENOENT`), `tsc --noEmit` fehlerfrei,
 `eslint .` 0 Fehler, `npm run build` erfolgreich, **25/25 Sabotageproben erkannt**,
 `scripts/acceptance.mjs` **15/0**.
@@ -516,12 +516,19 @@ falsche Reihenfolge.
 | Lint und Typecheck | failure | **success** |
 | Sabotageproben (TEST-004) | failure | **success** |
 | Produktionsbuild | skipped | **success** |
-| Security- und End-to-End-Suite | success | failure → behoben durch Zeile 59 |
+| Security- und End-to-End-Suite | success | failure → Zeile 59 (erster Korrekturversuch `5e52816` war selbst falsch, siehe dort) |
 | Unit- und Integrationstests | failure | failure (unverändert) |
 | Real OCI Runtime | failure | failure (unverändert, kein Docker-Daemon) |
 
 Die Protokolle der roten Läufe sind aus dieser Arbeitsumgebung **nicht lesbar**: `gh run view --log`
 und `GET /actions/jobs/{id}/logs` werden auf `*.blob.core.windows.net` umgeleitet, das hier nicht
-erreichbar ist (`curl` → `SSL_ERROR_SYSCALL`, HTTP `000`). Die Gegenüberstellung stammt aus
-`GET /actions/runs/{id}/jobs`; der Befund in Zeile 59 ist daraus **abgeleitet** und durch die
-gemessene Netzmaske sowie den lokalen Lauf belegt, nicht durch das CI-Protokoll selbst.
+erreichbar ist (`curl` → `SSL_ERROR_SYSCALL`, HTTP `000`); die Check-Run-Annotationen liefern nur
+`Process completed with exit code 1`. Die Gegenüberstellung stammt aus
+`GET /actions/runs/{id}/jobs` (Job- und Schrittstatus, Zeitstempel).
+
+Was **belegt** ist: Der Security-Schritt lief auf `main` 7 s und grün, auf diesem Zweig 7 s und rot
+(Job `108617654601` gegen `108677438209`) — also kein Timeout und kein Abbruch beim Einsammeln,
+sondern eine fehlschlagende Assertion. Der Schritt bricht also an einer Erwartung ab, nicht an der Umgebung.
+Was **abgeleitet** ist: die konkrete Zeile. Sie folgt aus der gemessenen Netzmaske
+(`eth0 169.254.0.21/30` hier, breiteres Netz auf einem Runner) und aus den beiden gesteuerten
+Fällen, die denselben Zustand jetzt nachbilden — nicht aus dem CI-Protokoll.
