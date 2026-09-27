@@ -30,7 +30,7 @@ describe("CDP browser driver",()=>{
     process.env.BOB_BOOTSTRAP_SECRET=TEST_BOOTSTRAP_SECRET;
     bootstrap.completeBootstrap({secret:TEST_BOOTSTRAP_SECRET,creatorName:"Browser Broker Test"});
     const mission=cp.createMission({title:"Browser Broker",objective:"Real browser execution",createdBy:"CREATOR"});
-    const task=cp.createTask({missionId:mission.missionId,title:"Browser screenshot",risk:"MODERATE",assignedAgent:"AG-BROWSER",createdBy:"CREATOR"});
+    const task=cp.createTask({missionId:mission.missionId,title:"Browser screenshot",risk:"MODERATE",assignedAgent:"AG-BUILD",createdBy:"CREATOR"});
     const sandbox=await fabric.createSandbox({type:"browser",taskId:task.taskId,agentId:"AG-BUILD",risk:"MODERATE"});
     await fabric.startSandbox(sandbox.sandboxId);
     const instance=computer.listComputers().find(x=>x.kind==="BROWSER");
