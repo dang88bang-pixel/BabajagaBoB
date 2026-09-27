@@ -23,7 +23,7 @@
  *  - Kein Shell-Aufruf: die Fähigkeitsprüfung nutzt ausschließlich `existsSync`
  *    auf bekannten Pfaden und Node-Bordmittel (kein `exec`, kein `spawn`).
  */
-import {existsSync, readFileSync, writeFileSync, chmodSync} from "node:fs";
+import {existsSync, readFileSync, writeFileSync, chmodSync, mkdirSync} from "node:fs";
 import {arch, cpus, hostname, platform, totalmem} from "node:os";
 import crypto from "node:crypto";
 import path from "node:path";
@@ -54,7 +54,7 @@ function capabilities() {
   return found;
 }
 
-function loadOrCreateKeyPair() {\n  if (existsSync(PRIVATE_KEY_FILE)) {\n    const privateKey=crypto.createPrivateKey(readFileSync(PRIVATE_KEY_FILE,"utf8"));\n    const publicKey=crypto.createPublicKey(privateKey);\n    return {privateKey,publicKey};\n  }\n  const pair=crypto.generateKeyPairSync("ed25519");\n  writeFileSync(KEY_DIR,"",{flag:"a"});\n  writeFileSync(PRIVATE_KEY_FILE,pair.privateKey.export({type:"pkcs8",format:"pem"}));\n  chmodSync(PRIVATE_KEY_FILE,0o600);\n  return pair;\n}\nconst keyPair=loadOrCreateKeyPair();\nconst publicKeyPem=keyPair.publicKey.export({type:"spki",format:"pem"}).toString();\n\nconst identity = {
+function loadOrCreateKeyPair() {\n  if (existsSync(PRIVATE_KEY_FILE)) {\n    const privateKey=crypto.createPrivateKey(readFileSync(PRIVATE_KEY_FILE,"utf8"));\n    const publicKey=crypto.createPublicKey(privateKey);\n    return {privateKey,publicKey};\n  }\n  const pair=crypto.generateKeyPairSync("ed25519");\n  mkdirSync(KEY_DIR,{recursive:true,mode:0o700});\n  writeFileSync(PRIVATE_KEY_FILE,pair.privateKey.export({type:"pkcs8",format:"pem"}));\n  chmodSync(PRIVATE_KEY_FILE,0o600);\n  return pair;\n}\nconst keyPair=loadOrCreateKeyPair();\nconst publicKeyPem=keyPair.publicKey.export({type:"spki",format:"pem"}).toString();\n\nconst identity = {
   id: DEVICE_ID,
   name: hostname(),
   os: platform(),
