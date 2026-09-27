@@ -249,16 +249,41 @@ describe("Aktiver Netz-Scan", () => {
     expect(devices.deviceSummary().authorized).toBe(1);
   });
 
-  it("prüft aktiv mit Zeitgrenze und meldet die Anzahl der Ziele", async () => {
+  it("scannt aktiv nur /24-Netze — Zielmenge und Prüfzahl folgen der Schnittstellenmaske", async () => {
+    // Die Regel hängt **nicht** von der Netzmaske des Testrechners ab: Ein CI-Runner
+    // liegt oft in einem breiteren Netz (/16, /20), dann gibt es bewusst keine
+    // aktiven Ziele. Geprüft wird beides — und zwar gegen die gemessene Maske.
+    const subnets = scan.localSubnets();
+    const scannable = subnets.filter(entry => entry.prefix >= 24);
     const report = await scan.scanDevices({active: true, maxTargets: 4, concurrency: 4, timeoutMs: 250});
-    expect(report.probed).toBeGreaterThan(0);
-    expect(report.probed).toBeLessThanOrEqual(4 * report.interfaces.length);
+
+    expect(report.limits.maxTargets).toBe(4);
     expect(report.durationMs).toBeGreaterThanOrEqual(0);
+    if (scannable.length > 0) {
+      expect(report.probed).toBeGreaterThan(0);
+      expect(report.probed).toBeLessThanOrEqual(4 * scannable.length);
+    } else {
+      // Kein /24 am Rechner → kein einziges Paket, und der Bericht verschweigt das nicht.
+      expect(report.probed).toBe(0);
+      expect(subnets.length).toBe(0);
+    }
+
     // Kein Fund wird zu einem Gerät: die Flotte bleibt unverändert.
     expect(devices.listDevices().some(device => device.id.startsWith("SCAN-"))).toBe(false);
     const records = audit.auditSnapshot(200).filter(entry => entry.action === "device.scan");
     expect(records.length).toBeGreaterThan(0);
     expect(records.every(entry => entry.decision === "ALLOW")).toBe(true);
+  });
+
+  it("erzeugt ohne /24-Ziel kein Paket und meldet das im Bericht", async () => {
+    // Deterministischer Fall unabhängig von der Umgebung: eine Schnittstelle, die
+    // es nicht gibt, filtert jedes Netz heraus — der aktive Scan läuft ins Leere.
+    const report = await scan.scanDevices({active: true, maxTargets: 4, concurrency: 4, timeoutMs: 250, interfaces: ["bob-keine-solche-schnittstelle"]});
+    expect(report.interfaces).toHaveLength(0);
+    expect(report.probed).toBe(0);
+    expect(report.entries).toHaveLength(0);
+    // Kein Fund, keine Zielmenge — und trotzdem kein Gerät und keine Autorisierung.
+    expect(devices.listDevices().some(device => device.id.startsWith("SCAN-"))).toBe(false);
   });
 
   it("verweigert den Scan ohne Creator-Session", async () => {
