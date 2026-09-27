@@ -77,7 +77,7 @@ async function freePort(): Promise<number> {
 async function launch(exe:string,timeoutMs:number,initialUrl="about:blank"){
   const profile=await mkdtemp(path.join(os.tmpdir(),"bob-browser-"));
   const port=await freePort();
-  const args=["--headless=new","--disable-gpu","--disable-software-rasterizer","--disable-dev-shm-usage","--no-sandbox","--disable-setuid-sandbox","--disable-crash-reporter","--disable-extensions","--disable-background-networking","--disable-sync","--no-first-run","--no-default-browser-check","--proxy-server=http://127.0.0.1:9","--proxy-bypass-list=localhost;127.0.0.1;[::1]","--remote-debugging-address=127.0.0.1","--remote-debugging-port="+String(port),`--user-data-dir=${profile}`,initialUrl];
+  const args=["--headless=new","--disable-gpu","--disable-software-rasterizer","--disable-dev-shm-usage","--no-sandbox","--disable-setuid-sandbox","--disable-crash-reporter","--disable-extensions","--disable-background-networking","--disable-sync","--no-first-run","--no-default-browser-check","--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1, EXCLUDE ::1","--remote-debugging-address=127.0.0.1","--remote-debugging-port="+String(port),`--user-data-dir=${profile}`,initialUrl];
   const child:ChildProcess=spawn(exe,args,{shell:false,stdio:"pipe",env:{NODE_ENV:process.env.NODE_ENV ?? "production",PATH:process.env.PATH,LANG:process.env.LANG,HOME:profile}});
   let text="";
   const collect=(b:Buffer)=>{text+=String(b);if(text.length>128000)text=text.slice(-128000);};
