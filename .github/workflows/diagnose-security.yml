@@ -1,13 +1,13 @@
-# Temporäre Diagnose, Stufe 2: `tests/security/device-attestation.test.ts` ist in
-# CI rot (alle 20 übrigen Security-Dateien sind grün, auch einzeln gefahren).
-# Die Protokolle sind nicht lesbar, also fährt diese Matrix **jede Prüfung der
-# Datei als eigenen Job** — über eine ASCII-benannte Kopie
-# (`tests/security/diag-device.test.ts`), damit der Jobstatus die Prüfung nennt.
+# Temporäre Diagnose, Stufe 3: Eingegrenzt ist
+#   - die Datei: tests/security/device-attestation.test.ts (20 andere grün)
+#   - die Prüfung: t13 „führt einen begrenzten Scan aus, legt aber kein Gerät an
+#     und autorisiert nichts" (t10 war ein Artefakt der Matrix: die Prüfung liest
+#     die Audit-Einträge der vorherigen Fälle und ist allein gefahren leer)
+# Die Protokolle sind nicht lesbar, also zerlegt diag-t13.test.ts die Prüfung in
+# elf einzelne Behauptungen — der Jobstatus nennt die Zeile.
 #
-# `ganze-datei` fährt die Originaldatei als Kontrolle: Ist sie rot, aber jede
-# einzelne Prüfung grün, hängt der Fehler an der Reihenfolge, nicht an einem Fall.
-#
-# Beide Dateien werden entfernt, sobald die Ursache behoben ist.
+# Alle drei Dateien (diag-device, diag-t13, dieser Workflow) werden entfernt,
+# sobald die Ursache behoben ist.
 name: Diagnose Security-Suite
 
 on:
@@ -23,33 +23,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  pruefung:
-    name: Fall ${{ matrix.case }}
+  behauptung:
+    name: Zeile ${{ matrix.case }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
         case:
-          - t01
-          - t02
-          - t03
-          - t04
-          - t05
-          - t06
-          - t07
-          - t08
-          - t09
-          - t10
-          - t11
-          - t12
-          - t13
-          - t14
-          - t15
-          - t16
-          - t17
-          - t18
-          - t19
+          - a01
+          - a02
+          - a03
+          - a04
+          - a05
+          - a06
+          - a07
+          - a08
+          - a09
+          - a10
+          - a11
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.3.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -57,8 +49,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Nur diese Prüfung fahren
-        run: npx vitest run tests/security/diag-device.test.ts -t "${{ matrix.case }}" --reporter=verbose
+      - name: Umgebung messen
+        run: node -e 'const os=require("os");console.log("cpus",os.cpus().length);for(const[n,i]of Object.entries(os.networkInterfaces()))for(const x of i??[])if(x.family==="IPv4")console.log(n,x.address,x.netmask)'
+      - name: Nur diese Behauptung fahren
+        run: npx vitest run tests/security/diag-t13.test.ts -t "${{ matrix.case }}" --reporter=verbose
 
   ganze-datei:
     name: Originaldatei komplett (Kontrolle)
