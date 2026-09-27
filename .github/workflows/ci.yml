@@ -172,6 +172,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Produktionsbuild für echten Control-Center-Browserlauf
+        run: npm run build
       - name: Detect system browser
         run: |
           if command -v google-chrome >/dev/null 2>&1; then echo "BOB_BROWSER_EXECUTABLE=$(command -v google-chrome)" >> "$GITHUB_ENV";
