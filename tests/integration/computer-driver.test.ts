@@ -13,7 +13,7 @@ describe("Computer Use execution boundary",()=>{
     process.env.BOB_COMPUTER_DRIVER=driver;
     const computers=await import("../../lib/computer-use");
     const exec=await import("../../lib/computer-driver");
-    const c=computers.listComputers()[0];
+    const c=computers.registerComputer({name:"CLI Test",kind:"CLI",os:"linux",arch:"x64",network:"DENY",capabilities:[{kind:"CLI",actions:["NAVIGATE","SCREENSHOT"],environments:["test"],network:"DENY",risk:"LOW"}],authorized:false});
     computers.authorizeComputer(c.id,true,"CREATOR");
     computers.allocateComputer(c.id,"TASK-CU","SB-CU");
     computers.startComputer(c.id);
@@ -26,7 +26,7 @@ describe("Computer Use execution boundary",()=>{
     delete process.env.BOB_COMPUTER_DRIVER;
     const computers=await import("../../lib/computer-use");
     const exec=await import("../../lib/computer-driver");
-    const c=computers.listComputers()[0];
+    const c=computers.registerComputer({name:"CLI Fail Closed",kind:"CLI",os:"linux",arch:"x64",network:"DENY",capabilities:[{kind:"CLI",actions:["NAVIGATE"],environments:["test"],network:"DENY",risk:"LOW"}],authorized:false});
     computers.authorizeComputer(c.id,true,"CREATOR");
     computers.allocateComputer(c.id,"TASK-CU-2");
     computers.startComputer(c.id);
