@@ -147,6 +147,7 @@ export async function executeBrowserAction(action:string,input:Input,timeoutMs=3
         while(Date.now()<readyDeadline){
           const titleResult = await command(browser.ws,++id,"Runtime.evaluate",{expression:"document.title",returnByValue:true});
           const bodyResult = await command(browser.ws,++id,"Runtime.evaluate",{expression:"document.body?.textContent ?? \"\"",returnByValue:true});
+          const htmlResult = await command(browser.ws,++id,"Runtime.evaluate",{expression:"document.documentElement?.outerHTML ?? \"\"",returnByValue:true});
           title=typeof titleResult.result?.value==="string"?titleResult.result.value:"";
           text=typeof bodyResult.result?.value==="string"?bodyResult.result.value:"";
           if(text.trim().length>0) break;
