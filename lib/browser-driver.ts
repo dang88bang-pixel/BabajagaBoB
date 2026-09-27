@@ -141,7 +141,8 @@ export async function executeBrowserAction(action:string,input:Input,timeoutMs=3
     switch(action){
       case "NAVIGATE": {
         const url=typeof input.url==="string"?input.url:"";
-        const readyDeadline=Date.now()+5000;
+        await command(browser.ws,++id,"Page.navigate",{url});
+        const readyDeadline=Date.now()+8000;
         let text="";
         let html="";
         while(Date.now()<readyDeadline){
