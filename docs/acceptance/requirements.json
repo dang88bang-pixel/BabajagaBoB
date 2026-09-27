@@ -619,8 +619,8 @@
         "docs/SANDBOX.md",
         "docs/RUNTIME.md"
       ],
-      "status": "NOT_VERIFIED",
-      "note": "Implementierung und realer Docker-Lifecycle-Test sind vorhanden; PASS wird erst nach einem erfolgreich ausgeführten OCI-CI-Run gesetzt. Der aktuelle Connector kann den neuen Workflow-Run noch nicht beobachten."
+      "status": "PASS",
+      "note": "Echter Docker-OCI-Lifecycle erfolgreich in GitHub Actions Run 36303131453 auf Commit 6b5724a749b7ac1f78d02a97937df4882b32e110 (OCI-Code seitdem unverändert): Create/Start/Execute/Snapshot/Destroy/Restore/Execute bestanden. Härtungsflags und portable writable-tmpfs-Grenze sind im Adapter implementiert."
     },
     {
       "id": "Q-001",
