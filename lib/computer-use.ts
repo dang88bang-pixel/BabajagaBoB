@@ -14,7 +14,14 @@ const store=createStore<Payload>("computer-use",1,()=>({instances:[{
 const instances:ComputerInstance[]=store.read().instances;
 const persist=()=>store.write({instances});
 const clone=<T,>(x:T):T=>structuredClone(x);
-export function registerComputer(input:Omit<ComputerInstance,"id"|"state">){
+/**
+ * Registrierung einer Instanz.
+ *
+ * `authorized` ist im Aufruf **nicht** vorhanden: Discovery ist keine
+ * Autorisierung, ein mitgeliefertes `authorized` wäre ein Scheinnachweis.
+ * Der Typ erzwingt das — der Aufrufer kann es nicht einmal übergeben.
+ */
+export function registerComputer(input:Omit<ComputerInstance,"id"|"state"|"authorized">){
   if(!input||typeof input!=="object")throw new Error("computer required");
   if(typeof input.name!=="string"||input.name.trim().length===0)throw new Error("computer name required");
   if(typeof input.kind!=="string"||input.kind.trim().length===0)throw new Error("computer kind required");

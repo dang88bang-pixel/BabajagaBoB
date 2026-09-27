@@ -72,18 +72,69 @@ Eigenschaften:
 
 ## 5. Grenzen
 
-- Es gibt keinen Netz-Scanner (kein ARP-/mDNS-Scan): Discovery ist **selbstmeldend**
-  (Agent meldet seinen Host) oder manuell über die Route. Ein aktiver Scan über
-  Subnetze ist `NOT_IMPLEMENTED`.
+- Der aktive Scan liest die Kernel-Nachbartabelle (`/proc/net/arp`) und löst
+  höchstens ein **/24** je Schnittstelle aktiv auf. Netze mit größerem Präfix
+  werden ausdrücklich **nicht** gescannt (`limits.reason` nennt sie). mDNS/Bonjour
+  und IPv6 bleiben `NOT_IMPLEMENTED`.
 - Netzwerkzugriff auf Geräte ist nicht implementiert; `network` beschreibt die
   Klassifizierung, nicht eine aktive Verbindung (`NOT_IMPLEMENTED`).
 - Keine Fernsteuerung von Geräten über das Control Center.
+- Die Attestierung weist die Identität über das gemeinsame Enrollment-Geheimnis
+  nach (HMAC-SHA256). Das ist **kein** hardwaregestützter Nachweis: TPM/Secure-
+  Enclave-Messung und eine Zertifikatskette sind `NOT_IMPLEMENTED`.
 - Der Enrollment-Agent ist hier gegen die laufende Instanz geprüft; ein Betrieb
-  mit mehreren Hosts, Rotation des Geheimnisses oder Attestierung ist
-  `NOT_IMPLEMENTED`.
+  mit mehreren Hosts und Rotation des Geheimnisses ist `NOT_IMPLEMENTED`.
 
-## 6. Tests
+## 6. Aktiver Netz-Scan (`lib/device-scan.ts`)
 
+`POST /api/devices {action:"scan", confirm:true}` (Creator) führt einen begrenzten Scan aus.
+`confirm: true` ist Pflicht: Ein Aufruf, der das Netz berührt, läuft nicht auf einem leeren
+Payload (`400 SCAN_CONFIRM_REQUIRED`).
+
+- **Kein Shell-Aufruf.** Die Nachbartabelle wird aus `/proc/net/arp` gelesen; die
+  aktive Auflösung nutzt UDP-Sockets aus Node. Ein Paket an Port 1 erzwingt nur
+  die ARP-Auflösung — es wird kein fremder Dienst abgefragt.
+- **Begrenzt.** Höchstens 256 Ziele, Nebenläufigkeit ≤ 64, harte Zeitgrenze
+  (250 ms bis 30 s), nur /24.
+- **Ehrlich.** Ist die Nachbartabelle nicht lesbar, meldet der Bericht
+  `neighborTable: "UNAVAILABLE"` — nicht „leer" und nicht „erfolgreich".
+- **Kein Selbst-Grant.** Der Scan legt kein Gerät an und autorisiert nichts; er
+  erzeugt einen Kandidatenbericht mit Ereignis und Audit.
+
+## 7. Attestierung (`lib/device-attestation.ts`)
+
+Zwei Schritte, klar getrennt:
+
+1. `POST /api/devices {action:"attest.challenge", id}` (Creator) → einmalige
+   Nonce, 120 s gültig.
+2. `POST /api/devices {action:"attest", device:{id}, challengeId, proof}`
+   (Enrollment-Geheimnis) → `proof = HMAC_SHA256(secret, "<deviceId>.<nonce>")`.
+
+Regeln:
+
+| Regel | Wirkung |
+|---|---|
+| Attestierung ≠ Autorisierung | Zustand bleibt unautorisiert; `allocateDevice` verweigert weiterhin |
+| Nonce einmalig | Replay → `409 ATTESTATION_REPLAY`, auch mit korrekter Quittung |
+| Zeitgrenze | abgelaufen → `410 ATTESTATION_EXPIRED` |
+| Fehlversuche | 5 Fehlversuche → `423 ATTESTATION_LOCKED` (15 Minuten), auch die Ausstellung wird dann verweigert |
+| Unbekanntes Gerät | `404 DEVICE_NOT_FOUND` — kein Phantomgerät erhält eine Nonce |
+| Ohne Geheimnis | `503 ATTESTATION_DISABLED` (fail closed) |
+| Konstanter Vergleich | kein Zeitkanal über die Quittung |
+
+Die Quittung wird **vor** dem Vergleich verbraucht, damit ein falscher Versuch
+nicht wiederholbar ist. Das Geheimnis verlässt nie den Server.
+
+## 8. Tests
+
+- Der Agent erreicht die API **ohne Browser-Session**: Er trägt das Geheimnis zusätzlich im
+  Header `x-bob-enrollment` (die Middleware liest den Body nicht). Die Grenze lässt nur
+  `POST /api/devices` mit diesem Header durch, und nur nach dem Bootstrap; den Wert prüft die
+  Route fail closed. Andere Geräte-Aktionen verlangen weiterhin eine Creator-Session.
+- `tests/security/device-attestation.test.ts` (16 Tests) — fail closed ohne
+  Geheimnis, Phantomgerät, Kennungsvalidierung, Sessionpflicht, Attestierung
+  ohne Autorisierung, Replay, falsche und fremde Quittung, unbekannte
+  Herausforderung, Sperre nach 5 Fehlversuchen, Audit-Kette, Scan-Grenzen.
 - `tests/security/device-enrollment.test.ts` (8 Tests) — fail closed, falsches
   Geheimnis, Discovery ohne Autorisierung, Lebenszeichen ohne Rechteänderung,
   kein Selbst-Grant, Creator-Weg unverändert, Geheimnis nie in Antworten.

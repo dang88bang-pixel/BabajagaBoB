@@ -112,7 +112,7 @@ const NAV: {id: SectionId; label: string; group: string}[] = [
 
 type Column = {key: string; label: string; render?: (row: Row) => string};
 
-const SOURCES: Partial<Record<SectionId, {url: string; path?: string[]; columns: Column[]; note: string}>> = {
+const SOURCES: Partial<Record<SectionId, {url: string; path?: string[]; metaPath?: string[]; columns: Column[]; note: string}>> = {
   Missions: {
     url: "/api/control",
     path: ["missions"],
@@ -299,7 +299,8 @@ const SOURCES: Partial<Record<SectionId, {url: string; path?: string[]; columns:
   Science: {
     url: "/api/science",
     path: ["experiments"],
-    note: "Wissenschaftliche Engine: Experimente, Evidenz und Kausalentscheidungen.",
+    metaPath: ["significanceSummary"],
+    note: "Wissenschaftliche Engine: Experimente, Evidenz und Kausalentscheidungen. Eine Behauptung gilt erst als etabliert, wenn Baseline, Kontrolle, Replikation, Evidenz **und** ein statistisch tragfähiger Unterschied vorliegen — ohne Messwerte bleibt die Signifikanz ausdrücklich ungeprüft.",
     columns: [
       {key: "experimentId", label: "Experiment"},
       {key: "title", label: "Titel"},
@@ -387,7 +388,8 @@ const SOURCES: Partial<Record<SectionId, {url: string; path?: string[]; columns:
   Devices: {
     url: "/api/devices",
     path: ["devices"],
-    note: "Entdeckung ist keine Autorisierung: Geräte bleiben bis zur Creator-Freigabe ungenutzt.",
+    metaPath: ["attestation"],
+    note: "Entdeckung ist keine Autorisierung: Geräte bleiben bis zur Creator-Freigabe ungenutzt. Der aktive Netz-Scan findet Kandidaten, die Attestierung weist die Identität nach — beides erzeugt keinen Zugriff.",
     columns: [
       {key: "id", label: "Gerät"},
       {key: "name", label: "Name"},
@@ -403,7 +405,8 @@ const SOURCES: Partial<Record<SectionId, {url: string; path?: string[]; columns:
   ComputerUse: {
     url: "/api/computer-use",
     path: ["computers"],
-    note: "Browser-, Desktop- und CLI-Instanzen mit expliziter Autorisierung.",
+    metaPath: ["driver"],
+    note: "Browser-, Desktop- und CLI-Instanzen mit expliziter Autorisierung. Die Ausführung einer Aktion läuft ausschließlich über Gate, Broker und Evidenz — ohne konfigurierten Treiber ist sie verweigert, nicht simuliert.",
     columns: [
       {key: "id", label: "Instanz"},
       {key: "name", label: "Name"},
@@ -612,9 +615,10 @@ type InboxItem = {
   incidentId?: string;
 };
 
-type PanelState = {rows: Row[] | null; error: string};
+/** Zusätzlicher Kopfdaten je Abschnitt (z. B. Treiberzustand), unverändert aus derselben Antwort. */
+type PanelState = {rows: Row[] | null; error: string; meta?: Row | null};
 
-const panel = (rows: Row[] | null, error = ""): PanelState => ({rows, error});
+const panel = (rows: Row[] | null, error = "", meta: Row | null = null): PanelState => ({rows, error, meta});
 
 /** Ereignis-IDs des kanonischen Logs (`EVT-…`) — nur diese sind abfragbar. */
 const isKnownEventId = (id: string): boolean => /^EVT-[A-Za-z0-9-]{4,80}$/.test(id);
@@ -641,6 +645,17 @@ function pick(body: unknown, path?: string[]): Row[] {
     current = (current as Record<string, unknown>)[key];
   }
   return Array.isArray(current) ? (current as Row[]) : [];
+}
+
+/** Liest ein einzelnes Objekt aus einer Antwort (Kopfdaten eines Abschnitts). */
+function pickOne(body: unknown, path?: string[]): Row | null {
+  if (!path || path.length === 0 || !body || typeof body !== "object") return null;
+  let current: unknown = body;
+  for (const key of path) {
+    if (!current || typeof current !== "object") return null;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return current && typeof current === "object" && !Array.isArray(current) ? (current as Row) : null;
 }
 
 export default function ControlCenter() {
@@ -749,7 +764,7 @@ export default function ControlCenter() {
       sources.map(async ([id, source]) => {
         const response = await fetchJson<unknown>(source.url);
         if (response.data === null) return [id, panel(null, response.error)] as const;
-        return [id, panel(pick(response.data, source.path))] as const;
+        return [id, panel(pick(response.data, source.path), "", pickOne(response.data, source.metaPath))] as const;
       })
     );
     setPanels(Object.fromEntries(results));
@@ -2094,6 +2109,127 @@ export default function ControlCenter() {
       );
     }
     if (section === "Deployment") return deploymentPanel();
+    if (section === "Devices") {
+      // Kopfdaten sind `unknown` — die Oberfläche greift nie untypisiert zu,
+      // sondern liest die Felder einzeln und prüft ihren Typ.
+      const raw = panels.Devices?.meta ?? {};
+      const attestation = {
+        available: raw.available === true,
+        attestedDevices: typeof raw.attestedDevices === "number" ? raw.attestedDevices : 0,
+        denied: typeof raw.denied === "number" ? raw.denied : 0,
+        challengeTtlMs: typeof raw.challengeTtlMs === "number" ? raw.challengeTtlMs : null,
+        maxFailures: typeof raw.maxFailures === "number" ? raw.maxFailures : null,
+        lockoutMs: typeof raw.lockoutMs === "number" ? raw.lockoutMs : null,
+        lockedDevices: Array.isArray(raw.lockedDevices) ? raw.lockedDevices.length : 0
+      };
+      const rows = panels.Devices?.rows ?? [];
+      return (
+        <>
+          <div className="metrics">
+            {[
+              {k: "Geräte", v: String(rows.length), s: `${rows.filter(row => row.authorized === true).length} creator-autorisiert`},
+              {
+                k: "Attestierung",
+                v: attestation.available ? "konfiguriert" : "nicht konfiguriert",
+                s: attestation.available ? "HMAC-SHA256, einmalige Nonce" : "kein Geheimnis — fail closed"
+              },
+              {k: "Attestiert", v: String(attestation.attestedDevices), s: "Identität nachgewiesen (≠ autorisiert)"},
+              {k: "Verweigert", v: String(attestation.denied), s: `${attestation.lockedDevices} Gerät(e) gesperrt`}
+            ].map(metric => (
+              <div className="metric" key={metric.k}>
+                <small>{metric.k}</small>
+                <strong>{metric.v}</strong>
+                <span>{metric.s}</span>
+              </div>
+            ))}
+          </div>
+          {genericTable("Devices")}
+          <section className="panel sectionPanel">
+            <small>FABRIC / GERÄTE</small>
+            <h2>Attestierung</h2>
+            <p>
+              Eine Herausforderung gilt {attestation.challengeTtlMs === null ? "?" : Math.round(attestation.challengeTtlMs / 1000)} Sekunden
+              und genau einmal; nach {attestation.maxFailures ?? "?"} Fehlversuchen ist die Attestierung für das Gerät
+              {" "}{attestation.lockoutMs === null ? "?" : `${Math.round(attestation.lockoutMs / 60000)} Minuten`} gesperrt.
+              Der aktive Netz-Scan prüft höchstens ein /24 je Schnittstelle und legt kein Gerät an.
+            </p>
+          </section>
+        </>
+      );
+    }
+    if (section === "Science") {
+      const raw = panels.Science?.meta ?? {};
+      const count = (key: string): number => (typeof raw[key] === "number" ? (raw[key] as number) : 0);
+      const summary = {
+        measurements: count("measurements"),
+        computed: count("computed"),
+        significant: count("significant"),
+        undecidable: count("undecidable")
+      };
+      return (
+        <>
+          <div className="metrics">
+            {[
+              {k: "Messwerte", v: String(summary.measurements), s: "numerische Beobachtungen"},
+              {k: "Prüfbar", v: String(summary.computed), s: "mit Baseline- und Kontrollwerten"},
+              {k: "Signifikant", v: String(summary.significant), s: "Unterschied tragfähig"},
+              {k: "Unentscheidbar", v: String(summary.undecidable), s: "ohne Messwerte — nicht „signifikant“"}
+            ].map(metric => (
+              <div className="metric" key={metric.k}>
+                <small>{metric.k}</small>
+                <strong>{metric.v}</strong>
+                <span>{metric.s}</span>
+              </div>
+            ))}
+          </div>
+          {genericTable("Science")}
+        </>
+      );
+    }
+    if (section === "ComputerUse") {
+      const driver = panels.ComputerUse?.meta ?? null;
+      const configured = driver?.configured === true;
+      const rows = panels.ComputerUse?.rows ?? [];
+      return (
+        <>
+          <div className="metrics">
+            {[
+              {
+                k: "Ausführungspfad",
+                v: "Broker",
+                s: "Gate → Broker → Treiber → Evidenz (kein direkter Pfad)"
+              },
+              {
+                k: "Treiber",
+                v: configured ? "konfiguriert" : "nicht konfiguriert",
+                s: configured ? "Computer Use ausführbar" : "jede Aktion wird verweigert (fail closed)"
+              },
+              {
+                k: "Instanzen",
+                v: String(rows.length),
+                s: `${rows.filter(row => row.authorized === true).length} creator-autorisiert`
+              }
+            ].map(metric => (
+              <div className="metric" key={metric.k}>
+                <small>{metric.k}</small>
+                <strong>{metric.v}</strong>
+                <span>{metric.s}</span>
+              </div>
+            ))}
+          </div>
+          {genericTable("ComputerUse")}
+          <section className="panel sectionPanel">
+            <small>FABRIC / COMPUTER USE</small>
+            <h2>Treiberzustand</h2>
+            <p>
+              {typeof driver?.reason === "string"
+                ? driver.reason
+                : "Treiberzustand nicht verfügbar — Computer Use ist damit nicht ausführbar."}
+            </p>
+          </section>
+        </>
+      );
+    }
     if (section === "Slo") {
       const results = (panels.Slo?.rows ?? []) as Row[];
       const count = (state: string) => results.filter(row => row.state === state).length;

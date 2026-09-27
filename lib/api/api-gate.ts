@@ -1,4 +1,5 @@
 import {ApiDenied, guardRequest, parseCapabilityHeader} from "./guard";
+import {requireInitialized, BootstrapError} from "../bootstrap";
 import {precheckCapabilityToken, verifyCapabilitySecret} from "../authority";
 import {SESSION_COOKIE, resolveSession} from "../session";
 import {recordAudit} from "../audit";
@@ -15,6 +16,19 @@ export type ApiGateDecision = {allow: true} | {allow: false; status: number; cod
 export const API_GATE_ACTION = "control-plane:access";
 export const AUTH_PATH = "/api/auth";
 export const AGENT_EXECUTION_PATH = "/api/runtime";
+export const DEVICE_ENROLLMENT_PATH = "/api/devices";
+/**
+ * Kennzeichnung des Enrollment-Wegs.
+ *
+ * Ein Discovery-Agent hat keine Browser-Session — er besitzt nur das
+ * Enrollment-Geheimnis. Damit er die API-Grenze überhaupt erreicht, trägt er das
+ * Geheimnis zusätzlich in diesem Header. Die Grenze prüft **nur die Anwesenheit**
+ * (der Body wird in der Middleware bewusst nicht gelesen); den Wert prüft die
+ * Route selbst, fail closed und in konstanter Zeit. Ohne gültiges Geheimnis
+ * bleibt die Antwort 403, und alle anderen Geräte-Aktionen verlangen weiterhin
+ * eine Creator-Session.
+ */
+export const ENROLLMENT_HEADER = "x-bob-enrollment";
 
 export function isAuthPath(pathname: string): boolean {
   return pathname === AUTH_PATH || pathname.startsWith(`${AUTH_PATH}/`);
@@ -22,6 +36,16 @@ export function isAuthPath(pathname: string): boolean {
 
 export function isAgentExecutionPath(method: string, pathname: string): boolean {
   return method.toUpperCase() === "POST" && pathname === AGENT_EXECUTION_PATH;
+}
+
+/** Enrollment-/Attestierungsweg eines Discovery-Agenten (ohne Session). */
+export function isDeviceEnrollmentRequest(method: string, pathname: string, headerValue: string | null): boolean {
+  return (
+    method.toUpperCase() === "POST" &&
+    pathname === DEVICE_ENROLLMENT_PATH &&
+    typeof headerValue === "string" &&
+    headerValue.trim().length >= 16
+  );
 }
 
 function cookieValue(request: Request, name: string): string | undefined {
@@ -81,6 +105,25 @@ export function apiGateDecision(request: Request): ApiGateDecision {
   const limited = rateDecision(request);
   if (!limited.allow) return limited;
   if (isAgentExecutionPath(method, pathname)) return agentExecutionDecision(request);
+  /**
+   * Discovery-/Attestierungsweg: Die Grenze lässt den Aufruf durch, weil der
+   * Agent keine Session haben kann. **Nicht** durchgelassen wird damit eine
+   * Autorisierung — die Route prüft das Geheimnis und lehnt alles ab, was nicht
+   * `enroll`, `heartbeat` oder `attest` ist (diese Aktionen verlangen eine
+   * Creator-Session).
+   */
+  if (isDeviceEnrollmentRequest(method, pathname, request.headers.get(ENROLLMENT_HEADER))) {
+    // Fail closed bleibt erhalten: Ein nicht initialisiertes System nimmt keine
+    // Gerätemeldung an. Ohne diese Prüfung hätte der Agentenweg den
+    // Bootstrap-Zwang umgangen (die Route prüft die Initialisierung nicht selbst).
+    try {
+      requireInitialized();
+    } catch (error) {
+      if (error instanceof BootstrapError) return deny(428, error.code, error.message);
+      return deny(500, "GATE_ERROR", error instanceof Error ? error.message : "bootstrap check failed");
+    }
+    return {allow: true};
+  }
 
   try {
     guardRequest(request, {action: API_GATE_ACTION, requireSession: true});

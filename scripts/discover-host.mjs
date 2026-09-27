@@ -50,6 +50,16 @@ function capabilities() {
   return found;
 }
 
+/**
+ * Das Geheimnis geht zusätzlich im Header `x-bob-enrollment` mit: Die API-Grenze
+ * (Middleware) liest den Body nicht und lässt den Agentenweg nur mit diesem
+ * Header durch. Geprüft wird der Wert serverseitig in der Route.
+ */
+const ENROLLMENT_HEADERS = {
+  "content-type": "application/json",
+  "x-bob-enrollment": SECRET
+};
+
 const identity = {
   id: DEVICE_ID,
   name: hostname(),
@@ -66,7 +76,7 @@ const identity = {
 async function call(action) {
   const response = await fetch(`${BASE}/api/devices`, {
     method: "POST",
-    headers: {"content-type": "application/json"},
+    headers: ENROLLMENT_HEADERS,
     body: JSON.stringify({action, secret: SECRET, device: identity})
   });
   const text = await response.text();

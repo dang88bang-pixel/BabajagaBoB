@@ -431,7 +431,14 @@ export function ensureExecutionCapability(
   taskId: string,
   sandboxId: string,
   risk: Risk,
-  environment = "development"
+  environment = "development",
+  /**
+   * Zusätzliche Fähigkeit neben der Ausführungsbasis (`task:execute`,
+   * `sandbox:run`) — z. B. `computer:execute` für Computer Use. Sie muss in
+   * derselben Delegation liegen wie die Basis; eine nicht delegierte Fähigkeit
+   * bleibt verweigert (fail closed, kein stiller Fallback).
+   */
+  extraCapabilities: string[] = []
 ): CapabilityToken {
   const payload = store.read();
   const existing = payload.tokens.find(
@@ -443,6 +450,7 @@ export function ensureExecutionCapability(
       t.environment === environment &&
       t.capabilities.includes("task:execute") &&
       t.capabilities.includes("sandbox:run") &&
+      extraCapabilities.every(capability => t.capabilities.includes(capability)) &&
       // Erschöpfte Token sind nicht wiederverwendbar: sonst würde der Broker den
       // nächsten Lauf als Replay verweigern, obwohl eine gültige Autorisierung
       // vorzuliegen scheint (genau eine Autorisierung = eine Ausführung).
@@ -457,7 +465,7 @@ export function ensureExecutionCapability(
       taskId,
       sandboxId,
       environment,
-      capabilities: ["task:execute", "sandbox:run"],
+      capabilities: ["task:execute", "sandbox:run", ...extraCapabilities],
       risk,
       issuedBy: "SYSTEM-WORKER",
       issuedByKind: "SYSTEM",

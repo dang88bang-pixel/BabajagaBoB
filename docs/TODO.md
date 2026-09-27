@@ -33,10 +33,10 @@ Smoke-Test laufen als SYSTEM-WORKER über Gate, Broker und Evidenz).
 | Punkt | Warum offen | Nächster Schritt |
 |---|---|---|
 | OCI-Runtime verifizieren | kein Container-Daemon in der Umgebung | Lauf mit Docker/Podman auf einem Host mit Daemon; Härtungsflags und Snapshot prüfen |
-| Egress-Allowlist | bewusst fail closed, bis ein kontrollierter Proxy existiert | Egress-Proxy + DNS-Pinning implementieren, dann `ALLOWLIST` freischalten |
+| ~~Egress-Allowlist~~ | erledigt: `lib/egress-proxy.ts` (CONNECT-Proxy, DNS-Pinning, keine privaten Adressen, jede Entscheidung auditiert) + Verdrahtung in Fabric/Broker/Runtime; ohne `BOB_EGRESS_ALLOWLIST` bleibt `ALLOWLIST` fail closed | offen: Betrieb gegen das offene Internet ist `NOT_VERIFIED` (kein Ausgang in dieser Umgebung); TLS-Inspektion ist bewusst nicht eingebaut |
 | Provider live verbinden | keine externen Verbindungen erlaubt (Netzwerk `DENY`) | mit Allowlist + Approval einen Adapter real anbinden und Telemetrie prüfen |
-| ~~Geräte-Discovery~~ | erledigt: `lib/device-enrollment.ts` + `scripts/discover-host.mjs` (Meldung mit Geheimnis, fail closed, nur Discovery/Heartbeat), Autorisierung bleibt Creator-Akt | offen: Netz-Scan (ARP/mDNS) und Attestierung sind `NOT_IMPLEMENTED`; Scheduling nach CPU/RAM/GPU/OS/Architektur/Capabilities ist jetzt implementiert und getestet |
-| Computer Use | kein Browser-/Desktop-Treiber angebunden | Playwright-/VNC-Treiber im Sandbox-Workspace, Aktionen über Broker |
+| ~~Geräte-Discovery~~ | erledigt: `lib/device-enrollment.ts` + `scripts/discover-host.mjs` (Meldung mit Geheimnis, fail closed, nur Discovery/Heartbeat), Autorisierung bleibt Creator-Akt | offen: mDNS/Bonjour und IPv6 sind `NOT_IMPLEMENTED`; aktiver Scan (/24, Kernel-Nachbartabelle) und Attestierung (HMAC, einmalige Nonce, Sperre) sind implementiert und getestet |
+| Computer Use | Ausführung läuft über den Broker (`executeComputerAuthorized`) mit 9 zusätzlichen Prüfungen und echtem Treiberprozess | offen: kein Browser-/Desktop-Treiber angebunden (`NOT_VERIFIED` gegen ein reales Gerät) — Playwright-/VNC-Treiber als `BOB_COMPUTER_DRIVER` |
 | ~~Simulation/Visualisierung~~ | erledigt | Renderer `lib/visualization.ts` für alle sieben Arten (aus dem echten Zustand), Bildroute + Evidenzartefakt, `tests/integration/visualization.test.ts` |
 | Control-Center-UI | kein Browser in der Umgebung (geprüft: kein Chromium/Chrome/Firefox, kein Playwright-Cache; Download-Hosts gesperrt) | Browser-E2E bleibt `NOT_VERIFIED`; ersatzweise jsdom-Tests gegen echte Routen-Handler + `audit-ui.mjs` |
 | ~~Recovery-Tier-Ableitung~~ | erledigt | automatische, begründete Klassifikation in `lib/recovery-tier.ts` (Tests: `tests/unit/recovery-tier.test.ts`) |
@@ -48,8 +48,16 @@ Smoke-Test laufen als SYSTEM-WORKER über Gate, Broker und Evidenz).
 
 - WebAuthn als Alternative zu TOTP (TOTP ist implementiert: `BOB_CREATOR_TOTP_SECRET`).
 - Automatisches Deployment (Promotion bleibt manuell und Creator-gebunden).
-- Vektor-/Embedding-Suche im Knowledge Graph.
-- Statistische Signifikanzprüfung in der Kausalvalidierung.
+- ~~Vektor-/Embedding-Suche im Knowledge Graph~~ — erledigt: `lib/knowledge-vector.ts`
+  (lokaler, deterministischer Hashing-Embedding-Fallback, Kosinus-Suche,
+  `GET /api/knowledge/vector`); ein echter Embedding-Provider bleibt offen, weil
+  externe Verarbeitung default `DENY` ist.
+- ~~Statistische Signifikanzprüfung in der Kausalvalidierung~~ — erledigt:
+  `lib/significance.ts` (Anteils-z-Test, Welch-t, Cohen's h/d, erforderliche
+  Stichprobe, fail closed ohne Messwerte), verdrahtet in `validateCausalChain`.
+- Mehrfachvergleiche/Kovariaten/Bayes-Faktoren in der Signifikanzprüfung
+  (`NOT_IMPLEMENTED` — die Prüfung ist eine Ja/Nein-Entscheidung, keine
+  fachstatistische Auswertung).
 
 ## 4. Regeln für neue Einträge
 

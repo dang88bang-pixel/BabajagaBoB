@@ -1,20 +1,25 @@
 import {NextResponse} from "next/server";
-import {addEvidence,createDecision,createExperiment,createObjective,listScience,runExperiment,updateExperiment,validateCausalChain} from "@/lib/science";
+import {addEvidence,addMeasurement,createDecision,createExperiment,createObjective,listScience,runExperiment,significanceSummary,updateExperiment,validateCausalChain} from "@/lib/science";
 import {actionField,readJson,stringArray,stringField} from "@/lib/request-validation";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 import {guardOrDeny} from "../../../lib/api/api-gate";
-export async function GET(request:Request){const denied=guardOrDeny(request,{action:"science:read"});if(denied)return denied;return NextResponse.json(listScience(),{headers:{"Cache-Control":"no-store"}})}
+export async function GET(request:Request){
+ const denied=guardOrDeny(request,{action:"science:read"});if(denied)return denied;
+ // Die Signifikanzübersicht ist eine Projektion über die Messwerte, kein
+ // zus?tzlicher Zustand: sie zeigt, wie viele Experimente überhaupt prüfbar sind.
+ return NextResponse.json({...listScience(),significanceSummary:significanceSummary()},{headers:{"Cache-Control":"no-store"}})
+}
 export async function POST(req:Request){
  try{
-  const b=await readJson(req); const action=actionField(b,["objective","experiment","experiment.update","experiment.run","experiment.validate","evidence","decision"]);
+  const b=await readJson(req); const action=actionField(b,["objective","experiment","experiment.update","experiment.run","experiment.validate","evidence","measurement","decision"]);
   // Objektive, Experimente, Evidenz und Entscheidungen sind Creator-Aktionen;
   // der eigentliche Experimentlauf ist autorisierte Ausfuehrung (Capability).
   const denied=action==="experiment.run"
     ? guardOrDeny(req,{action:"experiment:run",taskId:typeof b.taskId==="string"?b.taskId:undefined,sandboxId:typeof b.sandboxId==="string"?b.sandboxId:undefined})
     : guardOrDeny(req,{action:"science:manage",creatorOnly:true});
   if(denied)return denied;
-  if(action==="objective"||action==="experiment"||action==="evidence"||action==="decision"){
+  if(action==="objective"||action==="experiment"||action==="evidence"||action==="measurement"||action==="decision"){
    if(!b.value||typeof b.value!=="object"||Array.isArray(b.value))throw new Error("value required");
   }
   if(action==="objective")return NextResponse.json({objective:createObjective(b.value as never)},{status:201});
@@ -28,6 +33,19 @@ export async function POST(req:Request){
   }
   if(action==="experiment.validate")return NextResponse.json({validation:validateCausalChain(stringField(b,"id",128))});
   if(action==="evidence")return NextResponse.json({evidence:addEvidence(b.value as never)},{status:201});
+  // Messwerte sind die Grundlage der Signifikanzprüfung; sie werden als
+  // Creator-Aktion erfasst und nur als endliche Zahl angenommen.
+  if(action==="measurement"){
+   const value=b.value as {experimentId?:unknown;group?:unknown;label?:unknown;value?:unknown};
+   const numeric=typeof value?.value==="number"?value.value:Number(value?.value);
+   if(!Number.isFinite(numeric))return NextResponse.json({error:"measurement value must be a finite number"},{status:400});
+   return NextResponse.json({measurement:addMeasurement({
+     experimentId:stringField(b.value as Record<string,unknown>,"experimentId",128),
+     group:stringField(b.value as Record<string,unknown>,"group",16) as "BASELINE"|"CONTROL"|"REPLICATION",
+     label:typeof value?.label==="string"?value.label:"value",
+     value:numeric
+   })},{status:201});
+  }
   return NextResponse.json({decision:createDecision(b.value as never)},{status:201});
  }catch(e){return NextResponse.json({error:e instanceof Error?e.message:"invalid request"},{status:400})}
 }

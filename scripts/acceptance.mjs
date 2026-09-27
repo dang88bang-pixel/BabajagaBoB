@@ -181,7 +181,22 @@ step("2. Nachweisregel (kein DONE ohne Nachweis)");
   else bad("Jeder Routen-Nachweis zeigt auf eine existierende Route", brokenRoutes.join(", "));
 
   const scriptEvidence = requirements.flatMap(entry => (entry.evidence ?? []).filter(item => item.kind === "script").map(item => item.script));
-  const missingScripts = [...new Set(scriptEvidence)].filter(script => !existsSync(script) && script !== "scripts/acceptance.mjs");
+  /**
+   * Ein Skript-Nachweis ist entweder ein Dateipfad (`scripts/verify-live.sh`)
+   * oder ein npm-Aufruf (`npm run test:oci`). Letzteren als Pfad zu prüfen war
+   * ein Prüferfehler: Er meldete einen fehlenden Nachweis, obwohl das Skript in
+   * `package.json` vorhanden war. Beides wird deshalb aufgelöst — ein
+   * `npm run <name>` gilt nur, wenn `package.json` dieses Skript wirklich
+   * definiert.
+   */
+  const packageScripts = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")).scripts ?? {};
+  const scriptMissing = script => {
+    if (script === "scripts/acceptance.mjs") return false;
+    const npmRun = /^npm run ([A-Za-z0-9:_.-]+)$/.exec(script.trim());
+    if (npmRun) return typeof packageScripts[npmRun[1]] !== "string";
+    return !existsSync(script);
+  };
+  const missingScripts = [...new Set(scriptEvidence)].filter(scriptMissing);
   if (missingScripts.length === 0) ok("Jeder Skript-Nachweis existiert", `${new Set(scriptEvidence).size} Skripte`);
   else bad("Jeder Skript-Nachweis existiert", missingScripts.join(", "));
 

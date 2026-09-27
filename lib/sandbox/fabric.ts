@@ -1,4 +1,5 @@
 import {createStore} from "../persistence/store";
+import {egressAvailable, egressStatus} from "../egress-proxy";
 import {activeSandboxRuntime, runtimeModeLabel} from "../runtime-factory";
 import {observe} from "../observability";
 import {getControlState, destroySandboxRecord, getTask, registerSandbox, updateSandboxStatus} from "../control-plane";
@@ -60,15 +61,24 @@ function assertBinding(taskId: string, agentId: string) {
 
 export async function createSandbox(request: SandboxRequest): Promise<Sandbox> {
   const task = assertBinding(request.taskId, request.agentId);
+  // `ALLOWLIST` braucht eine kontrollierte Ausgangsschicht: Ohne konfigurierte
+  // Egress-Allowlist (BOB_EGRESS_ALLOWLIST) bleibt die Anforderung fail closed —
+  // genau wie vorher. Erst mit Allowlist wird der Proxy zum einzigen Ausgang;
+  // ein direkter Netzzugriff entsteht dadurch nie.
+  let allowlistRequested = false;
   if (request.network === "ALLOWLIST" || (request.allowlist?.length ?? 0) > 0) {
-    throw new Error("ALLOWLIST networking is fail-closed until a controlled egress layer exists");
+    allowlistRequested = true;
+    if (!egressAvailable()) {
+      throw new Error("ALLOWLIST networking is fail-closed until a controlled egress layer exists (BOB_EGRESS_ALLOWLIST leer)");
+    }
   }
+  const networkMode: "DENY" | "ALLOWLIST" = allowlistRequested ? "ALLOWLIST" : "DENY";
   const sandboxId = request.sandboxId ?? `SB-${Date.now().toString(36).toUpperCase()}`;
   const limits: ResourceLimits = {...DEFAULTS, ...request.limits};
   const handle = await activeSandboxRuntime.create({
     id: sandboxId,
     type: request.type,
-    network: {mode: "DENY", allowlist: []},
+    network: {mode: networkMode, allowlist: request.allowlist ?? []},
     limits,
     risk: request.risk,
     image: request.image,
@@ -80,7 +90,7 @@ export async function createSandbox(request: SandboxRequest): Promise<Sandbox> {
     type: request.type,
     status: "RUNNING",
     lifecycle: handle.state === "RUNNING" ? "RUNNING" : "CREATED",
-    network: "DENY",
+    network: networkMode,
     taskId: request.taskId,
     agentId: request.agentId,
     runtimeMode: handle.mode === "REAL_OCI" ? "real-oci" : handle.mode === "REAL_LOCAL" ? "real-local" : "mock",
@@ -106,7 +116,14 @@ export async function createSandbox(request: SandboxRequest): Promise<Sandbox> {
     sandboxId,
     action: "sandbox.create",
     resource: sandboxId,
-    argumentsValue: {type: request.type, limits, network: "DENY", runtime: runtimeModeLabel()}
+    argumentsValue: {
+      type: request.type,
+      limits,
+      network: networkMode,
+      // Bei ALLOWLIST ist der Proxy der einzige Ausgang — das gehört in den Nachweis.
+      ...(networkMode === "ALLOWLIST" ? {egress: egressStatus().listeningPort ?? "configured"} : {}),
+      runtime: runtimeModeLabel()
+    }
   });
   void task;
   return sandbox;

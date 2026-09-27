@@ -42,7 +42,11 @@ describe("Computer Use (Discovery ≠ Autorisierung)", () => {
     // Aufruf. Ein so autorisierter Computer hatte keinen
     // `computer.authorized`-Nachweis in der Audit-Kette — die Autorisierung war
     // damit nicht nachvollziehbar (Discovery ≠ Autorisierung).
-    const registered = computers.registerComputer({
+    // Der Typ lässt `authorized` inzwischen nicht mehr zu (Discovery ≠
+    // Autorisierung ist damit schon zur Übersetzungszeit erzwungen). Geprüft
+    // wird hier die **Laufzeit**: ungeprüfte Außeneingabe (JSON aus einer Route)
+    // muss weiterhin verworfen werden.
+    const unchecked = {
       name: "Direkt autorisiert",
       kind: "CLI",
       os: "linux",
@@ -50,7 +54,8 @@ describe("Computer Use (Discovery ≠ Autorisierung)", () => {
       network: "DENY",
       capabilities: [{kind: "CLI", actions: ["PROCESS_READ"], environments: ["test"], network: "DENY", risk: "LOW"}],
       authorized: true
-    });
+    } as unknown as Parameters<typeof computers.registerComputer>[0];
+    const registered = computers.registerComputer(unchecked);
     expect(registered.authorized).toBe(false);
     expect(() => computers.allocateComputer(registered.id, "TASK-DIRECT")).toThrow(/not authorized/);
 

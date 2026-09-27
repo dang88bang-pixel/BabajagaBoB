@@ -37,12 +37,17 @@ Recovery`
   verifizierten Snapshot **und** bestandene Regression, `LEARNED` verlangt `fix.verify`.
 - Angriffe werden blockiert **und** auditiert (fremdes Token, Shell-Programm,
   Shell-Metazeichen, fremde Sandbox-Bindung, Lockdown).
-- Nachweis: **63 Testdateien / 422 Tests** sowie die Live-Prüfungen
+- Nachweis: **71 Testdateien / 487 Tests** (486 grün; der einzige rote Test verlangt
+  einen Docker-Daemon und ist als `UNVERIFIED` geführt) sowie die Live-Prüfungen
   `scripts/verify-live.sh` (**174 / 0**), `scripts/audit-actions.mjs` (**525 / 0**),
   `scripts/audit-api.sh` (**248 / 0**), `scripts/audit-ui.mjs` (**92 / 0**) und der
   Grenznachweis `scripts/verify-rate-limit.sh` (**6 / 0**, Standardbudget, frische Instanz) — jeweils
   auf der Instanz `:3100` mit Kernel-Isolation und cgroup-Limits; dazu der Abnahmeprüfer
   `node scripts/acceptance.mjs --live` (**82 / 0**, 66/66 Routennachweise).
+  Erneut gemessen am 2026-09-27 auf einer frischen Instanz `:3103` (Kernel-Isolation
+  `NAMESPACES`, Rootfs gebaut): `verify-live.sh` **171 / 0**, `audit-actions.mjs` **535 / 0**,
+  `audit-api.sh` **248 / 0**, `audit-ui.mjs` **89 / 0**, `acceptance.mjs --live` **84 / 0**
+  (68/68 Routennachweise). Reihenfolge und Einzelheiten: `docs/TESTING.md` §8b.
 
 ## Dokumentation
 
@@ -241,10 +246,18 @@ Die tatsächlichen offenen Punkte werden in `docs/TODO.md` und `docs/STATUS.md`
 geführt – u. a.:
 
 1. OCI-Runtime mit echtem Daemon verifizieren (bisher `UNVERIFIED`).
-2. Egress-Proxy für kontrollierte `ALLOWLIST`-Netzwerke implementieren.
+2. ~~Egress-Proxy für kontrollierte `ALLOWLIST`-Netzwerke~~ — erledigt:
+   `lib/egress-proxy.ts` (CONNECT-Proxy, DNS-Pinning, keine privaten Adressen,
+   jede Entscheidung auditiert) und Verdrahtung in Fabric/Broker/Runtime; ohne
+   `BOB_EGRESS_ALLOWLIST` bleibt `ALLOWLIST` fail closed. Offen: Betrieb gegen das
+   offene Internet (`NOT_VERIFIED`, kein Ausgang in dieser Umgebung).
 3. Provider real anbinden (mit Allowlist + Approval) statt nur zu beschreiben.
-4. Browser-/Desktop-Treiber für Computer Use; Geräte-Discovery ist als
-   selbstmeldender Enrollment-Agent umgesetzt (aktiver Netz-Scan fehlt weiterhin).
+4. Browser-/Desktop-Treiber für Computer Use — die Ausführung läuft jetzt über den
+   Broker (`executeComputerAuthorized`, 9 zusätzliche Prüfungen, echter
+   Treiberprozess über `BOB_COMPUTER_DRIVER`); offen bleibt ein echter
+   Browser-/Desktop-Treiber. Geräte-Discovery umfasst zusätzlich einen aktiven
+   Netz-Scan (/24, Kernel-Nachbartabelle) und Attestierung (HMAC, einmalige
+   Nonce); mDNS/IPv6 fehlen weiterhin.
 5. Browser-E2E-Tests für das Control Center (`NOT_VERIFIED`: in der Umgebung steht kein
    Browser zur Verfügung); ersatzweise jsdom-Tests gegen echte Routen-Handler.
 6. ~~Metrik-/Alerting-Export und Backup-Automation~~ — erledigt: 16 Alarmregeln an reale

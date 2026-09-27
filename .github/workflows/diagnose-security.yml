@@ -1,0 +1,69 @@
+# Temporäre Diagnose, Stufe 3: Eingegrenzt ist
+#   - die Datei: tests/security/device-attestation.test.ts (20 andere grün)
+#   - die Prüfung: t13 „führt einen begrenzten Scan aus, legt aber kein Gerät an
+#     und autorisiert nichts" (t10 war ein Artefakt der Matrix: die Prüfung liest
+#     die Audit-Einträge der vorherigen Fälle und ist allein gefahren leer)
+# Die Protokolle sind nicht lesbar, also zerlegt diag-t13.test.ts die Prüfung in
+# elf einzelne Behauptungen — der Jobstatus nennt die Zeile.
+#
+# Alle drei Dateien (diag-device, diag-t13, dieser Workflow) werden entfernt,
+# sobald die Ursache behoben ist.
+name: Diagnose Security-Suite
+
+on:
+  push:
+    branches: ["arena/01a0e394-babajagabob"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bob-diagnose-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  behauptung:
+    name: Zeile ${{ matrix.case }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        case:
+          - a01
+          - a02
+          - a03
+          - a04
+          - a05
+          - a06
+          - a07
+          - a08
+          - a09
+          - a10
+          - a11
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Umgebung messen
+        run: node -e 'const os=require("os");console.log("cpus",os.cpus().length);for(const[n,i]of Object.entries(os.networkInterfaces()))for(const x of i??[])if(x.family==="IPv4")console.log(n,x.address,x.netmask)'
+      - name: Nur diese Behauptung fahren
+        run: npx vitest run tests/security/diag-t13.test.ts -t "${{ matrix.case }}" --reporter=verbose
+
+  ganze-datei:
+    name: Originaldatei komplett (Kontrolle)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Originaldatei fahren
+        run: npx vitest run tests/security/device-attestation.test.ts --reporter=verbose

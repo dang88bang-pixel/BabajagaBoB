@@ -115,8 +115,12 @@ Zentrale Policy für Broker, lokale Runtime, OCI-Runtime und Regression Engine:
 ## 5. Sandbox und Netzwerk (`lib/sandbox/fabric.ts`, `lib/runtime-local.ts`, `lib/oci-runtime.ts`)
 
 - Jede Sandbox ist an Task **und** Agent gebunden; Fremdbindung ist ein Fehler.
-- **Netzwerk ist standardmäßig `DENY`.** `ALLOWLIST` ist fail closed, bis ein kontrollierter Egress-Proxy
-  existiert – in Fabric, Runtime und Broker.
+- **Netzwerk ist standardmäßig `DENY`.** `ALLOWLIST` ist fail closed, solange keine Egress-Allowlist
+  konfiguriert ist (`BOB_EGRESS_ALLOWLIST`) – geprüft in Fabric, Runtime und Broker. Mit Allowlist ist der
+  Egress-Proxy (`lib/egress-proxy.ts`) der einzige Ausgang: DNS-Pinning (verbunden wird nur zu einer
+  einmal aufgelösten Adresse, die Gegenstelle wird nachgeprüft), keine privaten/IPv6-Adressen, nur
+  CONNECT-Tunnel, jede Entscheidung auditiert. Ohne Allowlist entsteht durch die Freigabe kein direkter
+  Netzzugriff.
 - Lokale Runtime: eigenes Workspace-Verzeichnis (0700), reduziertes Environment, Timeout mit Prozessgruppen-Kill.
 - **Kernel-Isolation (`NAMESPACES`, real):** Ist ein Rootfs vorhanden (`bash scripts/build-ns-rootfs.sh`),
   läuft jede lokale Ausführung zusätzlich in eigenen Netzwerk-, PID-, IPC-, UTS-, Mount- und

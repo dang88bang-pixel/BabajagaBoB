@@ -5,6 +5,7 @@ import {spawn} from "node:child_process";
 import {createStore, storageRoot} from "./persistence/store";
 import {assertArgvPolicy} from "./argv-policy";
 import {isolationActive, isolationReport, runIsolated} from "./ns-isolation";
+import {egressAvailable, egressStatus} from "./egress-proxy";
 import type {
   ExecutionResult,
   RuntimeHandle,
@@ -141,7 +142,8 @@ export class LocalWorkspaceRuntime implements SandboxRuntime {
   readonly mode = "REAL_LOCAL" as const;
 
   async create(spec: SandboxSpec): Promise<RuntimeHandle> {
-    if (spec.network.mode === "ALLOWLIST") {
+    // ALLOWLIST nur mit kontrollierter Ausgangsschicht; sonst fail closed.
+    if (spec.network.mode === "ALLOWLIST" && !egressAvailable()) {
       throw new Error("ALLOWLIST networking is fail-closed: no controlled egress layer is available for the local runtime");
     }
     if (spec.limits.timeoutMs <= 0 || spec.limits.memoryMb <= 0 || spec.limits.cpuMillicores <= 0 || spec.limits.processes <= 0) {
@@ -302,7 +304,9 @@ export class LocalWorkspaceRuntime implements SandboxRuntime {
     if (argv.length === 0) throw new Error("argv must not be empty");
     // Zentrale Policy: keine Shell-Strings (Interpreter, Metazeichen, Limits).
     assertArgvPolicy(argv, "local sandbox runtime");
-    if (record.network.mode === "ALLOWLIST") throw new Error("ALLOWLIST execution is fail-closed in the local runtime");
+    if (record.network.mode === "ALLOWLIST" && !egressAvailable()) {
+      throw new Error("ALLOWLIST execution is fail-closed in the local runtime");
+    }
     const [command, ...args] = argv;
     const timeout = Math.min(timeoutMs ?? record.limits.timeoutMs, record.limits.timeoutMs);
     // Kernel-Isolation, wenn die Umgebung sie zulässt (BOB_NS_ISOLATION=auto|on).
@@ -319,7 +323,26 @@ export class LocalWorkspaceRuntime implements SandboxRuntime {
         cwd: record.workspace,
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
-        env: {PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: record.workspace, LANG: "C.UTF-8", NODE_ENV: process.env.NODE_ENV ?? "production", BOB_SANDBOX: record.sandboxId}
+        env: {
+          PATH: process.env.PATH ?? "/usr/bin:/bin",
+          HOME: record.workspace,
+          LANG: "C.UTF-8",
+          NODE_ENV: process.env.NODE_ENV ?? "production",
+          BOB_SANDBOX: record.sandboxId,
+          // ALLOWLIST-Sandboxes kennen nur einen Ausgang: den Egress-Proxy.
+          // Ohne diese Variablen wäre die Allowlist reine Behauptung — der
+          // Prozess hätte den direkten Weg. Loopback bleibt proxyfrei.
+          ...(record.network.mode === "ALLOWLIST" && egressStatus().listeningPort !== null
+            ? {
+                HTTP_PROXY: `http://127.0.0.1:${egressStatus().listeningPort}`,
+                HTTPS_PROXY: `http://127.0.0.1:${egressStatus().listeningPort}`,
+                http_proxy: `http://127.0.0.1:${egressStatus().listeningPort}`,
+                https_proxy: `http://127.0.0.1:${egressStatus().listeningPort}`,
+                NO_PROXY: "localhost,127.0.0.1",
+                BOB_EGRESS: "PROXY_ONLY"
+              }
+            : {})
+        }
       });
       let stdout = "";
       let stderr = "";
