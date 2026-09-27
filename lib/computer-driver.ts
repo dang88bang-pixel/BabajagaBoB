@@ -34,7 +34,9 @@ export async function executeComputerAction(req: ComputerExecutionRequest): Prom
   if(instance.state!=="EXECUTING") throw new Error("computer must be executing");
   if(!ALLOWED.has(req.action)) throw new Error("computer action is not allowed");
   if(!instance.capabilities.some(c=>c.kind===instance.kind && c.actions.includes(req.action as never))) throw new Error("computer capability does not permit action");
-  const timeout=Math.min(Math.max(Number(req.timeoutMs??30000),1000),120000);\n  const started=Date.now();\n  if (instance.kind === "BROWSER" && process.env.BOB_BROWSER_EXECUTABLE) {
+  const timeout=Math.min(Math.max(Number(req.timeoutMs??30000),1000),120000);
+  const started=Date.now();
+  if (instance.kind === "BROWSER" && process.env.BOB_BROWSER_EXECUTABLE) {
     const timeout=Math.min(Math.max(Number(req.timeoutMs??30000),1000),120000);
     const browserResult=await executeBrowserAction(req.action,req.input,timeout);
     const stdout=JSON.stringify(browserResult);
@@ -46,7 +48,13 @@ export async function executeComputerAction(req: ComputerExecutionRequest): Prom
     observe({type:"computer.executed",message:`Browser ${req.computerId} ${req.action} -> SUCCEEDED`,status:"COMPLETED",actor:"AG-BROWSER",agentId:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:"ALLOW",argumentsValue:{action:req.action,driver:"CDP"}});
     return out;
   }
-  const command=(process.env.BOB_COMPUTER_DRIVER ?? "").trim();\n  if (/\\s/.test(command) || command.includes(";") || command.includes("|") || command.includes("&")) throw new Error("computer driver path is invalid");\n  if(!command) {\n    recordAudit({actor:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:"DENY"},{reason:"DRIVER_NOT_CONFIGURED",action:req.action});\n    throw new Error("computer driver is not configured; execution remains fail closed");\n  }\n  const result=await new Promise<{code:number|null;stdout:string;stderr:string}>((resolve)=>{
+  const command=(process.env.BOB_COMPUTER_DRIVER ?? "").trim();
+  if (/\\s/.test(command) || command.includes(";") || command.includes("|") || command.includes("&")) throw new Error("computer driver path is invalid");
+  if(!command) {
+    recordAudit({actor:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:"DENY"},{reason:"DRIVER_NOT_CONFIGURED",action:req.action});
+    throw new Error("computer driver is not configured; execution remains fail closed");
+  }
+  const result=await new Promise<{code:number|null;stdout:string;stderr:string}>((resolve)=>{
     const safeEnv: NodeJS.ProcessEnv={NODE_ENV:process.env.NODE_ENV ?? "production",PATH:process.env.PATH,LANG:process.env.LANG,LC_ALL:process.env.LC_ALL,TZ:process.env.TZ};
     const child=spawn(command,[],{shell:false,stdio:["pipe","pipe","pipe"],env:safeEnv});
     let stdout="",stderr="",settled=false;
