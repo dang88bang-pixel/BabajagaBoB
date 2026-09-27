@@ -8,7 +8,7 @@ describe("Computer Use execution boundary",()=>{
   beforeEach(()=>{root=fs.mkdtempSync(path.join(os.tmpdir(),"bob-computer-"));process.env.BOB_STORAGE_DIR=root;vi.resetModules();});
   it("führt eine autorisierte Aktion über einen echten Child-Process-Driver aus und auditiert nur Digests",async()=>{
     const driver=path.join(root,"driver.mjs");
-    fs.writeFileSync(driver,'#!/usr/bin/env node\nprocess.stdin.on("data",b=>{const x=JSON.parse(String(b)); process.stdout.write(JSON.stringify({ok:true,action:x.action})); process.exit(0);});');
+    fs.writeFileSync(driver,'#!/usr/bin/env node\nlet data=""; process.stdin.on("data",b=>{data+=String(b);}); process.stdin.on("end",()=>{const x=JSON.parse(data); process.stdout.write(JSON.stringify({ok:true,action:x.action}));});');
     fs.chmodSync(driver,0o700);
     process.env.BOB_COMPUTER_DRIVER=driver;
     const computers=await import("../../lib/computer-use");
