@@ -132,8 +132,10 @@ export async function executeBrowserAction(action:string,input:Input,timeoutMs=3
     const parsed=new URL(url);
     if(!["localhost","127.0.0.1","[::1]"].includes(parsed.hostname)) throw new Error("external browser navigation is blocked by default-deny network policy");
   }
-  const initialUrl = action==="NAVIGATE" ? String(input.url ?? "") : "about:blank";
-  const browser=await launch(exe,timeoutMs,initialUrl);
+  // Start from a deterministic local blank page. Navigation is performed only after
+  // the DevTools session is attached, avoiding a race where the initial target
+  // navigates before Page.enable/Runtime.enable and can leave the observation empty.
+  const browser=await launch(exe,timeoutMs,"about:blank");
   let id=0;
   try{
     await command(browser.ws,++id,"Page.enable");
