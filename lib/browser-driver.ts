@@ -146,16 +146,18 @@ export async function executeBrowserAction(action:string,input:Input,timeoutMs=3
         let text="";
         let html="";
         while(Date.now()<readyDeadline){
+          const metaResult = await command(browser.ws,++id,"Runtime.evaluate",{expression:"JSON.stringify({href:location.href,readyState:document.readyState})",returnByValue:true});
           const titleResult = await command(browser.ws,++id,"Runtime.evaluate",{expression:"document.title",returnByValue:true});
           const bodyResult = await command(browser.ws,++id,"Runtime.evaluate",{expression:"document.body?.textContent ?? \"\"",returnByValue:true});
           const htmlResult = await command(browser.ws,++id,"Runtime.evaluate",{expression:"document.documentElement?.outerHTML ?? \"\"",returnByValue:true});
-          title=typeof titleResult.result?.value==="string"?titleResult.result.value:"";
+          html=typeof htmlResult.result?.value==="string"?htmlResult.result.value:"";
           text=typeof bodyResult.result?.value==="string"?bodyResult.result.value:"";
           html=typeof htmlResult.result?.value==="string"?htmlResult.result.value:"";
           if(text.trim().length>0 || html.includes("BabajagaBoB")) break;
           await new Promise(resolve => setTimeout(resolve,100));
         }
-        return {ok:text.trim().length>0 || html.includes("BabajagaBoB"),action,url,title,text,html};
+        const meta=typeof metaResult.result?.value==="string"?metaResult.result.value:"";
+        return {ok:text.trim().length>0 || html.includes("BabajagaBoB"),action,url,title,text,html,meta};
       }
       case "CLICK": {
         const selector=typeof input.selector==="string"?input.selector:"";
