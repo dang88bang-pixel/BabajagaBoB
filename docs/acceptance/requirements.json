@@ -1644,15 +1644,38 @@
       "area": "Offline Fabric",
       "phase": "P2",
       "requirement": "Arbeiten ohne Internet mit lokalem Paket-/Modell-/Wissensbestand und späterem, herkunftstreuem Abgleich.",
-      "implementation": [],
-      "tests": [],
-      "ui": [],
-      "evidence": [],
-      "docs": [
-        "docs/TODO.md"
+      "implementation": [
+        "lib/offline-fabric.ts",
+        "app/api/offline/route.ts"
       ],
-      "status": "NOT_IMPLEMENTED",
-      "note": "Es gibt keinen Offline-Paketbestand, keinen lokalen Modell-/Vektorindex und keinen Sync-/Merge-Pfad."
+      "tests": [
+        {
+          "file": "tests/integration/offline-fabric.test.ts",
+          "min": 3
+        }
+      ],
+      "ui": [],
+      "evidence": [
+        {
+          "kind": "route",
+          "method": "GET",
+          "path": "/api/offline",
+          "expect": [
+            200,
+            401,
+            428
+          ]
+        },
+        {
+          "kind": "file",
+          "path": "lib/offline-fabric.ts"
+        }
+      ],
+      "docs": [
+        "docs/OPERATIONS.md"
+      ],
+      "status": "PARTIAL",
+      "note": "Lokale Ressourcen werden persistent mit SHA-256 registriert/verifiziert; lokale Bundle-Export/Import-Pfade prüfen Manifest- und Ressourcendigest und erhalten Metadaten/Provenance. Ein vollständiger paket-/modell-/wissensspezifischer Merge in die jeweiligen Fabs bleibt offen."
     },
     {
       "id": "OPR-001",
