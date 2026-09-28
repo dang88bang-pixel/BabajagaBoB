@@ -29,7 +29,7 @@ public final class MainActivity extends Activity {
         return v;
     }
 
-    private TextView card(String title, String value, String detail) {
+    private LinearLayout card(String title, String value, String detail) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(18), dp(16), dp(18), dp(16));
