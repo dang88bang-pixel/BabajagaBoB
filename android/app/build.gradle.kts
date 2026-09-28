@@ -10,6 +10,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.3.0"
+        buildConfigField("String", "CONTROL_PLANE_URL", "\"\"")
     }
 
     buildTypes {
@@ -23,7 +24,5 @@ android {
     buildFeatures { buildConfig = true }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 
-    // The URL is intentionally configurable at build time; no control-plane
-    // credential is embedded in the APK.
-    buildConfigField("String", "CONTROL_PLANE_URL", "\"\"")
+    // The URL is intentionally configurable at build time; no control-plane credential is embedded in the APK.
 }
