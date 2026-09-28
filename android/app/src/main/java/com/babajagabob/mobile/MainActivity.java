@@ -79,7 +79,7 @@ public final class MainActivity extends Activity {
             {"Security", "Fail-closed", "Authority / Policy"}
         };
         for (String[] c : cards) {
-            TextView cv = card(c[0], c[1], c[2]);
+            LinearLayout cv = card(c[0], c[1], c[2]);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(112));
             lp.setMargins(0, 0, 0, dp(10));
             grid.addView(cv, lp);
