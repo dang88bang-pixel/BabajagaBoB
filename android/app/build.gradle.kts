@@ -2,12 +2,12 @@ plugins { id("com.android.application") }
 
 android {
     namespace = "com.babajagabob.mobile"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.babajagabob.mobile"
         minSdk = 30
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "0.3.0"
     }
@@ -25,5 +25,5 @@ android {
 
     // The URL is intentionally configurable at build time; no control-plane
     // credential is embedded in the APK.
-    buildConfigField("String", "CONTROL_PLANE_URL", """")
+    buildConfigField("String", "CONTROL_PLANE_URL", "\"\"")
 }
