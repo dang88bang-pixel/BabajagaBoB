@@ -2,12 +2,12 @@ plugins { id("com.android.application") }
 
 android {
     namespace = "com.babajagabob.mobile"
-    compileSdk = 36
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.babajagabob.mobile"
         minSdk = 30
-        targetSdk = 36
+        targetSdk = 35
         versionCode = 1
         versionName = "0.3.0"
         buildConfigField("String", "CONTROL_PLANE_URL", "\"\"")
