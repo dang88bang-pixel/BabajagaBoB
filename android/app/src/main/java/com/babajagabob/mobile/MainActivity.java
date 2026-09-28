@@ -15,7 +15,6 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.annotation.Nullable;
 import android.app.Activity;
 
 public final class MainActivity extends Activity {
@@ -45,7 +44,7 @@ public final class MainActivity extends Activity {
         return box;
     }
 
-    @Override public void onCreate(@Nullable Bundle state) {
+    @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         getWindow().setStatusBarColor(Color.rgb(11,15,20));
         getWindow().setNavigationBarColor(Color.rgb(11,15,20));
