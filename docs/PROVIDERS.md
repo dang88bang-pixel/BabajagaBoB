@@ -72,5 +72,6 @@ Es gibt keinen öffentlichen `state`- oder `heartbeat`-API-Schreibpfad. Lifecycl
   (503 ohne Zustandsänderung), kein Spoofing per öffentlichem State-/Heartbeat-
   Endpunkt, Secret-safe Auditdaten, Bindungs-/Widerrufsgrenzen und Datenrichtlinie.
   Es gibt bewusst keinen Connector-Teststub, der `CONNECTED` vortäuscht; diese
-  Tests sind dennoch kein Live-Provider-Nachweis.
+  Tests sind dennoch kein Live-Provider-Nachweis. Der Testlauf im vollständigen
+  Workflow `37054748186` (Job `110996579243`) bestand.
 - `scripts/verify-live.sh` — Provider-Status über HTTP (alle deaktiviert/unabgenommen).
