@@ -12,8 +12,9 @@
 - CI-Wrapper lokal geprüft: `node scripts/ci-vitest-diagnostics.mjs test:integration` — **24 Dateien, 139 Tests bestanden/1 OCI-Test übersprungen**; synthetischer Fehlerlauf belegte Step-Summary, Check-Run-Annotation und Exit 1.
 - Stabilitätshinweis: Ein erster Voll-Gate-Lauf nach dem PID-Fix hatte einen 30-s-Timeout in `fault-injection-processes.test.ts`; der isolierte Prozessabbruch-Test bestand danach 5/5 und der unmittelbar folgende Voll-Gate-Lauf bestand 442/442 ausführbare Tests. Im GitHub-Integrationslauf wurde dieser Test nicht als Fehler gemeldet; bei Wiederholung beobachten.
 - Abnahme-Prüfer: `node scripts/acceptance.mjs` (**15/15 statische Prüfschritte bestanden**).
-- GitHub Actions `37002968100` auf `71b67ae` scheiterte mit generischem OCI-/Integrations-Exit 1; dessen Logarchiv war wegen TLS/SSL-EOF nicht abrufbar. Diagnostiklauf `37003972400` auf `03f5ea9` zeigte: Docker lehnt `--pid private` ab. Der PID-Default-Fix wurde auf `b9b9911` umgesetzt.
-- GitHub Actions `37004817061` auf `b9b9911`: **dedizierter `Real OCI Runtime`-Job 110830491535 erfolgreich** — `docker version`, Pull von `alpine:3.20` und echter Lifecycle-Test alle erfolgreich. Der Gesamtworkflow blieb rot, weil der separate Integrationsjob den OCI-Test ohne vorab geladenes Image startete (`No such image: alpine:3.20`). Der Workflow-Opt-in `BOB_OCI_REAL_TEST=1` ist im Arbeitsstand jetzt nur am dedizierten, vorgeprüften OCI-Job gesetzt; der nächste Lauf muss die Gesamtsuite bestätigen.
+- CI-Diagnoseverlauf: `37002968100` auf `71b67ae` scheiterte mit nicht abrufbaren Logs; `37003972400` auf `03f5ea9` zeigte `--pid private` als ungültigen Docker-Modus. Der PID-Default-Fix wurde auf `b9b9911` umgesetzt.
+- Lauf `37004817061` auf `b9b9911`: dedizierter Real-OCI-Job erfolgreich, aber der Gesamtworkflow scheiterte, weil die allgemeine Integrationssuite ohne Image-Pull ebenfalls den Live-OCI-Test startete (`No such image: alpine:3.20`). Der Real-Lifecycle-Test wurde danach auf `BOB_OCI_REAL_TEST=1` im vorgeprüften dedizierten OCI-Job begrenzt.
+- Lauf `37005513983` auf `266408d`: **gesamter GitHub-Actions-Workflow erfolgreich**. Integration, OCI-Lifecycle, Security/E2E, Sabotage, Lint/Typecheck, Produktionsbuild und Verification Gate waren alle grün.
 - `OCI-001` ist anhand des echten, nicht übersprungenen Lifecycle-Jobs `PASS`. Positive und frühere negative CI-Nachweise: `docs/evidence/oci-001-ci-pass-2026-10-02.json` und `docs/evidence/oci-001-ci-failure-2026-10-02.json`.
 
 ## Aktuelle To-do-Liste (nach Phase geordnet; Status pro Fortsetzung aktualisieren)
@@ -25,7 +26,7 @@
 | 3 | P3 `UI-003` | `NOT_VERIFIED` — extern blockiert | Browser-fähigen Runner bereitstellen; Login/Kernpfade real bedienen und Screenshots/Console-Evidence archivieren. |
 | 4 | P4 `LOAD-001` | `PARTIAL` | Begrenzter 40-Run mit NAMESPACES und 5-Run-Negativkontrolle bestanden; jetzt Mehrstundendauer/Abbruchregeln festlegen und Soak-Bericht/Evidence wiederholbar in CI/Betrieb sichern. Defaults: 4 Worker, p95 ≤ 5 s, Erfolgsquote ≥ 100 %. |
 
-`OFF-001` und `OCI-001` sind mit `PASS` abgenommen (Details unten). Der CI-Isolationsfix (`BOB_OCI_REAL_TEST=1` nur im dedizierten OCI-Job) steht im Arbeitsstand; als unmittelbarer technischer Folgeschritt den Gesamtworkflow erneut ausführen und dessen Gate bestätigen. Danach die Restliste in Phasenreihenfolge fortsetzen. Diese Liste bleibt dauerhaft maßgeblich; externe Blockaden bleiben `NOT_VERIFIED` und werden nie in `PASS` umgedeutet.
+`OFF-001` und `OCI-001` sind mit `PASS` abgenommen (Details unten); der vollständige Workflow samt Verification Gate bestand in Lauf `37005513983`. Als Nächstes die verbleibenden Anforderungen in Phasenreihenfolge abarbeiten. Diese Liste bleibt dauerhaft maßgeblich; externe Blockaden bleiben `NOT_VERIFIED` und werden nie in `PASS` umgedeutet.
 
 ## In diesem Durchlauf abgenommen
 
@@ -33,7 +34,7 @@
 
 **Status: PASS (2026-10-02).** GitHub Actions `37004817061`, Commit `b9b991139ccf6d33a39b051cb3f6024fd5bd1667`, dedizierter Job `Real OCI Runtime` (`110830491535`): Docker-Daemon, Pull von `alpine:3.20` und Lifecycle-Schritt alle erfolgreich. Der Test lief real (Docker war erreichbar; in diesem Lauf war er nicht skip-fähig durch fehlenden Daemon) und durchlief Container-Create/Start/Inspect, PID-/IPC-/Netzwerkisolation, Read-only-Rootfs, /tmp-Quota, Execute, Timeout-Stop, Reset, Snapshot, Destroy und Restore. Maschinenlesbare Evidence: `docs/evidence/oci-001-ci-pass-2026-10-02.json`.
 
-**Getrennte CI-Störung:** Derselbe Gesamtworkflow scheiterte im allgemeinen Integration-Job, weil dieser den Real-OCI-Test ohne Image-Pull erneut ausführte (`No such image: alpine:3.20`). Das entwertet nicht den erfolgreichen, vorgeprüften OCI-spezifischen Job; der Integration-Test ist jetzt auf `BOB_OCI_REAL_TEST=1` begrenzt und der vollständige Workflow wird erneut geprüft.
+**Behobene CI-Störung:** Lauf `37004817061` scheiterte zusätzlich im allgemeinen Integration-Job, weil dort der Real-OCI-Test ohne Image-Pull startete (`No such image: alpine:3.20`). Der Test ist jetzt auf `BOB_OCI_REAL_TEST=1` im dedizierten, vorgeprüften Job begrenzt. Der anschließende vollständige Lauf `37005513983` einschließlich Verification Gate bestand.
 
 ### P2 — `OFF-001`: Offline-Arbeit und provenance-erhaltender Sync
 

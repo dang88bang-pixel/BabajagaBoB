@@ -4,34 +4,44 @@
   "requirementId": "OCI-001",
   "status": "PASS",
   "branch": "arena/01a0f577-babajagabob",
-  "commit": "b9b991139ccf6d33a39b051cb3f6024fd5bd1667",
+  "commit": "266408d6c827437bf4f2c6caffb8f272544c42a3",
   "run": {
-    "id": "37004817061",
-    "url": "https://github.com/dang88bang-pixel/BabajagaBoB/actions/runs/37004817061",
-    "overallConclusion": "failure",
-    "note": "The dedicated OCI job passed. The overall workflow failed only because the separate integration job also auto-ran the OCI test without first pulling alpine:3.20; its diagnostic annotation reported No such image."
+    "id": "37005513983",
+    "url": "https://github.com/dang88bang-pixel/BabajagaBoB/actions/runs/37005513983",
+    "overallConclusion": "success",
+    "conclusion": "success"
   },
   "job": {
-    "id": "110830491535",
+    "id": "110832742672",
     "name": "Real OCI Runtime",
-    "url": "https://github.com/dang88bang-pixel/BabajagaBoB/actions/runs/37004817061/job/110830491535",
+    "url": "https://github.com/dang88bang-pixel/BabajagaBoB/actions/runs/37005513983/job/110832742672",
     "conclusion": "success",
     "steps": [
-      {"name": "Docker daemon", "conclusion": "success"},
-      {"name": "Pull operator-selected OCI test image", "conclusion": "success"},
-      {"name": "OCI lifecycle against real Docker", "conclusion": "success"}
+      {
+        "name": "Docker daemon",
+        "conclusion": "success"
+      },
+      {
+        "name": "Pull operator-selected OCI test image",
+        "conclusion": "success"
+      },
+      {
+        "name": "OCI lifecycle against real Docker",
+        "conclusion": "success"
+      }
     ]
   },
   "testExecution": {
     "command": "npm run test:oci",
     "ciWrapper": "node scripts/ci-vitest-diagnostics.mjs test:oci",
+    "optIn": "BOB_OCI_REAL_TEST=1",
     "dockerAvailable": true,
     "operatorSelectedImage": "alpine:3.20",
     "lifecycleTestSkipped": false,
     "result": "success",
     "coverage": [
       "create/start and inspect container hardening",
-      "network, PID and IPC namespace settings",
+      "network, private-by-default PID and IPC namespace settings",
       "read-only root filesystem and bounded /tmp storage quota",
       "execution output and timeout-triggered stop",
       "reset, snapshot, destroy and restore",
@@ -42,7 +52,51 @@
     "jobId": "110830491526",
     "conclusion": "failure",
     "diagnostic": "OCI create failed: Error response from daemon: No such image: alpine:3.20",
-    "cause": "The general integration job detected Docker and auto-ran the live OCI test, but that job did not pull the operator-selected OCI image. The dedicated OCI job did pull the image and its lifecycle test passed.",
-    "fix": "The live test is now opt-in via BOB_OCI_REAL_TEST=1, set only by the dedicated OCI job after Docker and image preflight."
-  }
+    "cause": "The general integration job detected Docker and auto-ran the live OCI test, but did not pull the selected OCI image.",
+    "fix": "BOB_OCI_REAL_TEST=1 is set only on the dedicated OCI lifecycle step after Docker and image preflight; the subsequent full workflow run passed."
+  },
+  "workflowJobs": [
+    {
+      "id": "110832742270",
+      "name": "Unit- und Integrationstests",
+      "conclusion": "success"
+    },
+    {
+      "id": "110832742624",
+      "name": "Security- und End-to-End-Suite",
+      "conclusion": "success"
+    },
+    {
+      "id": "110832742635",
+      "name": "Sabotageproben (TEST-004)",
+      "conclusion": "success"
+    },
+    {
+      "id": "110832742672",
+      "name": "Real OCI Runtime",
+      "conclusion": "success"
+    },
+    {
+      "id": "110832742809",
+      "name": "Lint und Typecheck",
+      "conclusion": "success"
+    },
+    {
+      "id": "110832896031",
+      "name": "Produktionsbuild",
+      "conclusion": "success"
+    },
+    {
+      "id": "110833418615",
+      "name": "Verification Gate",
+      "conclusion": "success"
+    }
+  ],
+  "previousRun": {
+    "id": "37004817061",
+    "url": "https://github.com/dang88bang-pixel/BabajagaBoB/actions/runs/37004817061",
+    "overallConclusion": "failure",
+    "integrationJobIssue": "The general integration job auto-ran the OCI lifecycle test without pulling alpine:3.20. The test is now explicitly enabled only in the preflighted dedicated OCI job; the subsequent complete run 37005513983 passed."
+  },
+  "note": "This is a real Docker lifecycle pass on the latest successful full CI run. The earlier CLI PID-mode and image-preflight failures remain documented separately in docs/evidence/oci-001-ci-failure-2026-10-02.json."
 }
