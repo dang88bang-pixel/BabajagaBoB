@@ -597,7 +597,8 @@
       "implementation": [
         "lib/oci-runtime.ts",
         "lib/resource-limits.ts",
-        ".github/workflows/ci.yml"
+        ".github/workflows/ci.yml",
+        "scripts/ci-vitest-diagnostics.mjs"
       ],
       "tests": [
         {
@@ -610,14 +611,18 @@
         {
           "kind": "script",
           "script": "npm run test:oci"
+        },
+        {
+          "kind": "file",
+          "path": "docs/evidence/oci-001-ci-failure-2026-10-02.json"
         }
       ],
       "docs": [
         "docs/SANDBOX.md",
         "docs/RUNTIME.md"
       ],
-      "status": "NOT_VERIFIED",
-      "note": "Der lokale Command-Contract-Test prüft die gehärteten CLI-Flags. Am 2026-10-02 war `docker` nicht installiert (`command -v docker` ohne Treffer; `docker info` endet mit command not found). `npm run test:oci` bestand 2 Tests, übersprang aber den realen Docker-Lifecycle-Test (1 Skip: Docker-Daemon nicht verfügbar). HostConfig, read-only rootfs, /tmp-Quota, Timeout-Kill, Cleanup, Reset, Snapshot und Restore bleiben NOT_VERIFIED, bis ein echter Docker-CI-Run erfolgreich ist."
+      "status": "FAIL",
+      "note": "GitHub Actions-Lauf 37002968100 (Commit 71b67aee09f46f9541408b0bcc20027d24ac33b3): Docker-Daemonstart und Pull von alpine:3.20 waren erfolgreich, aber der echte Lifecycle-Test `npm run test:oci` endete mit Exit 1. Das ist ein fehlgeschlagener Real-OCI-Nachweis (FAIL), kein PASS und kein bloß fehlender lokaler Docker-Runner. Die verfügbaren Check-Run-Annotationen enthalten nur den generischen Exit-Code; das Actions-Logarchiv war nach Redirect zum Result-Blob-Store wegen TLS/SSL-EOF nicht abrufbar. Dokumentierter CI-Nachweis: docs/evidence/oci-001-ci-failure-2026-10-02.json. Lokal fehlt Docker; dort wird der Lifecycle-Test übersprungen und zählt nicht als OCI-Nachweis. Als Nächstes sammelt scripts/ci-vitest-diagnostics.mjs die Fehlerinformation in Step-Summary und Check-Run-Annotation. OCI-001 bleibt FAIL, bis die Ursache behoben und der echte Lifecycle-Test in CI erfolgreich wiederholt wurde."
     },
     {
       "id": "Q-001",

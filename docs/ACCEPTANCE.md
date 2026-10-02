@@ -13,9 +13,9 @@ Eingefroren: 2026-09-25. Quellen: GESAMTAUFTRAG (53 Punkte); docs/MASTER_COMPLET
 |---|---|---|
 | ✅ PASS | 80 | Implementierung + Test + Nachweis vorhanden |
 | 🟡 PARTIAL | 2 | Teilweise umgesetzt, Lücke benannt |
-| ❌ FAIL | 0 | Umgesetzt, aber Nachweis fehlgeschlagen |
+| ❌ FAIL | 1 | Umgesetzt, aber Nachweis fehlgeschlagen |
 | ⚪ NOT_IMPLEMENTED | 0 | Bewusst nicht gebaut (Begründung) |
-| 🔵 NOT_VERIFIED | 3 | Vorhanden, aber Umgebung erlaubt keinen Nachweis |
+| 🔵 NOT_VERIFIED | 2 | Vorhanden, aber Umgebung erlaubt keinen Nachweis |
 | ⛔ BLOCKED | 0 | Durch äußere Abhängigkeit blockiert |
 
 ## Zielkette
@@ -44,7 +44,7 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 | GATE-001 | Execution Gate | Kein Ausführungspfad um Gate und Broker herum — auch interne Läufe nicht. | `lib/execution-gate.ts`<br>`lib/execution-broker.ts`<br>`lib/system-execution.ts` | `tests/security/gate-bypass.test.ts` (3) | `POST /api/execution-gate` | Runs, Approvals | ✅ |
 | GATE-002 | Execution Gate | Verweigerungen erzeugen Evidenz (Denial-Artefakt) samt Audit und ohne Klartext-Argumente. | `lib/artifacts.ts`<br>`lib/execution-gate.ts` | `tests/integration/execution-evidence.test.ts` (5) | `GET /api/artifacts` | Evidence | ✅ |
 | GATE-003 | Execution Gate | Keine Shell-Strings: argv[] mit shell:false; Interpreter und Metazeichen sind verboten. | `lib/argv-policy.ts`<br>`lib/runtime-local.ts` | `tests/security/argv-policy.test.ts` (6) | `scripts/verify-live.sh` | — | ✅ |
-| OCI-001 | OCI-Härtung | OCI-Sandbox mit Härtungsflags, Snapshot/Restore und Quota-Durchsetzung.<br><small>Der lokale Command-Contract-Test prüft die gehärteten CLI-Flags. Am 2026-10-02 war `docker` nicht installiert (`command -v docker` ohne Treffer; `docker info` endet mit command not found). `npm run test:oci` bestand 2 Tests, übersprang aber den realen Docker-Lifecycle-Test (1 Skip: Docker-Daemon nicht verfügbar). HostConfig, read-only rootfs, /tmp-Quota, Timeout-Kill, Cleanup, Reset, Snapshot und Restore bleiben NOT_VERIFIED, bis ein echter Docker-CI-Run erfolgreich ist.</small> | `lib/oci-runtime.ts`<br>`lib/resource-limits.ts`<br>`.github/workflows/ci.yml` | `tests/integration/oci-runtime.test.ts` (1) | `npm run test:oci` | — | 🔵 |
+| OCI-001 | OCI-Härtung | OCI-Sandbox mit Härtungsflags, Snapshot/Restore und Quota-Durchsetzung.<br><small>GitHub Actions-Lauf 37002968100 (Commit 71b67aee09f46f9541408b0bcc20027d24ac33b3): Docker-Daemonstart und Pull von alpine:3.20 waren erfolgreich, aber der echte Lifecycle-Test `npm run test:oci` endete mit Exit 1. Das ist ein fehlgeschlagener Real-OCI-Nachweis (FAIL), kein PASS und kein bloß fehlender lokaler Docker-Runner. Die verfügbaren Check-Run-Annotationen enthalten nur den generischen Exit-Code; das Actions-Logarchiv war nach Redirect zum Result-Blob-Store wegen TLS/SSL-EOF nicht abrufbar. Dokumentierter CI-Nachweis: docs/evidence/oci-001-ci-failure-2026-10-02.json. Lokal fehlt Docker; dort wird der Lifecycle-Test übersprungen und zählt nicht als OCI-Nachweis. Als Nächstes sammelt scripts/ci-vitest-diagnostics.mjs die Fehlerinformation in Step-Summary und Check-Run-Annotation. OCI-001 bleibt FAIL, bis die Ursache behoben und der echte Lifecycle-Test in CI erfolgreich wiederholt wurde.</small> | `lib/oci-runtime.ts`<br>`lib/resource-limits.ts`<br>`.github/workflows/ci.yml`<br>`scripts/ci-vitest-diagnostics.mjs` | `tests/integration/oci-runtime.test.ts` (1) | `npm run test:oci`<br>`docs/evidence/oci-001-ci-failure-2026-10-02.json` | — | ❌ |
 
 ## P1 (20/20 PASS)
 

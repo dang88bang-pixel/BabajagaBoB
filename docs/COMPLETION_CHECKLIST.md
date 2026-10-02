@@ -6,16 +6,19 @@
 
 ## Baseline
 
-- Matrix-Snapshot: **80 PASS / 2 PARTIAL / 3 NOT_VERIFIED / 0 NOT_IMPLEMENTED**.
+- Matrix-Snapshot nach dem fehlgeschlagenen echten OCI-CI-Nachweis: **80 PASS / 2 PARTIAL / 1 FAIL / 2 NOT_VERIFIED / 0 NOT_IMPLEMENTED**.
 - P1: **20/20 PASS**.
-- Lokales Gate: `npm run verify` erfolgreich (**442 bestanden, 1 OCI-Test übersprungen; Lint 0 Fehler/11 Warnungen**).
+- Lokales Gesamt-Gate nach den Änderungen: `BOB_CI=1 BOB_SANDBOX_RUNTIME=local npm run verify` — **Lint 0 Fehler/11 bestehende Warnungen, Typecheck und Build erfolgreich, 68 Testdateien mit 442 bestanden/1 übersprungen** (OCI-Lifecycle mangels lokalem Docker).
+- CI-Wrapper lokal geprüft: `node scripts/ci-vitest-diagnostics.mjs test:integration` — **24 Dateien, 139 Tests bestanden/1 OCI-Test übersprungen**; synthetischer Fehlerlauf belegte Step-Summary, Check-Run-Annotation und Exit 1.
 - Abnahme-Prüfer: `node scripts/acceptance.mjs` (**15/15 statische Prüfschritte bestanden**).
+- GitHub Actions `37002968100` auf Commit `71b67ae`: **fehlgeschlagen**. Im OCI-Job waren Docker-Daemon und Image-Pull erfolgreich, der echte Lifecycle-Test endete mit Exit 1; auch der CI-Integrationsschritt endete mit Exit 1. Unit-Tests, Lint/Typecheck, Security/E2E, Sabotageproben und Produktionsbuild waren erfolgreich; das Verification Gate wurde übersprungen. Fehlerdetails der zwei Jobs waren wegen TLS/SSL-EOF beim Download des Actions-Logarchivs nicht abrufbar. Siehe `docs/evidence/oci-001-ci-failure-2026-10-02.json`.
+- `OCI-001` ist deshalb `FAIL` (nicht `PASS` und nicht bloß lokal `NOT_VERIFIED`); die nächste CI-Ausführung sammelt bei Testfehlern Details in Check-Run-Annotation und Step-Summary.
 
 ## Aktuelle To-do-Liste (nach Phase geordnet; Status pro Fortsetzung aktualisieren)
 
 | Reihenfolge | Requirement | Status | Nächster konkreter Schritt |
 |---:|---|---|---|
-| 1 | P0 `OCI-001` | `NOT_VERIFIED` — Docker-Lauf ausstehend | Vorhandenen `oci-runtime`-GitHub-Actions-Job auf dem aktuellen Branch ausführen lassen (Docker-Runner, `docker version`, `alpine:3.20`, `npm run test:oci` ohne Skip). Dafür sind Push/Freigabe der lokalen Änderungen auf den festen Arena-Branch oder ein bereitgestellter Docker-Runner nötig. |
+| 1 | P0 `OCI-001` | `FAIL` — echter Lifecycle-Test in GitHub Actions fehlgeschlagen (Run `37002968100`, Commit `71b67ae`); Fehlerdetail noch nicht verfügbar | Diagnostik-Wrapper `scripts/ci-vitest-diagnostics.mjs` auf den festen Arena-Branch pushen; den nächsten Real-Docker-Lauf prüfen; konkrete fehlerhafte Docker-Operation/Assertion korrigieren und den Lifecycle-Test erfolgreich wiederholen, bevor der Matrixstatus geändert wird. |
 | 2 | P2 `PROVF-002` | `NOT_VERIFIED` — extern blockiert | Provider/Endpoint auswählen, kontrollierten Egress freigeben und Credential ausschließlich per Secret Store anbinden; Live-Adapterlauf mit Telemetrie belegen. |
 | 3 | P2 `CU-001` | `PARTIAL` | Kontrollierte, isolierte Browser-/Desktop-/CLI-Treiber bereitstellen; Broker-Erfolg und Negativ-/Recovery-Pfade real testen. |
 | 4 | P3 `UI-003` | `NOT_VERIFIED` — extern blockiert | Browser-fähigen Runner bereitstellen; Login/Kernpfade real bedienen und Screenshots/Console-Evidence archivieren. |
@@ -35,14 +38,14 @@
 
 ### 1. P0 — `OCI-001`: echte Docker-Abnahme
 
-**Status: EXTERN BLOCKIERT / NOT_VERIFIED (geprüft 2026-10-02).** `npm run test:oci`: 2 Tests bestanden, 1 echter Docker-Lifecycle-Test übersprungen. `command -v docker` findet kein Docker-CLI; `docker info` endet mit `command not found`. Der lokale Command-Contract ist damit getestet, aber Docker-Inspect, Isolation, Quota, Timeout-Kill, Cleanup, Reset, Snapshot und Restore bleiben NOT_VERIFIED. `.github/workflows/ci.yml` enthält bereits den Job `oci-runtime` (`docker version`, `docker pull alpine:3.20`, `npm run test:oci`; Runtime-Create mit `--pull=never`). Für die aktuellen lokalen Änderungen liegt noch kein CI-Lauf vor; sie sind noch nicht auf den Remote-Branch übertragen. Keine lokale Installation oder Netzwerköffnung wird als Ersatznachweis behauptet.
+**Status: FAIL (geprüft 2026-10-02).** Auf Commit `71b67aee09f46f9541408b0bcc20027d24ac33b3` lief der echte GitHub-Docker-Job: `docker version` und der Pull von `alpine:3.20` waren erfolgreich, aber `npm run test:oci` endete im Schritt „OCI lifecycle against real Docker“ mit Exit 1. Damit liegt ein fehlgeschlagener Real-OCI-Nachweis vor; er wird weder als PASS noch als bloß fehlende Docker-Abhängigkeit verbucht. Die Logs liefern über die verfügbaren Check-Run-Annotationen nur „Process completed with exit code 1“; der Job-Logdownload endete nach dem Redirect zum Actions-Result-Blob-Store mit TLS/SSL-EOF. Die festgehaltenen Job-/Step-Ergebnisse und Abrufgrenze stehen in `docs/evidence/oci-001-ci-failure-2026-10-02.json`. Lokal ist kein Docker-Daemon verfügbar; dort werden die zwei Command-Contract-Tests ausgeführt, während der Lifecycle-Test übersprungen wird. Das ist kein OCI-Lifecycle-Nachweis.
 
 Abschlussfolge:
-1. `npm run test:oci` auf einem Host/CI-Runner mit erreichbarem Docker-Daemon ausführen — der Test darf nicht übersprungen werden.
-2. Bei Fehlschlag den realen Docker-Vertrag korrigieren und den Lauf wiederholen.
-3. `OCI-001` erst nach erfolgreichem Lauf auf `PASS` setzen und die konkrete CI-Ausführung als Nachweis festhalten.
+1. Den CI-Diagnostik-Wrapper `scripts/ci-vitest-diagnostics.mjs` auf den festen Arena-Branch übertragen; bei Fehlern schreibt er den Testausschnitt in Step-Summary und Check-Run-Annotation.
+2. Den nächsten Real-Docker-Lauf samt Annotation/Summary auswerten, die konkrete fehlgeschlagene Operation oder Assertion beheben und den Test wiederholen.
+3. `OCI-001` erst auf `PASS` setzen, wenn der echte Lifecycle-Test in Docker ohne Skip vollständig erfolgreich ist; Run-URL und Commit dann als positive Evidence dokumentieren.
 
-**Blocker:** In der aktuellen Arbeitsumgebung fehlt ein erreichbarer Docker-Daemon. Keine Installation oder Netzwerköffnung wird als Ersatz behauptet.
+**Blocker:** Ursache des CI-Testfehlers ist unbekannt, weil das Actions-Logarchiv in dieser Umgebung nicht abrufbar ist. Der nächste Schritt ist Diagnose und Reparatur, nicht eine externe Freigabe oder eine Statusanhebung.
 
 ### 2. P2 — `PROVF-002`: live Provider-Verbindung
 
