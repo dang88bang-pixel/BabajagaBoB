@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 
 /**
  * Kindprozess für die Nebenläufigkeitsprobe (Fehlerinjektion, Abschnitt 37/49).
@@ -19,9 +21,10 @@ import crypto from "node:crypto";
  *                       (SIGKILL mitten im Schreibvorgang).
  */
 
-const [, , storageDir, storeName, iterationsRaw, modeRaw] = process.argv;
+const [, , storageDir, storeName, iterationsRaw, modeRaw, participantsRaw] = process.argv;
 const iterations = Number(iterationsRaw ?? "50");
 const mode = modeRaw ?? "update";
+const participants = Number(participantsRaw ?? "1");
 
 if (!storageDir || !storeName) {
   console.error("storageDir und storeName sind Pflicht");
@@ -31,6 +34,18 @@ if (!storageDir || !storeName) {
 process.env.BOB_STORAGE_DIR = storageDir;
 
 const workerId = `W-${process.pid}-${crypto.randomBytes(3).toString("hex")}`;
+
+function waitForWriters(barrierName: string, iteration: number): void {
+  const barrierDir = path.join(storageDir, ".lossy-write-barrier", `${iteration}-${barrierName}`);
+  fs.mkdirSync(barrierDir, {recursive: true, mode: 0o700});
+  fs.writeFileSync(path.join(barrierDir, workerId), "ready", {flag: "wx", mode: 0o600});
+  const deadline = Date.now() + 20_000;
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  while (fs.readdirSync(barrierDir).length < participants) {
+    if (Date.now() >= deadline) throw new Error(`concurrency barrier timed out: ${iteration}-${barrierName}`);
+    Atomics.wait(pause, 0, 0, 2);
+  }
+}
 
 async function main() {
   // Absichtlich dynamisch: Der Pfad wird zur Laufzeit übergeben, damit dieser
@@ -54,10 +69,16 @@ async function main() {
 
   if (mode === "write") {
     for (let i = 0; i < iterations; i += 1) {
+      // Every writer reads the same revision before any writer overwrites it.
+      // A second barrier prevents the next round from reading until all stale
+      // writes from this round have completed. This makes lost updates
+      // deterministic rather than dependent on OS scheduling.
       const draft = counter.read();
       draft.counter += 1;
       draft.writers.push(`${workerId}#${i}`);
+      waitForWriters("ready", i);
       counter.write(draft);
+      waitForWriters("written", i);
     }
     process.stdout.write(`${workerId} write ${iterations}\n`);
     return;

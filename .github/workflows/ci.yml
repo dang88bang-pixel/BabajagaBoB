@@ -155,6 +155,8 @@ jobs:
       - run: npm ci
       - name: Docker daemon
         run: docker version
+      - name: Pull operator-selected OCI test image
+        run: docker pull alpine:3.20
       - name: OCI lifecycle against real Docker
         run: npm run test:oci
         env:

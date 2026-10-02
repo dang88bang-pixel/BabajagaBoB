@@ -99,7 +99,9 @@ if [ "$CAPDROP" = "/.bob/setpriv" ]; then
   if [ -n "${CAPLIB:-}" ]; then
     "$BB" mount --bind "$CAPLIB" "$ROOTFS/lib/x86_64-linux-gnu/libcap-ng.so.0"
   fi
-  exec "$BB" chroot "$ROOTFS" /.bob/setpriv --no-new-privs --bounding-set=-all --inh-caps=-all --ambient-caps=-all -- "$@"
+  # chroot starts in /; switch to the only writable mount before forwarding
+  # argv positionally. The shell program is constant and never contains input.
+  exec "$BB" chroot "$ROOTFS" /bin/busybox sh -c 'cd /work || exit 126; exec /.bob/setpriv --no-new-privs --bounding-set=-all --inh-caps=-all --ambient-caps=-all -- "$@"' ns-exec "$@"
 fi
 
-exec "$BB" chroot "$ROOTFS" /bin/busybox setpriv --nnp --inh-caps=-all --ambient-caps=-all -- "$@"
+exec "$BB" chroot "$ROOTFS" /bin/busybox sh -c 'cd /work || exit 126; exec /bin/busybox setpriv --nnp --inh-caps=-all --ambient-caps=-all -- "$@"' ns-exec "$@"

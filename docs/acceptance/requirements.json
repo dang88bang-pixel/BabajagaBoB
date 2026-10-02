@@ -596,6 +596,7 @@
       "requirement": "OCI-Sandbox mit Härtungsflags, Snapshot/Restore und Quota-Durchsetzung.",
       "implementation": [
         "lib/oci-runtime.ts",
+        "lib/resource-limits.ts",
         ".github/workflows/ci.yml"
       ],
       "tests": [
@@ -616,7 +617,7 @@
         "docs/RUNTIME.md"
       ],
       "status": "NOT_VERIFIED",
-      "note": "Implementierung und realer Docker-Lifecycle-Test sind vorhanden; PASS wird erst nach einem erfolgreich ausgeführten OCI-CI-Run gesetzt. Der aktuelle Connector kann den neuen Workflow-Run noch nicht beobachten."
+      "note": "Der lokale Command-Contract-Test prüft die gehärteten CLI-Flags. Am 2026-10-02 war `docker` nicht installiert (`command -v docker` ohne Treffer; `docker info` endet mit command not found). `npm run test:oci` bestand 2 Tests, übersprang aber den realen Docker-Lifecycle-Test (1 Skip: Docker-Daemon nicht verfügbar). HostConfig, read-only rootfs, /tmp-Quota, Timeout-Kill, Cleanup, Reset, Snapshot und Restore bleiben NOT_VERIFIED, bis ein echter Docker-CI-Run erfolgreich ist."
     },
     {
       "id": "Q-001",
@@ -1493,7 +1494,7 @@
         "docs/PROVIDERS.md"
       ],
       "status": "NOT_VERIFIED",
-      "note": "Netzwerk ist per Vorgabe DENY und die Umgebung erlaubt keine externen Dienstverbindungen; ein Adapterlauf ist damit nicht belegbar."
+      "note": "Am 2026-10-02 bleibt externer Egress gemäß Vorgabe DENY; es liegt weder ein Creator-freigegebener Provider/Endpoint noch eine Secret-Store-Referenz für ein Live-Credential vor. Deshalb wurde kein externer Aufruf versucht. Ein echter Adapterlauf mit Telemetrie bleibt NOT_VERIFIED, bis Provider, kontrollierte Egress-Grenze und Secret-Store-Bindung bereitgestellt sind; Secret-Werte gehören nicht in Chat oder Repository."
     },
     {
       "id": "DEV-001",
@@ -1594,7 +1595,7 @@
         "docs/COMPUTER_USE.md"
       ],
       "status": "PARTIAL",
-      "note": "Registrierung, Autorisierung und Belegungsgrenze sind umgesetzt; echte Treiber (Browser-Automation, Desktop-Eingabe, Screenshots) fehlen, deshalb kein Ausführungsnachweis."
+      "note": "Registrierung, Autorisierung und Belegungsgrenze sind umgesetzt; die Integrationstests belegen Adapter-/Gate-Verträge, aber keine echten Browser-/Desktop-Treiber. Umgebungsprüfung am 2026-10-02: keine Browser-/Desktop-Binaries auf PATH, `DISPLAY` leer und Playwright/Puppeteer nicht installiert. Ohne kontrollierten Treiber und reale Ausführung mit Audit/Evidence bleibt CU-001 PARTIAL; es wurden keine Browser-Pakete heruntergeladen."
     },
     {
       "id": "SIM-001",
@@ -1644,15 +1645,58 @@
       "area": "Offline Fabric",
       "phase": "P2",
       "requirement": "Arbeiten ohne Internet mit lokalem Paket-/Modell-/Wissensbestand und späterem, herkunftstreuem Abgleich.",
-      "implementation": [],
-      "tests": [],
-      "ui": [],
-      "evidence": [],
-      "docs": [
-        "docs/TODO.md"
+      "implementation": [
+        "lib/offline-fabric.ts",
+        "lib/offline-assets.ts",
+        "lib/offline-task-packages.ts",
+        "lib/execution-broker.ts",
+        "lib/api/api-gate.ts",
+        "middleware.ts",
+        "lib/artifacts.ts",
+        "lib/provenance.ts",
+        "lib/knowledge-vector.ts",
+        "app/api/offline/route.ts"
       ],
-      "status": "NOT_IMPLEMENTED",
-      "note": "Es gibt keinen Offline-Paketbestand, keinen lokalen Modell-/Vektorindex und keinen Sync-/Merge-Pfad."
+      "tests": [
+        {
+          "file": "tests/integration/offline-fabric.test.ts",
+          "min": 3
+        },
+        {
+          "file": "tests/integration/offline-assets.test.ts",
+          "min": 3
+        },
+        {
+          "file": "tests/integration/offline-task-packages.test.ts",
+          "min": 4
+        }
+      ],
+      "ui": [],
+      "evidence": [
+        {
+          "kind": "route",
+          "method": "GET",
+          "path": "/api/offline",
+          "expect": [
+            401,
+            428
+          ]
+        },
+        {
+          "kind": "script",
+          "script": "npm run test:offline"
+        },
+        {
+          "kind": "script",
+          "script": "npm run test:offline:isolated"
+        }
+      ],
+      "docs": [
+        "docs/OFFLINE_FABRIC.md",
+        "docs/MASTER_COMPLETION_SPEC.md"
+      ],
+      "status": "PASS",
+      "note": "Creator-geschützter Task-Paket-Import und lokale Aktivierung sind auf einem separaten Receiver-Storage-Root nachgewiesen; lokale Task-/Plan-/DENY-Sandbox-Bindungen werden geprüft und Agentenversuche abgewiesen. `npm run test:offline:isolated` (4/4) baut ein temporäres Rootfs, bestätigt NAMESPACES-Isolation und führt das Paket über den lokalen Authority/Gate/Broker-Pfad mit einem operator-gestagten, digest-gepinnten Asset aus; verifizierte Evidence wird als signiertes Bundle zurückimportiert. Der Test prüft im Ursprungsgraphen die Evidence-, Receiver-Task-, Sandbox- und Paket-IDs, zugehörige Provenance-Kanten und den erhaltenen Paket-Zeitstempel. Weitere Nachweise: `npm run test:offline` (10/10) und `npm run verify` (Lint 0 Fehler/11 bestehende Warnungen, Typecheck, Build, 68 Testdateien mit 442 bestanden und 1 übersprungen; der OCI-Test ist mangels Docker-Daemon übersprungen). Der Receiver-Test modelliert getrennte Storage-Roots im selben Prozess, keinen physischen Mehrhost-Transport. Assets werden vom Betreiber über vertrauenswürdige Offline-Medien gestagt; anwendungsseitiger Asset-Transport und OCI-Asset-Mounting sind ausdrücklich separate Scopes und keine offenen OFF-001-Abnahmekriterien."
     },
     {
       "id": "OPR-001",
@@ -1802,7 +1846,7 @@
       "evidence": [],
       "docs": [],
       "status": "NOT_VERIFIED",
-      "note": "In der Umgebung existiert kein Browser und kein Playwright-Cache; die Hosts für Browser-Downloads sind gesperrt. Ersatzweise jsdom + HTTP-Audit."
+      "note": "Umgebungsprüfung am 2026-10-02: keine Chromium/Chrome/Firefox-Binaries auf PATH, `DISPLAY` leer und Playwright/Puppeteer nicht installiert. Die vorhandenen jsdom-/HTTP-Tests sind kein Rendering-, Interaktions- oder Screenshot-Nachweis eines echten Browsers; es wurde kein Browser heruntergeladen. UI-003 bleibt NOT_VERIFIED bis ein kontrollierter Browser-Runner echte Screenshots und Interaktion protokolliert."
     },
     {
       "id": "TEST-001",
@@ -2009,13 +2053,21 @@
         {
           "kind": "script",
           "script": "scripts/soak.mjs"
+        },
+        {
+          "kind": "file",
+          "path": "docs/evidence/load-001-bounded-2026-10-02.json"
+        },
+        {
+          "kind": "file",
+          "path": "docs/evidence/load-001-negative-threshold-2026-10-02.json"
         }
       ],
       "docs": [
         "docs/OPERATIONS.md"
       ],
       "status": "PARTIAL",
-      "note": "Der begrenzte Lauf hat Schwellen und einen Negativnachweis; ein Dauerlauf über Stunden (Lastkurve, SLO-Zusage) fehlt."
+      "note": "Aktueller begrenzter positiver HTTP-Soak am 2026-10-02: 40/40 autorisierte Ausführungen, Concurrency 4, NAMESPACES, p95 503 ms gegen 5.000-ms-Budget, Erfolgsquote 1,0, Audit-Kette FULL_CHAIN und Store-Integrität 1. Die Negativkontrolle führte 5/5 erfolgreiche Ausführungen mit absichtlich unmöglichem 1-ms-p95-Budget zu `BREACHED` und Exit 1. Rohreports liegen unter `docs/evidence/`. Dies bleibt eine Momentaufnahme; mehrstündige Lastkurve und Wiederholbarkeit in CI/Betrieb fehlen, daher bleibt LOAD-001 PARTIAL."
     },
     {
       "id": "OPS-001",

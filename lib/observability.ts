@@ -51,6 +51,8 @@ const kindByPrefix = (id: string): ProvenanceNodeKind => {
     ["OBJ-", "OBJECTIVE"],
     ["CAP-", "CAPABILITY"],
     ["ART-", "ARTIFACT"],
+    ["AS-", "ASSET"],
+    ["OTP-", "OFFLINE_TASK_PACKAGE"],
     ["EVD-", "EVIDENCE"],
     ["EXP-", "EXPERIMENT"],
     ["ERR-", "INCIDENT"],

@@ -22,6 +22,7 @@ import {isolatedStorageRoot, TEST_BOOTSTRAP_SECRET} from "../helpers/runtime";
 
 const root = isolatedStorageRoot("graceful-shutdown");
 const SERVER = path.join(process.cwd(), "server.mjs");
+const hasProductionBuild = fs.existsSync(path.join(process.cwd(), ".next", "BUILD_ID"));
 
 let child: ReturnType<typeof spawn> | null = null;
 
@@ -100,7 +101,7 @@ async function startServer(): Promise<Started> {
 }
 
 describe("Graceful Shutdown des Produktionsservers", () => {
-  it("startet, antwortet und beendet sich auf SIGTERM sauber (Exit 0)", async () => {
+  it.skipIf(!hasProductionBuild)("startet, antwortet und beendet sich auf SIGTERM sauber (Exit 0)", async () => {
     const started = await startServer();
 
     // Der Dienst ist wirklich erreichbar (nicht nur „Prozess läuft").

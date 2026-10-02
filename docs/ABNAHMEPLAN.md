@@ -2,6 +2,7 @@
 
 **Status dieses Dokuments:** verbindlicher Abnahmerahmen (eingefroren am 2026-09-25).
 **Maschinenlesbare Quelle:** `docs/acceptance/requirements.json`.
+**Geordnete, operative Restliste:** `docs/COMPLETION_CHECKLIST.md` (P0 → P5; externe Blocker bleiben offen, kein stilles PASS).
 **Prüfer:** `node scripts/acceptance.mjs` (statisch, in CI) und `… --live` (gegen einen laufenden Server).
 **Generierte Übersicht:** `docs/ACCEPTANCE.md` (`node scripts/acceptance.mjs --write`).
 **Letzter Prüferlauf:** 2026-09-25 → **15 Prüfungen bestanden, 0 fehlgeschlagen**; die
@@ -61,10 +62,10 @@ zuerst, keine Funktionalität „später füllen".
 |---|---|---|---|
 | **P0** | Spezifikation einfrieren, Repository/CI, Authentifizierung/Autorisierung, Creator-Bootstrap, Event+Audit+Provenance, Execution Gate + Broker, OCI-Härtung | `SPEC-001`, `CI-001`, `AUTH-001…004`, `BOOT-001/002`, `EVT-001/002`, `AUD-001/002`, `PROV-001`, `GATE-001…003`, `OCI-001` | 16/17 PASS, OCI `NOT_VERIFIED` |
 | **P1** | Autonome Laufzeit: Queue/Worker/Run, Sandbox-Lebenszyklus, Snapshot/Restore, Fehlerintelligenz, Recovery-Verifikation, Experimente, Kausalvalidierung, Regression, Wissen, Status, Observatory, Timeline/Replay, Why, Approvals | `Q-001…003`, `SB-001…004`, `EXP-001`, `SCI-001`, `ERR-001`, `REC-001`, `REG-001`, `KNO-001`, `STA-001`, `OBS-001`, `TL-001`, `WHY-001`, `APR-001`, `INB-001`, `GOV-001` | **20/20 PASS** |
-| **P2** | Fabric: Runtime-Registry, Werkzeuge, Skills, Werkstatt, Provider, Geräte, Computer Use, Simulation, Offline, betriebliche Wiederherstellung | `RT-001`, `TOOL-001`, `SKILL-001`, `WS-001`, `PROVF-001/002`, `DEV-001/002`, `CU-001`, `SIM-001`, `OFF-001`, `OPR-001/002` | 9/13 PASS, Computer Use/Geräte `PARTIAL`, Provider live `NOT_VERIFIED`, Offline `NOT_IMPLEMENTED` |
+| **P2** | Fabric: Runtime-Registry, Werkzeuge, Skills, Werkstatt, Provider, Geräte, Computer Use, Simulation, Offline, betriebliche Wiederherstellung | `RT-001`, `TOOL-001`, `SKILL-001`, `WS-001`, `PROVF-001/002`, `DEV-001/002`, `CU-001`, `SIM-001`, `OFF-001`, `OPR-001/002` | 11/13 PASS, Computer Use `PARTIAL`, Provider live `NOT_VERIFIED` |
 | **P3** | Control Center vollständig an echte Daten, Visualisierung, Status/Progress, Observability, Approvals, Security, Integrationen | `UI-001…003` | 2/3 PASS, Browser `NOT_VERIFIED` |
-| **P4** | Verifikation: Pyramide, Regression, Fehlerinjektion, Betriebs-/Lastnachweis, die vier §49-Abnahmen | `TEST-001…004`, `LIVE-001`, `LOAD-001`, `ACC-001…004`, `CH-01…CH-18` | PASS; Fehlerinjektion und Sabotage automatisiert in CI — offen bleibt nur der Dauerlauf (`LOAD-001`) |
-| **P5** | Produktion: Metriken/Alarme/SLO, Bereitschaft, Deployment mit Rollback, Betriebshärtung | `OPS-001…004` | 3/4 PASS; Betriebshärtung `NOT_IMPLEMENTED` (Rate-Limits, Graceful Shutdown, Secret-Externalisierung) |
+| **P4** | Verifikation: Pyramide, Regression, Fehlerinjektion, Betriebs-/Lastnachweis, die vier §49-Abnahmen | `TEST-001…004`, `LIVE-001`, `LOAD-001`, `ACC-001…004`, `CH-01…CH-18` | 27/28 PASS; Fehlerinjektion und Sabotage automatisiert in CI — der Dauerlauf bleibt `PARTIAL` (`LOAD-001`) |
+| **P5** | Produktion: Metriken/Alarme/SLO, Bereitschaft, Deployment mit Rollback, Betriebshärtung | `OPS-001…004` | **4/4 PASS** |
 
 ## 3. Was „fertig" konkret bedeutet (Definition of Done)
 
@@ -82,14 +83,14 @@ Eine Anforderung ist `PASS` nur mit:
 
 Punkte 2, 6 und 9 werden **maschinell** geprüft; 1, 3–5, 7, 8 über die verlangten Verweise.
 
-## 4. Aktueller Abnahme-Zustand (2026-09-25)
+## 4. Aktueller Abnahme-Zustand (Matrix-Snapshot 2026-10-02)
 
 | Status | Anzahl | Anteil | Bedeutung im Projekt |
 |---|---|---|---|
-| ✅ PASS | 77 | 91 % | mit Implementierung, Test, Nachweis — inkl. Fehlerinjektion und Sabotage |
-| 🟡 PARTIAL | 3 | 4 % | Lücke benannt (Computer-Use-Treiber `CU-001`, Dauerlauf `LOAD-001`, Checkpointing/Planer `CH-04`) |
+| ✅ PASS | 80 | 94 % | mit Implementierung, Test und Nachweis — inkl. Fehlerinjektion, Sabotage, Betriebshärtung und Offline-Empfängerfluss |
+| 🟡 PARTIAL | 2 | 2 % | Computer-Use-Treiber (`CU-001`), Dauerlauf (`LOAD-001`) |
 | 🔵 NOT_VERIFIED | 3 | 4 % | OCI-Runtime (`OCI-001`), Provider-Live-Verbindung (`PROVF-002`), Browser-E2E (`UI-003`) |
-| ⚪ NOT_IMPLEMENTED | 2 | 2 % | Offline Fabric (`OFF-001`), Betriebshärtung (`OPS-004`) |
+| ⚪ NOT_IMPLEMENTED | 0 | 0 % | keine |
 | ❌ FAIL / ⛔ BLOCKED | 0 | — | keine |
 
 Nachtrag 2026-09-26: `TEST-003` ist zusätzlich auf **Prozessebene** belegt (echter SIGKILL mitten im
@@ -165,11 +166,18 @@ Streng in dieser Ordnung, jeweils mit Nachweis (Tests + Live-Lauf + Doku):
    `scripts/sabotage.mjs` + Katalog `docs/acceptance/sabotage-probes.json` (**25/25 erkannt**, mit
    vorgeschalteter Grundprobe über alle betroffenen Suiten), beide als Pflichtstufen in der CI;
    Oberflächensektion **Fehlerinjektion**, `TEST-003`/`TEST-004` auf `PASS`.
-4. **P2-Rest:** Computer-Use-Treiber, Geräte-Scheduling nach Ressourcen, Provider-Adapterlauf
-   (sobald ein kontrollierter Egress existiert), Offline-Paketbestand.
-5. **P5-Rest:** Rate-Limits und Graceful Shutdown. (Das Upgrade-/Rollback-Verfahren ist seit
-   Schritt 2 vorhanden.)
-6. **P0-Rest:** OCI-Runtime auf einem Host mit Daemon verifizieren.
+4. **P2-Rest:** echte Computer-Use-Treiber und Provider-Live-Lauf (erst nach kontrolliertem Egress).
+   `OFF-001` ist **PASS**: `npm run test:offline:isolated` bestand 4/4 Tests mit disposable Rootfs
+   und kernel-seitigen `NAMESPACES`; der separate Receiver-Storage-Root importiert und aktiviert das
+   Task-Paket lokal, führt es über den Broker mit einem gestagten, gepinnten Asset aus und synchronisiert
+   signierte Evidence/Provenance zurück. Der Ursprungstest prüft Receiver-Task-/Sandbox-/Evidence-IDs,
+   Provenance-Kanten und den bewahrten Paket-Zeitstempel. `npm run test:offline` bestand 10/10; das
+   vollständige `npm run verify` bestand mit 442 Tests und einem wegen fehlendem Docker-Daemon
+   übersprungenen OCI-Test. Der Receiver ist eine separate-Storage-Integration im selben Prozess,
+   kein physischer Mehrhost-Transportnachweis. Betreiber-Staging über vertrauenswürdige Offline-Medien
+   ist vorgesehen; anwendungsseitiger Asset-Transport und OCI-Asset-Mounting sind separate Scopes.
+5. **P5:** abgeschlossen laut Matrix (4/4 PASS); weitergehende Produktionsabnahme bleibt an Deployment-Umgebung gebunden.
+6. **P0-Rest:** OCI-Runtime auf einem Host mit Docker-Daemon verifizieren.
 
 ## 6. Ausnahmen und ihre Behandlung
 

@@ -74,6 +74,25 @@ describe("API-Gate (Server-Authentifizierung der Oberfläche)", () => {
     expect([400, 409, 423]).toContain(second.status);
   });
 
+  it("lässt POST /api/offline nur an die action-spezifische Agent-Prüfung mit gültigem Broker-Token durch", async () => {
+    const control = await import("../../lib/control-plane");
+    const authority = await import("../../lib/authority");
+    const mission = control.createMission({title: "Offline Gate", objective: "Broker-Grenze", createdBy: "CREATOR"});
+    const objective = control.createObjective({missionId: mission.missionId, title: "Offline Gate Objective", description: "Token gate"});
+    const task = control.createTask({missionId: mission.missionId, objectiveId: objective.objectiveId, title: "Offline Gate Task", risk: "LOW", assignedAgent: "AG-BUILD", createdBy: "CREATOR"});
+    const sandbox = control.registerSandbox({sandboxId: "SB-OFFLINE-GATE", type: "test", status: "QUEUED", lifecycle: "CREATED", network: "DENY", taskId: task.taskId, agentId: "AG-BUILD", runtimeMode: "mock"});
+    const issued = authority.issueCapabilityToken({
+      subject: "AG-BUILD", taskId: task.taskId, sandboxId: sandbox.sandboxId, environment: "test",
+      capabilities: ["task:execute", "sandbox:run"], risk: "LOW", issuedBy: "CREATOR", issuedByKind: "CREATOR",
+      expiresAt: new Date(Date.now() + 600_000).toISOString()
+    });
+    const authorization = `Bobcap ${issued.token.id}.${issued.secret}`;
+    expect(gate.apiGateDecision(new Request("http://localhost/api/offline", {method: "POST", headers: {authorization}})).allow).toBe(true);
+    const read = gate.apiGateDecision(new Request("http://localhost/api/offline", {headers: {authorization}}));
+    expect(read.allow).toBe(false);
+    if (!read.allow) expect(read.status).toBe(401);
+  });
+
   it("verweigert API-Aufrufe ohne Session (401) und erlaubt sie mit Session", () => {
     expect(gate.apiGateDecision(new Request(API_URL)).allow).toBe(false);
     const {token} = session.createSession({actorId: "CREATOR", role: "OWNER"});

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import {createStore} from "../persistence/store";
 import {activeSandboxRuntime, runtimeModeLabel} from "../runtime-factory";
 import {observe} from "../observability";
@@ -63,7 +64,7 @@ export async function createSandbox(request: SandboxRequest): Promise<Sandbox> {
   if (request.network === "ALLOWLIST" || (request.allowlist?.length ?? 0) > 0) {
     throw new Error("ALLOWLIST networking is fail-closed until a controlled egress layer exists");
   }
-  const sandboxId = request.sandboxId ?? `SB-${Date.now().toString(36).toUpperCase()}`;
+  const sandboxId = request.sandboxId ?? `SB-${crypto.randomUUID()}`;
   const limits: ResourceLimits = {...DEFAULTS, ...request.limits};
   const handle = await activeSandboxRuntime.create({
     id: sandboxId,

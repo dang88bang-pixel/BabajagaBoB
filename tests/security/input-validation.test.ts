@@ -170,6 +170,32 @@ describe("Unvollständige Nutzdaten werden abgelehnt (kein Scheinzustand)", () =
     expect(computerUse.listComputers()).toHaveLength(before);
   });
 
+  it("Computer Use: Capability-Profile sind typisiert und Lifecycle-Felder lassen sich nicht einschleusen", () => {
+    const base = {
+      name: "Browser",
+      kind: "BROWSER",
+      os: "linux",
+      arch: "x64",
+      network: "DENY",
+      capabilities: [{kind: "BROWSER", actions: ["SCREENSHOT"], environments: ["test"], network: "DENY", risk: "LOW"}]
+    };
+    expect(() => computerUse.registerComputer({...base, capabilities: [{...base.capabilities[0], actions: ["TERMINAL_EXECUTE"]}]} as never)).toThrow(/unsupported computer capability action/);
+    const registered = computerUse.registerComputer({
+      ...base,
+      authorized: true,
+      taskId: "TASK-INJECTED",
+      sandboxId: "SB-INJECTED",
+      executionLease: {id: "LEASE-INJECTED", acquiredAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString()},
+      extra: "not persisted"
+    } as never);
+    expect(registered.authorized).toBe(false);
+    expect(registered.state).toBe("AVAILABLE");
+    expect(registered.taskId).toBeUndefined();
+    expect(registered.sandboxId).toBeUndefined();
+    expect(registered.executionLease).toBeUndefined();
+    expect(registered).not.toHaveProperty("extra");
+  });
+
   it("Geräte-Discovery: ein Gerät ohne Identität wird nicht persistiert (kein Phantom)", () => {
     const before = devices.listDevices().length;
     expect(() => devices.discoverDevice(undefined as never)).toThrow(/device required/);

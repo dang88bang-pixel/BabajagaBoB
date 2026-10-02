@@ -104,6 +104,14 @@ isolationDescribe("Kernel-Isolation (NAMESPACES)", () => {
     expect(probe.procs).toBeLessThan(5);
   }, 60_000);
 
+  it("startet im Workspace `/work` nach chroot und löst relative Asset-Pfade dort auf", async () => {
+    const workspace = path.join(root, "work-cwd");
+    const result = await ns.runIsolated(["node", "-e", 'require("fs").writeFileSync("cwd-proof.txt", process.cwd());process.stdout.write(process.cwd())'], {workspace, timeoutMs: 20_000, sandboxId: "SB-NS-CWD"});
+    expect(result.accepted, result.stderr).toBe(true);
+    expect(result.stdout).toBe("/work");
+    expect(fs.readFileSync(path.join(workspace, "cwd-proof.txt"), "utf8")).toBe("/work");
+  }, 60_000);
+
   it("hat kein Netzwerk im Sandbox-Namespace (kernel-seitig, nicht per Policy)", async () => {
     const probe = [
       'const net=require("net");',

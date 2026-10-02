@@ -2,6 +2,7 @@ import {spawn} from "node:child_process";
 import crypto from "node:crypto";
 import {assertArgvPolicy} from "./argv-policy";
 import {createStore} from "./persistence/store";
+import {MAX_RESOURCE_LIMITS} from "./resource-limits";
 import type {
   ExecutionResult,
   NetworkPolicy,
@@ -17,11 +18,11 @@ import type {
  * REAL: OCI/Docker-Runtime (Abschnitt 12).
  *
  * Härtung:
- *  - kein Shell-String: ausschließlich argv[] mit `shell:false`
- *  - `--network none` (ALLOWLIST ist fail-closed, bis ein Egress-Proxy existiert)
- *  - `--read-only` Root-Dateisystem, tmpfs für /tmp ohne exec
- *  - `--cap-drop ALL`, `--security-opt no-new-privileges`
- *  - CPU-, Speicher- und PID-Limits, harte Timeouts
+ *  - kein Shell-String: ausschließlich argv[] mit `shell:false`; Images werden nicht implizit gepullt
+ *  - `--network none` und private PID-/IPC-Namespaces (ALLOWLIST bleibt fail-closed)
+ *  - `--read-only` Root-Dateisystem; /tmp als noexec/nosuid/nodev-tmpfs mit storageMb-Quota
+ *  - `--cap-drop ALL`, `--security-opt no-new-privileges`, fester Nicht-Root-User
+ *  - CPU-, RAM-, Swap-, PID- und Shared-Memory-Limits, harte Timeouts
  *  - deterministische Namen + Labels, Lifecycle-Reconciliation, Orphan-Erkennung
  *  - Logs/Artefakte werden über stdout/stderr/exitCode erfasst
  *
@@ -51,6 +52,7 @@ type Payload = {containers: Persisted[]; snapshots: PersistedSnapshot[]};
 const store = createStore<Payload>("oci-runtime", 2, () => ({containers: [], snapshots: []}));
 
 const MAX_CAPTURE = 400_000;
+const OCI_USER = "65532:65532";
 
 function assertSafeImage(image: string) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]*$/.test(image)) throw new Error("Invalid OCI image reference");
@@ -58,6 +60,70 @@ function assertSafeImage(image: string) {
 
 function assertSafeName(name: string) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(name)) throw new Error("Invalid OCI container name");
+}
+
+export function ociContainerName(sandboxId: string): string {
+  if (typeof sandboxId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(sandboxId)) {
+    throw new Error("Invalid OCI sandbox id");
+  }
+  const normalized = sandboxId.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 96);
+  const digest = crypto.createHash("sha256").update(sandboxId).digest("hex").slice(0, 16);
+  const name = `bob-${normalized}-${digest}`;
+  assertSafeName(name);
+  return name;
+}
+
+/** Pure command builder so the security contract can be tested without Docker. */
+export function buildOciCreateArgs(spec: SandboxSpec, containerName: string, image: string, command: string[]): string[] {
+  if (containerName !== ociContainerName(spec.id)) throw new Error("OCI container name is not bound to the sandbox id");
+  assertSafeName(containerName);
+  assertSafeImage(image);
+  assertArgvPolicy(command, "OCI container command");
+  if (!spec.network || spec.network.mode !== "DENY" || (spec.network.allowlist?.length ?? 0) > 0) {
+    throw new Error("OCI networking must be DENY with an empty allowlist");
+  }
+  const limits = spec.limits;
+  const limitKeys = Object.keys(MAX_RESOURCE_LIMITS) as (keyof ResourceLimits)[];
+  if (!limits || limitKeys.some(key => !Number.isSafeInteger(limits[key]) || limits[key] <= 0 || limits[key] > MAX_RESOURCE_LIMITS[key])) {
+    throw new Error("OCI resource limits are invalid or exceed the broker maximum");
+  }
+  return [
+    "create",
+    "--pull=never",
+    "--name",
+    containerName,
+    "--label",
+    "com.bob.managed=true",
+    "--label",
+    `com.bob.sandbox-id=${spec.id}`,
+    "--network",
+    "none",
+    "--pid",
+    "private",
+    "--ipc",
+    "private",
+    "--cpus",
+    String(limits.cpuMillicores / 1000),
+    "--memory",
+    `${limits.memoryMb}m`,
+    "--memory-swap",
+    `${limits.memoryMb}m`,
+    "--pids-limit",
+    String(limits.processes),
+    "--shm-size",
+    "1m",
+    "--read-only",
+    "--cap-drop",
+    "ALL",
+    "--security-opt",
+    "no-new-privileges=true",
+    "--user",
+    OCI_USER,
+    "--tmpfs",
+    `/tmp:rw,noexec,nosuid,nodev,size=${limits.storageMb}m,mode=1777`,
+    image,
+    ...command
+  ];
 }
 
 function runDocker(args: string[], timeoutMs: number): Promise<{code: number | null; stdout: string; stderr: string; timedOut: boolean}> {
@@ -110,43 +176,12 @@ export class OciContainerRuntimeAdapter implements SandboxRuntime {
   }
 
   async create(spec: SandboxSpec): Promise<RuntimeHandle> {
-    assertSafeImage(spec.image ?? process.env.BOB_OCI_IMAGE ?? "alpine:3.20");
-    if (spec.network.mode === "ALLOWLIST") throw new Error("OCI ALLOWLIST networking is fail-closed until a controlled egress proxy exists");
-    if (spec.limits.timeoutMs <= 0 || spec.limits.memoryMb <= 0 || spec.limits.cpuMillicores <= 0 || spec.limits.processes <= 0) throw new Error("Invalid sandbox resource limits");
-    const containerName = `bob-${spec.id.toLowerCase().replace(/[^a-z0-9-]/g, "-")}`;
-    assertSafeName(containerName);
+    const containerName = ociContainerName(spec.id);
     const existing = this.find(spec.id);
     if (existing) throw new Error(`OCI sandbox already exists: ${spec.id}`);
     const image = spec.image ?? process.env.BOB_OCI_IMAGE ?? "alpine:3.20";
     const command = spec.argv && spec.argv.length ? spec.argv : ["sleep", "infinity"];
-    const args = [
-      "create",
-      "--name",
-      containerName,
-      "--label",
-      "com.bob.managed=true",
-      "--label",
-      `com.bob.sandbox-id=${spec.id}`,
-      "--network",
-      "none",
-      "--cpus",
-      String(spec.limits.cpuMillicores / 1000),
-      "--memory",
-      `${spec.limits.memoryMb}m`,
-      "--pids-limit",
-      String(spec.limits.processes),
-      "--storage-opt",
-      `size=${spec.limits.storageMb}m`,
-      "--read-only",
-      "--cap-drop",
-      "ALL",
-      "--security-opt",
-      "no-new-privileges",
-      "--tmpfs",
-      "/tmp:rw,noexec,nosuid,size=64m",
-      image,
-      ...command
-    ];
+    const args = buildOciCreateArgs(spec, containerName, image, command);
     const result = await runDocker(args, Math.min(spec.limits.timeoutMs, 30_000));
     if (result.timedOut || result.code !== 0) throw new Error(`OCI create failed: ${result.stderr || result.stdout || "unknown error"}`);
     const record: Persisted = {
@@ -165,10 +200,11 @@ export class OciContainerRuntimeAdapter implements SandboxRuntime {
   }
 
   private update(sandboxId: string, state: RuntimeHandle["state"]) {
-    const payload = store.read();
-    const record = payload.containers.find(c => c.sandboxId === sandboxId);
-    if (record) record.state = state;
-    store.write(payload);
+    store.update(payload => {
+      const record = payload.containers.find(c => c.sandboxId === sandboxId);
+      if (!record) throw new Error(`OCI sandbox not found: ${sandboxId}`);
+      record.state = state;
+    });
   }
 
   async start(sandboxId: string): Promise<RuntimeHandle> {
@@ -192,8 +228,13 @@ export class OciContainerRuntimeAdapter implements SandboxRuntime {
   async reset(sandboxId: string): Promise<RuntimeHandle> {
     const record = this.find(sandboxId);
     if (!record) throw new Error("OCI sandbox not found");
-    // Reset = Neustart des Containers (deterministischer Ausgangszustand aus dem Image).
-    await runDocker(["rm", "-f", record.containerName], 30_000).catch(() => undefined);
+    // Reset = neuer Container aus dem Original-Image. Erst nach bestätigtem
+    // Docker-Remove wird der alte persistierte Handle entfernt.
+    const removed = await runDocker(["rm", "-f", record.containerName], 30_000);
+    if (removed.timedOut || removed.code !== 0) throw new Error(`OCI reset cleanup failed: ${removed.stderr || removed.stdout}`);
+    store.update(payload => {
+      payload.containers = payload.containers.filter(container => container.sandboxId !== sandboxId);
+    });
     const created = await this.create({
       id: sandboxId,
       type: "reset",
@@ -215,7 +256,7 @@ export class OciContainerRuntimeAdapter implements SandboxRuntime {
   async snapshot(sandboxId: string): Promise<RuntimeSnapshot> {
     const record = this.find(sandboxId);
     if (!record) throw new Error("OCI sandbox not found");
-    const imageTag = `bob-snapshot-${sandboxId.toLowerCase().replace(/[^a-z0-9-]/g, "-")}:${Date.now()}`;
+    const imageTag = `bob-snapshot-${ociContainerName(sandboxId).slice(4)}:${Date.now()}`;
     const commit = await runDocker(["commit", record.containerName, imageTag], 120_000);
     if (commit.timedOut || commit.code !== 0) throw new Error(`OCI snapshot failed: ${commit.stderr || commit.stdout}`);
     const inspect = await runDocker(["image", "inspect", "--format", "{{.Id}}", imageTag], 30_000);
@@ -248,9 +289,10 @@ export class OciContainerRuntimeAdapter implements SandboxRuntime {
     if (computed !== snapshot.digest) throw new Error("OCI snapshot digest mismatch (image was modified)");
     const record = this.find(sandboxId);
     if (record) {
-      await runDocker(["rm", "-f", record.containerName], 30_000).catch(() => undefined);
+      const removed = await runDocker(["rm", "-f", record.containerName], 30_000);
+      if (removed.timedOut || removed.code !== 0) throw new Error(`OCI restore cleanup failed: ${removed.stderr || removed.stdout}`);
       store.update(payload => {
-        payload.containers = payload.containers.filter(c => c.sandboxId !== sandboxId);
+        payload.containers = payload.containers.filter(container => container.sandboxId !== sandboxId);
       });
     }
     const created = await this.create({
@@ -267,10 +309,13 @@ export class OciContainerRuntimeAdapter implements SandboxRuntime {
 
   async destroy(sandboxId: string): Promise<void> {
     const record = this.find(sandboxId);
+    if (record) {
+      const removed = await runDocker(["rm", "-f", record.containerName], 30_000);
+      if (removed.timedOut || removed.code !== 0) throw new Error(`OCI destroy failed: ${removed.stderr || removed.stdout}`);
+    }
     store.update(payload => {
-      payload.containers = payload.containers.filter(c => c.sandboxId !== sandboxId);
+      payload.containers = payload.containers.filter(container => container.sandboxId !== sandboxId);
     });
-    if (record) await runDocker(["rm", "-f", record.containerName], 30_000).catch(() => undefined);
   }
 
   async execute(sandboxId: string, argv: string[], timeoutMs?: number): Promise<ExecutionResult> {
@@ -280,7 +325,20 @@ export class OciContainerRuntimeAdapter implements SandboxRuntime {
     // Dieselbe argv-Policy wie Broker und lokale Runtime: keine Shell-Strings.
     assertArgvPolicy(argv, "oci sandbox runtime");
     if (record.state !== "RUNNING") throw new Error(`OCI sandbox is not executable in state ${record.state}`);
-    const result = await runDocker(["exec", record.containerName, ...argv], Math.min(timeoutMs ?? record.limits.timeoutMs, record.limits.timeoutMs));
+    const result = await runDocker(["exec", "--user", OCI_USER, record.containerName, ...argv], Math.min(timeoutMs ?? record.limits.timeoutMs, record.limits.timeoutMs));
+    if (result.timedOut) {
+      // Killing the Docker CLI alone may leave the remote exec process alive.
+      // Fail closed by stopping the whole container, then require reset before
+      // any further action can use this sandbox.
+      const stopped = await runDocker(["kill", record.containerName], 10_000);
+      if (stopped.code !== 0 || stopped.timedOut) {
+        const running = await runDocker(["inspect", "--format", "{{.State.Running}}", record.containerName], 10_000);
+        if (running.code !== 0 || running.stdout.trim() !== "false") {
+          throw new Error(`OCI execution timed out and the container could not be stopped: ${stopped.stderr || stopped.stdout}`);
+        }
+      }
+      this.update(sandboxId, "FAILED");
+    }
     return {
       accepted: result.code === 0 && !result.timedOut,
       exitCode: result.code,
@@ -288,7 +346,7 @@ export class OciContainerRuntimeAdapter implements SandboxRuntime {
       stderr: result.stderr,
       timedOut: result.timedOut,
       durationMs: 0,
-      message: result.timedOut ? "OCI execution timed out" : result.code === 0 ? "execution completed" : `execution failed with exit code ${result.code}`
+      message: result.timedOut ? "OCI execution timed out; container stopped and requires reset" : result.code === 0 ? "execution completed" : `execution failed with exit code ${result.code}`
     };
   }
 

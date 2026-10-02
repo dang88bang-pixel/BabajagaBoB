@@ -109,7 +109,7 @@ const payloads: Record<string, unknown> = {
       lastRunAt: "2026-01-01T00:00:00.000Z"
     }
   },
-  "/api/computer-use": {computers: [{id: "CU-1", name: "Browser", kind: "BROWSER", network: "DENY", authorized: false, state: "AVAILABLE"}]},
+  "/api/computer-use": {computers: [{id: "CU-1", name: "Browser", kind: "BROWSER", network: "DENY", authorized: false, state: "AVAILABLE", capabilities: [{kind: "BROWSER", actions: ["SCREENSHOT"], environments: ["test"], network: "DENY", risk: "LOW"}]}]},
   "/api/knowledge": {nodes: [{knowledgeId: "KN-1", layer: "NEGATIVE", subject: "Never Again: ERR-1", predicate: "prevention", object: "Fehlerbedingung behandeln", state: "SUPPORTED", confidence: "EVIDENCE_BASED"}]},
   "/api/simulation": {scenarios: [{id: "SIM-1", name: "Fluss", kind: "FLOW", state: "MODELING", assumptions: ["A"], expectedStates: ["B"]}]},
   "/api/alerts": {
@@ -218,6 +218,21 @@ describe("Control Center Oberfläche", () => {
 
     // Der frühere Platzhalter darf nicht mehr auftauchen.
     expect(container.textContent).not.toContain("explicit integration boundary");
+  });
+
+  it("stellt den Computer-Use-Lifecycle mit Creator-Gate und typisierter Broker-Eingabe dar", async () => {
+    await render();
+    await click("Computer Use");
+    expect(container.textContent).toContain("Computer Use Broker");
+    expect(container.textContent).toContain("Computer autorisieren");
+    expect(container.textContent).toContain("Computer zuordnen");
+    expect(container.textContent).toContain("Broker-Ausführung");
+    expect(container.textContent).toContain("CU-1");
+    expect((container.querySelector("textarea") as HTMLTextAreaElement | null)?.value).toBe("{}");
+    const authorize = [...container.querySelectorAll("button")].find(button => button.textContent?.includes("Computer autorisieren"));
+    const execute = [...container.querySelectorAll("button")].find(button => button.textContent?.includes("Broker-Ausführung"));
+    expect(authorize?.disabled).toBe(false);
+    expect(execute?.disabled).toBe(true);
   });
 
   it("zeigt Geräte als nicht autorisiert (Discovery ≠ Autorisierung)", async () => {

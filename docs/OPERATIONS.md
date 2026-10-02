@@ -323,6 +323,16 @@ Exit 1 und `state: BREACHED` (p95 1,06 s) — die Schwelle ist wirksam, nicht de
 |---|---|---|---|---|---|---|---|
 | C (mit Schwellen) | 40 | 4 | 40 / 0 | 1,59 s | 2,22 s | 5,00 s | `MEETS_BUDGET` |
 | D (Negativnachweis) | 5 | 2 | 5 / 0 | — | 1,06 s | 0,001 s | `BREACHED`, Exit 1 |
+| E (2026-10-02, frischer Store + NAMESPACES) | 40 | 4 | 40 / 0 | 0,417 s | 0,503 s | 5,00 s | `MEETS_BUDGET` |
+| F (2026-10-02, Negativkontrolle) | 5 | 2 | 5 / 0 | 0,305 s | 0,351 s | 0,001 s | `BREACHED`, Exit 1 |
+
+Läufe E/F wurden gegen einen frischen lokalen Production-Build und temporären Storage ausgeführt;
+E nutzte ein neu gebautes Rootfs mit tatsächlich gemeldeter Kernel-Isolation `NAMESPACES`.
+E erreichte 6,28 Ausführungen/s; danach waren Audit-Kette (`FULL_CHAIN`) und Store-Integrität gültig.
+F bewies mit absichtlich unmöglichem 1-ms-p95-Budget den Exit-1-Negativpfad bei 5/5 erfolgreichen
+Ausführungen. Maschinenlesbare Reports: `docs/evidence/load-001-bounded-2026-10-02.json` und
+`docs/evidence/load-001-negative-threshold-2026-10-02.json`. Das sind weiterhin begrenzte
+Momentaufnahmen, keine mehrstündige Lastkurve; `LOAD-001` bleibt deshalb `PARTIAL`.
 
 Beobachtung (kein SLO): Mehr Nebenläufigkeit **erhöht** die Latenz und senkt den Durchsatz. Ursache
 ist die serielle Persistenz- und Mount-Arbeit je Ausführung (Datei-Store-Schreibvorgänge mit

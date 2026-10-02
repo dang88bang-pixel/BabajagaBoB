@@ -78,6 +78,43 @@ export function recordArtifact(
   return structuredClone(artifact);
 }
 
+/** Import a signed offline record without re-minting its origin ID. */
+export function importVerifiedArtifact(input: Artifact): "IMPORTED" | "DUPLICATE" {
+  const states: KnowledgeState[] = ["OBSERVED", "SUPPORTED", "ESTABLISHED", "HYPOTHESIS", "UNVERIFIED", "CONTRADICTED", "REJECTED", "UNKNOWN"];
+  if (!input || typeof input !== "object" || !/^ART-[A-Za-z0-9-]{8,128}$/.test(input.id)) throw new Error("invalid offline artifact id");
+  if (![input.name, input.kind, input.taskId, input.runId, input.sandboxId, input.agentId, input.contentType, input.producedAt, input.content].every(value => typeof value === "string")) {
+    throw new Error("offline artifact is missing required text fields");
+  }
+  if (!input.name || input.name.length > 256 || !input.kind || input.kind.length > 64 || input.contentType.length > 128) throw new Error("offline artifact metadata is outside allowed bounds");
+  if (!states.includes(input.knowledgeState) || typeof input.truncated !== "boolean" || (input.parentEventId !== undefined && typeof input.parentEventId !== "string")) throw new Error("offline artifact classification is invalid");
+  if (!Number.isSafeInteger(input.bytes) || input.bytes < 0 || Buffer.byteLength(input.content, "utf8") > MAX_CONTENT_BYTES || !/^[a-f0-9]{64}$/.test(input.digest)) {
+    throw new Error("offline artifact content metadata is invalid");
+  }
+  const storedBytes = Buffer.byteLength(input.content, "utf8");
+  if (input.bytes < storedBytes || (!input.truncated && input.bytes !== storedBytes) || (input.truncated && input.bytes <= storedBytes)) {
+    throw new Error("offline artifact byte count does not match its content");
+  }
+  if (contentDigest(input.content) !== input.digest) throw new Error("offline artifact digest mismatch");
+  if (!Number.isFinite(Date.parse(input.producedAt))) throw new Error("offline artifact timestamp is invalid");
+  const artifact = structuredClone(input);
+  const same = (a: Artifact, b: Artifact) =>
+    a.id === b.id && a.name === b.name && a.kind === b.kind && a.taskId === b.taskId && a.runId === b.runId &&
+    a.sandboxId === b.sandboxId && a.agentId === b.agentId && a.digest === b.digest && a.contentType === b.contentType &&
+    a.producedAt === b.producedAt && a.knowledgeState === b.knowledgeState && a.parentEventId === b.parentEventId &&
+    a.content === b.content && a.bytes === b.bytes && a.truncated === b.truncated;
+  const existing = store.read().artifacts.find(value => value.id === artifact.id);
+  if (existing) {
+    if (!same(existing, artifact)) throw new Error(`offline artifact id conflict: ${artifact.id}`);
+    return "DUPLICATE";
+  }
+  store.update(payload => {
+    if (payload.artifacts.some(value => value.id === artifact.id)) throw new Error(`offline artifact id conflict: ${artifact.id}`);
+    if (payload.artifacts.length >= 2000) throw new Error("artifact store is full; offline import refused to evict existing evidence");
+    payload.artifacts.unshift(artifact);
+  });
+  return "IMPORTED";
+}
+
 export function artifactSnapshot(filter: {taskId?: string; runId?: string; sandboxId?: string; kind?: string} = {}): Artifact[] {
   return store
     .read()

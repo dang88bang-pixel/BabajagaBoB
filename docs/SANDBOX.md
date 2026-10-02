@@ -34,11 +34,13 @@ Sandbox-Typen: `development`, `experiment`, `test`, `browser`, `security`,
 
 Limits werden bei der Erstellung an die Sandbox gebunden (`POST /api/sandboxes {action:"create", limits:{…}}`,
 Creator-only) und gegen dieselben Obergrenzen geprüft wie im Broker (`MAX_RESOURCE_LIMITS`); ungültige
-Werte werden mit 400 abgewiesen statt still auf Vorgaben zurückzufallen. Durchgesetzt werden sie
-kernel-seitig, soweit die Umgebung das erlaubt: CPU-Zeit (`RLIMIT_CPU`) und Dateigröße (`RLIMIT_FSIZE`)
-immer, Speicher (`memory.max`) und Prozesse (`pids.max`) über einen delegierten cgroup-v2-Unterbaum
-(`BOB_CGROUP_DIR`). Ohne Delegation meldet `GET /api/runtime` für cgroup `UNAVAILABLE` — es wird nichts
-behauptet, was nicht greift. Details und Setup: `docs/RUNTIME.md` §2b.
+Werte werden mit 400 abgewiesen statt still auf Vorgaben zurückzufallen. Bei der lokalen Runtime werden
+CPU-Zeit (`RLIMIT_CPU`) und Dateigröße (`RLIMIT_FSIZE`) immer, Speicher (`memory.max`) und Prozesse
+(`pids.max`) über einen delegierten cgroup-v2-Unterbaum (`BOB_CGROUP_DIR`) kernel-seitig durchgesetzt.
+In OCI begrenzen Docker CPU, RAM, Swap, PID-Zahl und `/dev/shm` (1 MiB). Das Root-Dateisystem ist
+read-only; der Arbeitsbereich `/tmp` wird als `tmpfs size=storageMb` begrenzt und zusätzlich mit
+`noexec,nosuid,nodev` eingehängt. OCI-Images werden nicht implizit aus dem Netz geladen (`--pull=never`). Ohne passende Runtime-Unterstützung wird die Sandbox-Erstellung verweigert;
+es wird nicht auf unlimitierte Schreibbarkeit zurückgefallen. Details und Setup: `docs/RUNTIME.md` §2b.
 
 ## 3. Snapshot und Restore (echt, nicht simuliert)
 
@@ -56,7 +58,7 @@ behauptet, was nicht greift. Details und Setup: `docs/RUNTIME.md` §2b.
 | Modus | Datei | Klassifikation |
 |---|---|---|
 | `local` | `lib/runtime-local.ts`, `lib/ns-isolation.ts` | **REAL_LOCAL**: eigener Prozess je Ausführung, `spawn(..., {shell:false})`, Timeout → `SIGKILL` der Prozessgruppe, reduzierte Umgebung, Ausgabe erfasst. Isolationsstufe `NAMESPACES` (Kernel-Namespaces + Rootfs read-only), sobald ein Rootfs vorhanden ist; sonst `FILESYSTEM_ONLY`. Kein OCI-Image, kein `runc`; Ressourcenlimits kernel-seitig: `RLIMIT_CPU`/`RLIMIT_FSIZE` immer, Speicher/Prozesse über einen delegierten cgroup-Unterbaum (`BOB_CGROUP_DIR`, sonst als `UNAVAILABLE` ausgewiesen). |
-| `oci` | `lib/oci-runtime.ts` | **REAL_OCI**: Docker-Adapter mit gehärteten Flags (u. a. `--network none`, `--read-only`, `--cap-drop ALL`, `--security-opt no-new-privileges`, `--pids-limit`, Speicher-/CPU-Limits, `--user`). Benötigt eine vorhandene Docker-Umgebung; sonst fail closed (`UNVERIFIED` in dieser Umgebung). |
+| `oci` | `lib/oci-runtime.ts` | **REAL_OCI**: Docker-Adapter (vorausgewähltes, lokal vorhandenes Image; kein impliziter Pull) mit gehärteten Flags (`--pull=never`, `--network none`, private PID-/IPC-Namespaces, `--read-only`, `--cap-drop ALL`, `--security-opt no-new-privileges=true`, `--user 65532:65532`, PID-/CPU-/RAM-/Swap-Limits). Das Root-Dateisystem ist read-only; `/tmp` ist ein `noexec,nosuid,nodev`-tmpfs mit `size=storageMb`, `/dev/shm` wird separat auf 1 MiB begrenzt. Ein Exec-Timeout stoppt den gesamten Container und verlangt Reset; Cleanup wird erst nach bestätigtem Docker-Ergebnis persistiert. Benötigt eine vorhandene Docker-Umgebung; sonst fail closed (`UNVERIFIED` in dieser Umgebung). |
 | `mock` | `MockSandboxRuntime` | **MOCK**: nur für Entwicklung/Tests. Nie Produktionslaufzeit. Wird im Status als `mock` ausgewiesen. |
 
 Der aktive Modus kommt aus `BOB_SANDBOX_RUNTIME` (`lib/runtime-factory.ts`) und wird

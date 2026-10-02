@@ -143,8 +143,8 @@
       "title": "Token-Validierung im Broker abgeschaltet (Angriffskette §49)",
       "guard": "Der Broker führt nur mit einem gültigen, gedeckten Capability-Token aus; fehlende Fähigkeit oder abgelaufenes Token werden verweigert.",
       "file": "lib/execution-broker.ts",
-      "find": "  if (!validation.valid) deny(request, \"TOKEN_VALIDATION\", validation.reason);",
-      "replace": "  if (false) deny(request, \"TOKEN_VALIDATION\", validation.reason);",
+      "find": "  if (!validation.valid) deny(request, \"TOKEN_VALIDATION\", validation.reason, action);",
+      "replace": "  if (false) deny(request, \"TOKEN_VALIDATION\", validation.reason, action);",
       "tests": [
         "tests/security/broker-scope.test.ts",
         "tests/e2e/creator-flow.test.ts",

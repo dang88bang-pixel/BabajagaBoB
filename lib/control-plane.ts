@@ -40,7 +40,7 @@ const seed = (): ControlState => {
       ["AG-RESEARCH", "Research", "Research", "RESEARCH", ["web:research", "knowledge:write", "source:read"], "MODERATE"],
       ["AG-SCIENTIST", "Scientist", "Science", "SCIENTIST", ["experiment:run", "sandbox:run", "task:execute", "evidence:write"], "HIGH"],
       ["AG-QA", "QA", "Verification", "QA", ["test:run", "task:execute", "artifact:read", "regression:write"], "MODERATE"],
-      ["AG-BROWSER", "Browser", "Computer Use", "BROWSER", ["computer:use", "sandbox:run", "screenshot:write"], "MODERATE"],
+      ["AG-BROWSER", "Browser", "Computer Use", "BROWSER", ["task:execute", "computer:use", "sandbox:run", "screenshot:write"], "MODERATE"],
       ["AG-GUARD", "Guardian", "Security", "GUARDIAN", ["policy:read", "audit:read", "approval:request", "kill-switch:read"], "HIGH"],
       ["AG-OPS", "Operator", "Operations", "OPERATOR", ["deployment:execute", "sandbox:run", "runtime:read"], "HIGH"],
       ["AG-RECOVERY", "Recovery", "Reliability", "RECOVERY", ["recovery:execute", "sandbox:snapshot", "regression:run", "task:execute"], "HIGH"],
@@ -247,7 +247,13 @@ function eventView(): Event[] {
 
 function nextId(kind: keyof ControlState["counters"], prefix: string, pad = 3): string {
   state.counters[kind] = (state.counters[kind] ?? 0) + 1;
-  return `${prefix}-${String(state.counters[kind]).padStart(pad, "0")}`;
+  const suffix = String(state.counters[kind]).padStart(pad, "0");
+  // Task identifiers are exchanged in provenance bundles between offline
+  // nodes. When a stable node identity is configured, namespace newly-created
+  // task IDs so independent control planes cannot silently reuse TASK-004.
+  const nodeId = process.env.BOB_OFFLINE_NODE_ID;
+  if (kind === "task" && nodeId && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(nodeId)) return `${prefix}-${nodeId}-${suffix}`;
+  return `${prefix}-${suffix}`;
 }
 
 /* ------------------------------------------------------------------ Agents */

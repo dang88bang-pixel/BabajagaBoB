@@ -49,7 +49,7 @@ function writerEnv(storeRoot: string) {
 /** Startet n gleichzeitige Writer-Prozesse und wartet auf alle. */
 function spawnWriters(storeRoot: string, count: number, iterations: number, mode: "update" | "write") {
   const children = Array.from({length: count}, () =>
-    spawn(process.execPath, ["--experimental-strip-types", STORE_HELPER, storeRoot, "fault-counter", String(iterations), mode], {
+    spawn(process.execPath, ["--experimental-strip-types", STORE_HELPER, storeRoot, "fault-counter", String(iterations), mode, String(count)], {
       env: writerEnv(storeRoot),
       stdio: ["ignore", "pipe", "pipe"]
     })
@@ -104,11 +104,23 @@ describe("Fehlerinjektion: Prozessabbruch", () => {
       stdio: ["ignore", "ignore", "ignore"]
     });
 
+    // Listener vor dem Warten anbringen: Unter Last kann der Prozess zwischen
+    // kill() und Listener-Registrierung bereits beendet sein, was sonst den Test
+    // bis zum globalen Timeout hängen lässt.
+    const exited = new Promise<number | null>((resolve, reject) => {
+      const finish = (code: number | null, signal: NodeJS.Signals | null) => resolve(signal === "SIGKILL" ? 137 : code);
+      if (child.exitCode !== null || child.signalCode !== null) finish(child.exitCode, child.signalCode);
+      else {
+        child.once("error", reject);
+        child.once("exit", finish);
+      }
+    });
+
     // Warten, bis der Prozess wirklich schreibt, dann hart abbrechen (SIGKILL:
     // kein Aufräumpfad, kein `finally`, keine Chance zu flushen).
     await new Promise(resolve => setTimeout(resolve, 800));
-    child.kill("SIGKILL");
-    const exit = await new Promise<number | null>(resolve => child.on("exit", (code, signal) => resolve(signal === "SIGKILL" ? 137 : code)));
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    const exit = await exited;
     expect([137, null]).toContain(exit);
 
     // Der Datensatz ist danach vollständig lesbar: Der Envelope passt zu seinem
@@ -157,7 +169,10 @@ describe("Fehlerinjektion: konkurrierende Schreibvorgänge", () => {
     const codes = await spawnWriters(lossyRoot, 4, perWriter, "write");
     expect(codes).toEqual([0, 0, 0, 0]);
     const result = readCounter(lossyRoot);
-    expect(result.payload.writers.length).toBeLessThan(4 * perWriter);
+    // Four stale snapshots overwrite each other once per round: exactly one
+    // contribution survives each of the 60 synchronized rounds.
+    expect(result.payload.writers).toHaveLength(perWriter);
+    expect(result.payload.counter).toBe(perWriter);
   });
 });
 

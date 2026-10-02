@@ -680,6 +680,13 @@ export default function ControlCenter() {
   const [renderKind, setRenderKind] = useState("ARCHITECTURE");
   const [renderBusy, setRenderBusy] = useState(false);
   const [render, setRender] = useState<{artifactId: string; digest: string; kind: string; scenarioId: string; bytes: number; nodes: number; truncated: boolean} | null>(null);
+  const [computerSelection, setComputerSelection] = useState("");
+  const [computerTaskSelection, setComputerTaskSelection] = useState("");
+  const [computerSandboxSelection, setComputerSandboxSelection] = useState("");
+  const [computerActionSelection, setComputerActionSelection] = useState("SCREENSHOT");
+  const [computerInputText, setComputerInputText] = useState("{}");
+  const [computerBusy, setComputerBusy] = useState(false);
+  const [computerResult, setComputerResult] = useState<Row | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [auth, setAuth] = useState<{authenticated: boolean; requiresBootstrap: boolean; revoked: boolean; loginAvailable?: boolean; locked?: boolean; secondFactor?: string} | null>(null);
@@ -843,6 +850,42 @@ export default function ControlCenter() {
       return {ok: response.ok, status: response.status, json};
     } catch (cause) {
       return {ok: false, status: 0, json: {message: cause instanceof Error ? cause.message : "Aktion fehlgeschlagen"}};
+    }
+  };
+
+  const computerRequest = async (body: Record<string, unknown>) => {
+    if (computerBusy) return;
+    setComputerBusy(true);
+    setComputerResult(null);
+    try {
+      const response = await postResult("/api/computer-use", body);
+      const payload = response.json ?? {};
+      if (!response.ok) {
+        setNotice(`Computer-Aktion abgelehnt (HTTP ${response.status}): ${String(payload.message ?? payload.error ?? "Verweigert")}`);
+      } else {
+        const computer = payload.computer && typeof payload.computer === "object" ? payload.computer as Row : null;
+        setComputerResult({
+          httpStatus: response.status,
+          accepted: payload.accepted,
+          status: payload.status,
+          computerId: payload.computerId ?? computer?.id,
+          state: computer?.state,
+          authorized: computer?.authorized,
+          taskId: computer?.taskId,
+          sandboxId: computer?.sandboxId,
+          action: payload.computerAction,
+          message: payload.message,
+          durationMs: payload.durationMs,
+          outputDigest: payload.outputDigest,
+          evidence: payload.evidence
+        });
+        setNotice(payload.accepted === false || payload.status === "FAILED"
+          ? `Computer-Ausführung fehlgeschlagen (HTTP ${response.status}).`
+          : `Computer-Aktion abgeschlossen (HTTP ${response.status}).`);
+      }
+      await load();
+    } finally {
+      setComputerBusy(false);
     }
   };
 
@@ -1133,6 +1176,118 @@ export default function ControlCenter() {
           </div>
         )}
       </section>
+    );
+  };
+
+  const computerUsePanel = () => {
+    const state = rowsFor("ComputerUse");
+    const computers = state.rows ?? [];
+    const computerId = computerSelection || String(computers[0]?.id ?? "");
+    const computer = computers.find(entry => String(entry.id ?? "") === computerId);
+    const tasks = (snapshot?.tasks ?? []).filter(task => Boolean(task.assignedAgent));
+    const taskId = computerTaskSelection || String(computer?.taskId ?? tasks[0]?.taskId ?? "");
+    const task = tasks.find(entry => entry.taskId === taskId);
+    const sandboxes = (snapshot?.sandboxes ?? []).filter(entry =>
+      entry.taskId === taskId && entry.network === "DENY" && (!task?.assignedAgent || entry.agentId === task.assignedAgent)
+    );
+    const boundSandboxId = typeof computer?.sandboxId === "string" ? computer.sandboxId : "";
+    const sandboxId = computerSandboxSelection || (sandboxes.some(entry => entry.sandboxId === boundSandboxId) ? boundSandboxId : String(sandboxes[0]?.sandboxId ?? ""));
+    const profiles = Array.isArray(computer?.capabilities) ? computer.capabilities as Row[] : [];
+    const profile = profiles.find(entry => entry.kind === computer?.kind);
+    const allowedActions = Array.isArray(profile?.actions)
+      ? (profile.actions as unknown[]).filter((action): action is string => typeof action === "string" && action !== "TERMINAL_EXECUTE")
+      : [];
+    const stateName = String(computer?.state ?? "");
+    const canChooseBinding = !computer || stateName === "AVAILABLE" || stateName === "RELEASED";
+    const authorized = computer?.authorized === true;
+    const canOperate = Boolean(auth?.authenticated && !auth.revoked && !locked && !computerBusy && computer);
+    const canExecute = canOperate && authorized && Boolean(computer?.taskId && computer?.sandboxId) && allowedActions.includes(computerActionSelection);
+
+    const runComputerAction = () => {
+      let computerInput: unknown;
+      try {
+        computerInput = JSON.parse(computerInputText);
+      } catch {
+        setNotice("Computer-Eingabe muss gültiges JSON sein.");
+        return;
+      }
+      if (!computerInput || typeof computerInput !== "object" || Array.isArray(computerInput)) {
+        setNotice("Computer-Eingabe muss ein JSON-Objekt sein.");
+        return;
+      }
+      void computerRequest({action: "execute", computerId, computerAction: computerActionSelection, computerInput: computerInput as Record<string, unknown>});
+    };
+
+    return (
+      <>
+        {genericTable("ComputerUse")}
+        <section className="panel sectionPanel">
+          <small>FABRIC / COMPUTER USE</small>
+          <h2>Computer Use Broker</h2>
+          <p>
+            Creator-Freigabe und Task-/Sandbox-Zuordnung sind getrennte Schritte. Ausführung läuft nur über den Broker mit einmaliger
+            Capability, Approval-/Kill-Switch-Prüfung und digest-basierter Evidenz. Der Browser zeigt keine Token-Geheimnisse.
+          </p>
+          <div className="headerActions">
+            <label>
+              Computer
+              <select value={computerId} onChange={event => {setComputerSelection(event.target.value); setComputerTaskSelection(""); setComputerSandboxSelection("");}}>
+                {computers.length === 0 && <option value="">kein Computer registriert</option>}
+                {computers.map(entry => <option key={String(entry.id)} value={String(entry.id)}>{String(entry.id)} · {String(entry.name ?? entry.kind ?? "")}</option>)}
+              </select>
+            </label>
+            <label>
+              Task
+              <select value={taskId} onChange={event => {setComputerTaskSelection(event.target.value); setComputerSandboxSelection("");}} disabled={tasks.length === 0 || !canChooseBinding}>
+                {tasks.length === 0 && <option value="">kein zugewiesener Task</option>}
+                {tasks.map(entry => <option key={entry.taskId} value={entry.taskId}>{entry.taskId} · {entry.title}</option>)}
+              </select>
+            </label>
+            <label>
+              Sandbox (DENY)
+              <select value={sandboxId} onChange={event => setComputerSandboxSelection(event.target.value)} disabled={sandboxes.length === 0 || !canChooseBinding}>
+                {sandboxes.length === 0 && <option value="">keine passende Sandbox</option>}
+                {sandboxes.map(entry => <option key={entry.sandboxId} value={entry.sandboxId}>{entry.sandboxId} · {entry.type}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="headerActions">
+            <button disabled={!canOperate || authorized} onClick={() => void computerRequest({action: "authorize", id: computerId, authorized: true})}>
+              Computer autorisieren
+            </button>
+            <button disabled={!canOperate || !authorized || !taskId || !sandboxId || (stateName !== "AVAILABLE" && stateName !== "RELEASED")} onClick={() => void computerRequest({action: "allocate", id: computerId, taskId, sandboxId})}>
+              Computer zuordnen
+            </button>
+            <button disabled={!canOperate || stateName !== "ALLOCATED"} onClick={() => void computerRequest({action: "start", id: computerId})}>
+              Computer starten
+            </button>
+            <button disabled={!canOperate || stateName === "AVAILABLE" || stateName === "RELEASED"} onClick={() => void computerRequest({action: "release", id: computerId})}>
+              Zuordnung lösen
+            </button>
+          </div>
+          <div className="headerActions">
+            <label>
+              Broker-Aktion
+              <select value={computerActionSelection} onChange={event => setComputerActionSelection(event.target.value)} disabled={allowedActions.length === 0}>
+                {allowedActions.map(action => <option key={action} value={action}>{action}</option>)}
+                {allowedActions.length === 0 && <option value="">keine freigegebene Aktion</option>}
+              </select>
+            </label>
+            <label>
+              Eingabe (JSON-Objekt)
+              <textarea value={computerInputText} onChange={event => setComputerInputText(event.target.value)} rows={3} maxLength={16_000} spellCheck={false} />
+            </label>
+            <button disabled={!canExecute || (stateName !== "ALLOCATED" && stateName !== "EXECUTING")} onClick={runComputerAction}>
+              Broker-Ausführung
+            </button>
+          </div>
+          {locked && <p className="privacy">Kill-Switch aktiv — Computer-Aktionen bleiben gesperrt.</p>}
+          {!computer && <p className="emptyNote">{emptyText(state)}</p>}
+          {computer && <p className="privacy">{computerId} · {authorized ? "Creator-freigegeben" : "nicht autorisiert"} · {stateName} · Netzwerk {String(computer.network ?? "UNBEKANNT")}</p>}
+          <p className="privacy">Computer-Eingaben werden an den konfigurierten Adapter übergeben. Audit und Evidenz enthalten Digests, nicht den Rohinhalt.</p>
+          {computerResult && <pre className="metricsText">{JSON.stringify(computerResult, null, 2)}</pre>}
+        </section>
+      </>
     );
   };
 
@@ -2079,6 +2234,8 @@ export default function ControlCenter() {
         </>
       );
     }
+
+    if (section === "ComputerUse") return computerUsePanel();
 
     const source = SOURCES[section];
     if (!source) {

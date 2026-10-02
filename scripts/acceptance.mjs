@@ -68,7 +68,10 @@ const step = title => console.log(`\n\u001b[1m${title}\u001b[0m`);
 function countTests(file) {
   if (!existsSync(file)) return -1;
   const text = readFileSync(file, "utf8");
-  return (text.match(/^\s*(it|test)\(/gm) ?? []).length;
+  // Include conditionally skipped Vitest tests (`it.skipIf(...)(...)`): they
+  // still exist as executable evidence and are skipped only when prerequisites
+  // (such as a local Docker daemon or production build) are unavailable.
+  return (text.match(/^\s*(?:it|test)(?:\.skipIf\([^)]*\))?\(/gm) ?? []).length;
 }
 
 /** Navigationseinträge der Oberfläche: `{id: "X", label: "Y"`. */
@@ -89,6 +92,7 @@ function routeFile(path) {
 /* --------------------------------------------------------------- Prüfungen */
 
 const matrix = JSON.parse(readFileSync(MATRIX, "utf8"));
+const packageManifest = existsSync("package.json") ? JSON.parse(readFileSync("package.json", "utf8")) : {scripts: {}};
 const requirements = matrix.requirements ?? [];
 const chain = matrix.chain ?? [];
 const requiredDocs = matrix.requiredDocs ?? [];
@@ -181,8 +185,13 @@ step("2. Nachweisregel (kein DONE ohne Nachweis)");
   else bad("Jeder Routen-Nachweis zeigt auf eine existierende Route", brokenRoutes.join(", "));
 
   const scriptEvidence = requirements.flatMap(entry => (entry.evidence ?? []).filter(item => item.kind === "script").map(item => item.script));
-  const missingScripts = [...new Set(scriptEvidence)].filter(script => !existsSync(script) && script !== "scripts/acceptance.mjs");
-  if (missingScripts.length === 0) ok("Jeder Skript-Nachweis existiert", `${new Set(scriptEvidence).size} Skripte`);
+  const scriptExists = script => {
+    const npmRun = /^npm run ([A-Za-z0-9:_-]+)(?:\s|$)/.exec(script);
+    if (npmRun) return Object.hasOwn(packageManifest.scripts ?? {}, npmRun[1]);
+    return existsSync(script);
+  };
+  const missingScripts = [...new Set(scriptEvidence)].filter(script => !scriptExists(script));
+  if (missingScripts.length === 0) ok("Jeder Skript-Nachweis existiert", `${new Set(scriptEvidence).size} Skripte/Kommandos`);
   else bad("Jeder Skript-Nachweis existiert", missingScripts.join(", "));
 
   // Datei-Nachweise (z. B. CI-Workflow, Testdatei als Beleg) müssen existieren.

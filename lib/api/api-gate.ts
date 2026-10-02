@@ -15,13 +15,15 @@ export type ApiGateDecision = {allow: true} | {allow: false; status: number; cod
 export const API_GATE_ACTION = "control-plane:access";
 export const AUTH_PATH = "/api/auth";
 export const AGENT_EXECUTION_PATH = "/api/runtime";
+/** POST reaches the offline Creator/Agent action router; that route limits Agents to package.execute. */
+export const OFFLINE_EXECUTION_PATH = "/api/offline";
 
 export function isAuthPath(pathname: string): boolean {
   return pathname === AUTH_PATH || pathname.startsWith(`${AUTH_PATH}/`);
 }
 
 export function isAgentExecutionPath(method: string, pathname: string): boolean {
-  return method.toUpperCase() === "POST" && pathname === AGENT_EXECUTION_PATH;
+  return method.toUpperCase() === "POST" && (pathname === AGENT_EXECUTION_PATH || pathname === OFFLINE_EXECUTION_PATH);
 }
 
 function cookieValue(request: Request, name: string): string | undefined {
@@ -46,13 +48,14 @@ function rateDecision(request: Request): ApiGateDecision {
 }
 
 function agentExecutionDecision(request: Request): ApiGateDecision {
+  const pathname = (() => { try { return new URL(request.url).pathname; } catch { return AGENT_EXECUTION_PATH; } })();
   const sessionToken = cookieValue(request, SESSION_COOKIE);
   const session = sessionToken ? resolveSession(sessionToken) : null;
   if (session) return {allow: true};
 
   const capability = parseCapabilityHeader(request.headers.get("authorization"));
   if (!capability) {
-    recordAudit({actor: "ANONYMOUS", action: API_GATE_ACTION, decision: "DENY"}, {code: "NO_CREDENTIALS", path: AGENT_EXECUTION_PATH});
+    recordAudit({actor: "ANONYMOUS", action: API_GATE_ACTION, decision: "DENY"}, {code: "NO_CREDENTIALS", path: pathname});
     return deny(401, "SESSION_REQUIRED", "a browser session or a capability token is required");
   }
   if (!verifyCapabilitySecret(capability.tokenId, capability.secret)) {

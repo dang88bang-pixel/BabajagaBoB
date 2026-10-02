@@ -1,0 +1,39 @@
+{
+  "startedAt": "2026-10-02T07:15:49.896Z",
+  "finishedAt": "2026-10-02T07:15:57.459Z",
+  "base": "http://127.0.0.1:3000",
+  "count": 40,
+  "concurrency": 4,
+  "succeeded": 40,
+  "failed": 0,
+  "failures": [],
+  "latencyMs": {
+    "min": 242,
+    "p50": 417,
+    "p95": 503,
+    "p99": 605,
+    "max": 605
+  },
+  "issueLatencyMs": {
+    "p50": 193
+  },
+  "throughputPerSecond": 6.28,
+  "wallMs": 6367,
+  "slo": {
+    "p95BudgetMs": 5000,
+    "p95Ms": 503,
+    "p95Ok": true,
+    "minSuccessRatio": 1,
+    "successRatio": 1,
+    "successOk": true,
+    "state": "MEETS_BUDGET"
+  },
+  "afterwards": {
+    "auditChainValid": true,
+    "auditRetention": "FULL_CHAIN",
+    "isolation": "NAMESPACES",
+    "storeIntegrityOk": "1",
+    "auditChainMetric": "1"
+  },
+  "note": "Momentaufnahme eines begrenzten Laufs in dieser Umgebung, keine SLO-Zusage und keine Lastkurve."
+}

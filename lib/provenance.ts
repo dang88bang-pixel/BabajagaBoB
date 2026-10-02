@@ -37,6 +37,8 @@ export type ProvenanceNodeKind =
   | "SANDBOX"
   | "CAPABILITY"
   | "ARTIFACT"
+  | "ASSET"
+  | "OFFLINE_TASK_PACKAGE"
   | "EVIDENCE"
   | "EXPERIMENT"
   | "INCIDENT"
@@ -90,6 +92,29 @@ export function addProvenanceNode(node: Omit<ProvenanceNode, "createdAt">): Prov
   }).nodes.find(n => n.id === node.id) as ProvenanceNode;
 }
 
+/** Merge an authenticated offline node while preserving its original timestamp. */
+export function mergeProvenanceNode(node: ProvenanceNode): "IMPORTED" | "DUPLICATE" {
+  const kinds: ProvenanceNodeKind[] = ["EVENT", "TASK", "RUN", "JOB", "SANDBOX", "CAPABILITY", "ARTIFACT", "ASSET", "OFFLINE_TASK_PACKAGE", "EVIDENCE", "EXPERIMENT", "INCIDENT", "RECOVERY", "REGRESSION", "KNOWLEDGE", "DEVICE", "PROVIDER", "AGENT", "WORKSHOP_ITEM", "DEPLOYMENT", "MISSION", "OBJECTIVE"];
+  if (!node || typeof node !== "object" || !kinds.includes(node.kind) || typeof node.label !== "string" || node.label.length > 512 || !Number.isFinite(Date.parse(node.createdAt))) {
+    throw new ProvenanceError("offline provenance node is invalid");
+  }
+  assertRealIdentifier(node.id);
+  let outcome: "IMPORTED" | "DUPLICATE" = "IMPORTED";
+  store.update(payload => {
+    const existing = payload.nodes.find(value => value.id === node.id);
+    if (existing) {
+      if (existing.kind !== node.kind || existing.label !== node.label || existing.runId !== node.runId || existing.createdAt !== node.createdAt) {
+        throw new ProvenanceError(`offline provenance node conflict: ${node.id}`);
+      }
+      outcome = "DUPLICATE";
+      return;
+    }
+    payload.nodes.push(structuredClone(node));
+    if (payload.nodes.length > 5000) throw new ProvenanceError("provenance node limit reached during offline sync");
+  });
+  return outcome;
+}
+
 export function addProvenanceEdge(edge: Omit<ProvenanceEdge, "id" | "createdAt">): ProvenanceEdge {
   if (!provenanceRelations.includes(edge.relation)) throw new ProvenanceError(`unsupported provenance relation ${edge.relation}`);
   if (edge.from === edge.to) throw new ProvenanceError("provenance self reference rejected");
@@ -102,6 +127,42 @@ export function addProvenanceEdge(edge: Omit<ProvenanceEdge, "id" | "createdAt">
     payload.edges.push({...edge, id: `PE-${crypto.randomUUID()}`, createdAt: new Date().toISOString()});
     if (payload.edges.length > 10000) payload.edges.splice(0, payload.edges.length - 10000);
   }).edges.find(e => e.from === edge.from && e.to === edge.to && e.relation === edge.relation) as ProvenanceEdge;
+}
+
+/** Merge an authenticated offline edge without minting a new identity or timestamp. */
+export function mergeProvenanceEdge(edge: ProvenanceEdge): "IMPORTED" | "DUPLICATE" {
+  if (!edge || typeof edge !== "object" || !provenanceRelations.includes(edge.relation) || !Number.isFinite(Date.parse(edge.createdAt)) || typeof edge.id !== "string" || !/^PE-[A-Za-z0-9-]{8,128}$/.test(edge.id)) {
+    throw new ProvenanceError("offline provenance edge is invalid");
+  }
+  if (edge.note !== undefined && (typeof edge.note !== "string" || edge.note.length > 512)) throw new ProvenanceError("offline provenance edge note is invalid");
+  if (edge.from === edge.to) throw new ProvenanceError("provenance self reference rejected");
+  assertRealIdentifier(edge.from);
+  assertRealIdentifier(edge.to);
+  let outcome: "IMPORTED" | "DUPLICATE" = "IMPORTED";
+  store.update(payload => {
+    if (!payload.nodes.some(node => node.id === edge.from) || !payload.nodes.some(node => node.id === edge.to)) {
+      throw new ProvenanceError(`offline provenance endpoint missing: ${edge.from} -> ${edge.to}`);
+    }
+    const sameId = payload.edges.find(value => value.id === edge.id);
+    if (sameId) {
+      if (sameId.from !== edge.from || sameId.to !== edge.to || sameId.relation !== edge.relation || sameId.note !== edge.note || sameId.createdAt !== edge.createdAt) {
+        throw new ProvenanceError(`offline provenance edge id conflict: ${edge.id}`);
+      }
+      outcome = "DUPLICATE";
+      return;
+    }
+    const sameRelation = payload.edges.find(value => value.from === edge.from && value.to === edge.to && value.relation === edge.relation);
+    if (sameRelation) {
+      if (sameRelation.id !== edge.id || sameRelation.note !== edge.note || sameRelation.createdAt !== edge.createdAt) {
+        throw new ProvenanceError(`offline provenance edge identity conflict: ${edge.from} -> ${edge.to}`);
+      }
+      outcome = "DUPLICATE";
+      return;
+    }
+    if (payload.edges.length >= 10000) throw new ProvenanceError("provenance edge limit reached during offline sync");
+    payload.edges.push(structuredClone(edge));
+  });
+  return outcome;
 }
 
 export function listProvenance(): {nodes: ProvenanceNode[]; edges: ProvenanceEdge[]} {
