@@ -16,13 +16,27 @@
       "jobUrl": "https://github.com/dang88bang-pixel/BabajagaBoB/actions/runs/37002968100/job/110824649004",
       "conclusion": "failure",
       "stepResults": [
-        {"name": "Docker daemon", "conclusion": "success"},
-        {"name": "Pull operator-selected OCI test image", "conclusion": "success"},
-        {"name": "OCI lifecycle against real Docker", "conclusion": "failure", "annotation": "Process completed with exit code 1."}
+        {
+          "name": "Docker daemon",
+          "conclusion": "success"
+        },
+        {
+          "name": "Pull operator-selected OCI test image",
+          "conclusion": "success"
+        },
+        {
+          "name": "OCI lifecycle against real Docker",
+          "conclusion": "failure",
+          "annotation": "Process completed with exit code 1."
+        }
       ],
       "diagnosticDetail": "The test assertion or Docker operation that failed is unknown. GitHub's check-run annotation contains only the generic exit code.",
       "logRetrieval": {
-        "attempted": ["gh run view --log-failed", "gh run view --log", "GitHub Actions job-log API"],
+        "attempted": [
+          "gh run view --log-failed",
+          "gh run view --log",
+          "GitHub Actions job-log API"
+        ],
         "result": "unavailable",
         "error": "The log request redirected to the Actions result blob store, where the connection ended with TLS/SSL EOF. The signed URL and credentials were not stored."
       }
@@ -33,15 +47,35 @@
       "jobUrl": "https://github.com/dang88bang-pixel/BabajagaBoB/actions/runs/37002968100/job/110824649231",
       "conclusion": "failure",
       "stepResults": [
-        {"name": "Produktionsbuild (Voraussetzung des Prozesstests)", "conclusion": "success"},
-        {"name": "Unit-Tests (Authority, Policy, Governance, Persistenz, Knowledge, Science, Recovery)", "conclusion": "success"},
-        {"name": "Integrationstests (Broker, Runtime, Sandbox, Queue, Runs, Error Intelligence)", "conclusion": "failure", "annotation": "Process completed with exit code 1."},
-        {"name": "Regressionstests", "conclusion": "skipped"},
-        {"name": "UI-Vertragstests (Control Center, 42 Abschnitte)", "conclusion": "skipped"}
+        {
+          "name": "Produktionsbuild (Voraussetzung des Prozesstests)",
+          "conclusion": "success"
+        },
+        {
+          "name": "Unit-Tests (Authority, Policy, Governance, Persistenz, Knowledge, Science, Recovery)",
+          "conclusion": "success"
+        },
+        {
+          "name": "Integrationstests (Broker, Runtime, Sandbox, Queue, Runs, Error Intelligence)",
+          "conclusion": "failure",
+          "annotation": "Process completed with exit code 1."
+        },
+        {
+          "name": "Regressionstests",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "UI-Vertragstests (Control Center, 42 Abschnitte)",
+          "conclusion": "skipped"
+        }
       ],
       "diagnosticDetail": "The failing integration test is unknown because the job log was unavailable.",
       "logRetrieval": {
-        "attempted": ["gh run view --log-failed", "gh run view --log", "GitHub Actions job-log API"],
+        "attempted": [
+          "gh run view --log-failed",
+          "gh run view --log",
+          "GitHub Actions job-log API"
+        ],
         "result": "unavailable",
         "error": "The log request redirected to the Actions result blob store, where the connection ended with TLS/SSL EOF. The signed URL and credentials were not stored."
       }
@@ -49,14 +83,54 @@
   ],
   "otherJobs": {
     "conclusion": "success",
-    "names": ["Security- und End-to-End-Suite", "Lint und Typecheck", "Sabotageproben (TEST-004)", "Produktionsbuild"]
+    "names": [
+      "Security- und End-to-End-Suite",
+      "Lint und Typecheck",
+      "Sabotageproben (TEST-004)",
+      "Produktionsbuild"
+    ]
   },
   "verificationGate": "skipped",
   "localReproduction": {
     "build": "passed",
     "integrationCommand": "BOB_CI=1 BOB_SANDBOX_RUNTIME=local npm run test:integration -- --reporter=verbose",
     "integrationResult": "24 test files passed; 139 tests passed; 1 OCI test skipped because Docker is unavailable locally",
-    "ociStatus": "not reproducible locally: no Docker CLI/daemon; this is not a passing OCI lifecycle result"
+    "ociStatus": "not reproducible locally: no Docker CLI/daemon; this is not a passing OCI lifecycle result",
+    "afterPidFix": {
+      "ociCommand": "BOB_CI=1 BOB_SANDBOX_RUNTIME=local node scripts/ci-vitest-diagnostics.mjs test:oci",
+      "ociResult": "2 command-contract tests passed; 1 real Docker lifecycle test skipped because the local Docker daemon is unavailable.",
+      "integrationCommand": "BOB_CI=1 BOB_SANDBOX_RUNTIME=local node scripts/ci-vitest-diagnostics.mjs test:integration",
+      "integrationResult": "24 test files passed; 139 tests passed; 1 OCI lifecycle test skipped because the local Docker daemon is unavailable.",
+      "fullVerify": "passed: lint 0 errors/11 existing warnings, typecheck, production build, 68 test files, 442 passed, 1 OCI test skipped."
+    },
+    "stabilityNote": "One full-suite rerun had a 30-second timeout in tests/integration/fault-injection-processes.test.ts. The isolated file then passed 5/5 and the next full verify passed 442 tests; monitor if it recurs."
   },
-  "followUp": "The CI test wrapper now writes a bounded diagnostic excerpt to the job summary and a check-run annotation on failure. The next push must be inspected before assigning any successful status."
+  "followUp": "The diagnostics wrapper successfully exposed the Docker error. The confirmed PID-mode fix is in the working tree and must be validated by a subsequent Docker CI run before any PASS status.",
+  "followUpRun": {
+    "id": "37003972400",
+    "url": "https://github.com/dang88bang-pixel/BabajagaBoB/actions/runs/37003972400",
+    "commit": "03f5ea94ae0b9b95f50bdb675c94991f06d473c6",
+    "conclusion": "failure",
+    "diagnosticWrapper": "scripts/ci-vitest-diagnostics.mjs",
+    "failures": [
+      {
+        "jobId": "110827819550",
+        "name": "Real OCI Runtime",
+        "testFile": "tests/integration/oci-runtime.test.ts",
+        "failedTest": "Real OCI runtime > enforces OCI flags and completes the real lifecycle with storage quota and restore",
+        "error": "OCI create failed: docker: --pid: invalid PID mode",
+        "result": "2 command-contract tests passed; the real lifecycle failed before container creation."
+      },
+      {
+        "jobId": "110827819301",
+        "name": "Unit- und Integrationstests",
+        "testFile": "tests/integration/oci-runtime.test.ts",
+        "failedTest": "Real OCI runtime > enforces OCI flags and completes the real lifecycle with storage quota and restore",
+        "error": "OCI create failed: docker: --pid: invalid PID mode",
+        "result": "23 test files passed, 1 failed; 129 tests passed, 10 skipped, 1 failed."
+      }
+    ],
+    "confirmedRootCause": "buildOciCreateArgs passed --pid private, which Docker rejects. Docker uses a private PID namespace when the PID mode is omitted.",
+    "outcome": "The CI annotation confirmed the same root cause in the OCI job and integration job. A local fix removes the unsupported option and checks that Docker inspect reports the default PidMode as an empty string; this fix still requires a successful real-Docker rerun."
+  }
 }

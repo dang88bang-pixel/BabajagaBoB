@@ -19,7 +19,8 @@ import type {
  *
  * Härtung:
  *  - kein Shell-String: ausschließlich argv[] mit `shell:false`; Images werden nicht implizit gepullt
- *  - `--network none` und private PID-/IPC-Namespaces (ALLOWLIST bleibt fail-closed)
+ *  - `--network none`; private PID-Namespace über den Docker-Default, privates IPC explizit
+ *    (`--pid=private` ist kein gültiger Docker-Modus; ALLOWLIST bleibt fail-closed)
  *  - `--read-only` Root-Dateisystem; /tmp als noexec/nosuid/nodev-tmpfs mit storageMb-Quota
  *  - `--cap-drop ALL`, `--security-opt no-new-privileges`, fester Nicht-Root-User
  *  - CPU-, RAM-, Swap-, PID- und Shared-Memory-Limits, harte Timeouts
@@ -98,8 +99,8 @@ export function buildOciCreateArgs(spec: SandboxSpec, containerName: string, ima
     `com.bob.sandbox-id=${spec.id}`,
     "--network",
     "none",
-    "--pid",
-    "private",
+    // Docker creates a private PID namespace by default. `--pid=private` is not
+    // a valid Docker PID mode; the CLI only accepts host/container:<id> here.
     "--ipc",
     "private",
     "--cpus",

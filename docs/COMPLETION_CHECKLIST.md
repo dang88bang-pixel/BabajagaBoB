@@ -10,15 +10,18 @@
 - P1: **20/20 PASS**.
 - Lokales Gesamt-Gate nach den Änderungen: `BOB_CI=1 BOB_SANDBOX_RUNTIME=local npm run verify` — **Lint 0 Fehler/11 bestehende Warnungen, Typecheck und Build erfolgreich, 68 Testdateien mit 442 bestanden/1 übersprungen** (OCI-Lifecycle mangels lokalem Docker).
 - CI-Wrapper lokal geprüft: `node scripts/ci-vitest-diagnostics.mjs test:integration` — **24 Dateien, 139 Tests bestanden/1 OCI-Test übersprungen**; synthetischer Fehlerlauf belegte Step-Summary, Check-Run-Annotation und Exit 1.
+- Stabilitätshinweis: Ein erster Voll-Gate-Lauf nach dem PID-Fix hatte einen 30-s-Timeout in `fault-injection-processes.test.ts`; der isolierte Prozessabbruch-Test bestand danach 5/5 und der unmittelbar folgende Voll-Gate-Lauf bestand 442/442 ausführbare Tests. Im GitHub-Integrationslauf wurde dieser Test nicht als Fehler gemeldet; bei Wiederholung beobachten.
 - Abnahme-Prüfer: `node scripts/acceptance.mjs` (**15/15 statische Prüfschritte bestanden**).
-- GitHub Actions `37002968100` auf Commit `71b67ae`: **fehlgeschlagen**. Im OCI-Job waren Docker-Daemon und Image-Pull erfolgreich, der echte Lifecycle-Test endete mit Exit 1; auch der CI-Integrationsschritt endete mit Exit 1. Unit-Tests, Lint/Typecheck, Security/E2E, Sabotageproben und Produktionsbuild waren erfolgreich; das Verification Gate wurde übersprungen. Fehlerdetails der zwei Jobs waren wegen TLS/SSL-EOF beim Download des Actions-Logarchivs nicht abrufbar. Siehe `docs/evidence/oci-001-ci-failure-2026-10-02.json`.
-- `OCI-001` ist deshalb `FAIL` (nicht `PASS` und nicht bloß lokal `NOT_VERIFIED`); die nächste CI-Ausführung sammelt bei Testfehlern Details in Check-Run-Annotation und Step-Summary.
+- GitHub Actions `37002968100` auf Commit `71b67ae`: fehlgeschlagen. Docker-Daemon und Image-Pull waren erfolgreich; OCI-Lifecycle und Integration endeten mit Exit 1. Dessen Logdownload war wegen TLS/SSL-EOF nicht abrufbar.
+- Diagnostiklauf `37003972400` auf Commit `03f5ea9`: Wrapper lieferte den Fehler in Check-Run-Annotationen. Docker verwirft `--pid private` als ungültigen PID-Modus. OCI scheiterte beim Container-Create; die Integrationssuite scheiterte an demselben `tests/integration/oci-runtime.test.ts`-Fall (23 Dateien bestanden, 129 Tests bestanden, 10 übersprungen, 1 fehlgeschlagen). Security/E2E, Lint/Typecheck, Sabotageproben und Produktionsbuild waren erfolgreich; das Verification Gate wurde übersprungen.
+- Die Ursache ist im Arbeitsstand behoben: kein ungültiges `--pid private`; Docker verwendet den privaten PID-Namespace als Default und `HostConfig.PidMode` wird im Lifecycle-Test gegen `""` geprüft. Die Änderung wartet noch auf einen erfolgreichen Real-Docker-CI-Lauf. Detaillierte Rohdaten beider CI-Läufe: `docs/evidence/oci-001-ci-failure-2026-10-02.json`.
+- `OCI-001` bleibt `FAIL`, bis der echte Lifecycle-Test vollständig erfolgreich und ohne Skip durchläuft; der bekannte Fix allein ist kein PASS-Nachweis.
 
 ## Aktuelle To-do-Liste (nach Phase geordnet; Status pro Fortsetzung aktualisieren)
 
 | Reihenfolge | Requirement | Status | Nächster konkreter Schritt |
 |---:|---|---|---|
-| 1 | P0 `OCI-001` | `FAIL` — echter Lifecycle-Test in GitHub Actions fehlgeschlagen (Run `37002968100`, Commit `71b67ae`); Fehlerdetail noch nicht verfügbar | Diagnostik-Wrapper `scripts/ci-vitest-diagnostics.mjs` auf den festen Arena-Branch pushen; den nächsten Real-Docker-Lauf prüfen; konkrete fehlerhafte Docker-Operation/Assertion korrigieren und den Lifecycle-Test erfolgreich wiederholen, bevor der Matrixstatus geändert wird. |
+| 1 | P0 `OCI-001` | `FAIL` — CI zeigte `docker: --pid: invalid PID mode` (Run `37003972400`); Fix lokal umgesetzt, echter Nachweis noch offen | Fix für den Docker-PID-Default auf den festen Arena-Branch pushen; nächsten Real-Docker-Lauf und alle folgenden Lifecycle-Assertions prüfen; erst nach komplett erfolgreichem Lauf Matrixstatus auf `PASS` ändern. |
 | 2 | P2 `PROVF-002` | `NOT_VERIFIED` — extern blockiert | Provider/Endpoint auswählen, kontrollierten Egress freigeben und Credential ausschließlich per Secret Store anbinden; Live-Adapterlauf mit Telemetrie belegen. |
 | 3 | P2 `CU-001` | `PARTIAL` | Kontrollierte, isolierte Browser-/Desktop-/CLI-Treiber bereitstellen; Broker-Erfolg und Negativ-/Recovery-Pfade real testen. |
 | 4 | P3 `UI-003` | `NOT_VERIFIED` — extern blockiert | Browser-fähigen Runner bereitstellen; Login/Kernpfade real bedienen und Screenshots/Console-Evidence archivieren. |
@@ -38,14 +41,14 @@
 
 ### 1. P0 — `OCI-001`: echte Docker-Abnahme
 
-**Status: FAIL (geprüft 2026-10-02).** Auf Commit `71b67aee09f46f9541408b0bcc20027d24ac33b3` lief der echte GitHub-Docker-Job: `docker version` und der Pull von `alpine:3.20` waren erfolgreich, aber `npm run test:oci` endete im Schritt „OCI lifecycle against real Docker“ mit Exit 1. Damit liegt ein fehlgeschlagener Real-OCI-Nachweis vor; er wird weder als PASS noch als bloß fehlende Docker-Abhängigkeit verbucht. Die Logs liefern über die verfügbaren Check-Run-Annotationen nur „Process completed with exit code 1“; der Job-Logdownload endete nach dem Redirect zum Actions-Result-Blob-Store mit TLS/SSL-EOF. Die festgehaltenen Job-/Step-Ergebnisse und Abrufgrenze stehen in `docs/evidence/oci-001-ci-failure-2026-10-02.json`. Lokal ist kein Docker-Daemon verfügbar; dort werden die zwei Command-Contract-Tests ausgeführt, während der Lifecycle-Test übersprungen wird. Das ist kein OCI-Lifecycle-Nachweis.
+**Status: FAIL (geprüft 2026-10-02).** Der Diagnostiklauf `37003972400` auf Commit `03f5ea9` stellte über die Check-Run-Annotation den echten Fehler bereit: `docker create` lehnte `--pid private` mit `docker: --pid: invalid PID mode` ab, bevor ein Container erzeugt wurde. Derselbe OCI-Lifecycle-Test lief wegen verfügbarem Docker auch in der Integrationssuite und war deren einziger Fehler (23 Dateien bestanden; 129 Tests bestanden, 10 übersprungen, 1 fehlgeschlagen). Der erste Lauf `37002968100` bleibt ohne abrufbare Logs; beide Läufe sind in `docs/evidence/oci-001-ci-failure-2026-10-02.json` dokumentiert. Der Arbeitsstand entfernt jetzt den ungültigen PID-Schalter: Docker nutzt den privaten PID-Namespace standardmäßig; der Lifecycle-Test prüft `HostConfig.PidMode === ""`. Das ist ein plausibler, lokal geprüfter Code-Fix, aber noch kein erfolgreicher Docker-Lifecycle-Nachweis. Ohne lokalen Docker-Daemon wird der echte Lifecycle-Test hier übersprungen.
 
 Abschlussfolge:
-1. Den CI-Diagnostik-Wrapper `scripts/ci-vitest-diagnostics.mjs` auf den festen Arena-Branch übertragen; bei Fehlern schreibt er den Testausschnitt in Step-Summary und Check-Run-Annotation.
-2. Den nächsten Real-Docker-Lauf samt Annotation/Summary auswerten, die konkrete fehlgeschlagene Operation oder Assertion beheben und den Test wiederholen.
+1. PID-Default-Fix und angepassten Test auf den festen Arena-Branch pushen.
+2. Den nächsten Real-Docker-CI-Lauf samt Annotation/Summary prüfen; alle nachgelagerten Lifecycle-Assertions (Isolation, Quota, Timeout, Cleanup, Reset, Snapshot und Restore) vollständig durchlaufen lassen und weitere Fehler beheben.
 3. `OCI-001` erst auf `PASS` setzen, wenn der echte Lifecycle-Test in Docker ohne Skip vollständig erfolgreich ist; Run-URL und Commit dann als positive Evidence dokumentieren.
 
-**Blocker:** Ursache des CI-Testfehlers ist unbekannt, weil das Actions-Logarchiv in dieser Umgebung nicht abrufbar ist. Der nächste Schritt ist Diagnose und Reparatur, nicht eine externe Freigabe oder eine Statusanhebung.
+**Blocker:** Der Docker-Test schlug mit einem bestätigten ungültigen CLI-Flag fehl. Die Diagnose ist bekannt; der Fix wartet auf erneuten Real-Docker-Nachweis. Die fehlende lokale Docker-Umgebung ersetzt diesen Nachweis nicht.
 
 ### 2. P2 — `PROVF-002`: live Provider-Verbindung
 

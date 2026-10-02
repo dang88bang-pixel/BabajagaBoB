@@ -27,7 +27,9 @@ describe("OCI hardening command contract", () => {
 
     expect(args).toContain("--pull=never");
     expect(value("--network")).toBe("none");
-    expect(value("--pid")).toBe("private");
+    // Docker's omitted PID mode is private; `--pid=private` is rejected by the CLI.
+    expect(args).not.toContain("--pid");
+    expect(args.some(arg => arg.startsWith("--pid="))).toBe(false);
     expect(value("--ipc")).toBe("private");
     expect(value("--cpus")).toBe("0.5");
     expect(value("--memory")).toBe("256m");
@@ -108,7 +110,8 @@ describe.skipIf(!dockerAvailable)("Real OCI runtime", () => {
       const reconciled = await ociContainerRuntime.reconcile();
       expect(reconciled.some(entry => entry.sandboxId === id && entry.state === "RUNNING" && entry.managed)).toBe(true);
       expect(inspect.HostConfig.NetworkMode).toBe("none");
-      expect(inspect.HostConfig.PidMode).toBe("private");
+      // An empty PidMode is Docker's private PID namespace default; host would be unsafe.
+      expect(inspect.HostConfig.PidMode).toBe("");
       expect(inspect.HostConfig.IpcMode).toBe("private");
       expect(inspect.HostConfig.ReadonlyRootfs).toBe(true);
       expect(inspect.HostConfig.CapDrop).toContain("ALL");
