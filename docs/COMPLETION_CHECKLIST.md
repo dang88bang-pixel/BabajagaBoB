@@ -6,30 +6,34 @@
 
 ## Baseline
 
-- Matrix-Snapshot nach dem fehlgeschlagenen echten OCI-CI-Nachweis: **80 PASS / 2 PARTIAL / 1 FAIL / 2 NOT_VERIFIED / 0 NOT_IMPLEMENTED**.
+- Matrix-Snapshot nach dem erfolgreichen Real-OCI-Nachweis: **81 PASS / 2 PARTIAL / 0 FAIL / 2 NOT_VERIFIED / 0 NOT_IMPLEMENTED**.
 - P1: **20/20 PASS**.
-- Lokales Gesamt-Gate nach den Änderungen: `BOB_CI=1 BOB_SANDBOX_RUNTIME=local npm run verify` — **Lint 0 Fehler/11 bestehende Warnungen, Typecheck und Build erfolgreich, 68 Testdateien mit 442 bestanden/1 übersprungen** (OCI-Lifecycle mangels lokalem Docker).
+- Lokales Gesamt-Gate nach dem PID-Fix: `BOB_CI=1 BOB_SANDBOX_RUNTIME=local npm run verify` — **Lint 0 Fehler/11 bestehende Warnungen, Typecheck und Build erfolgreich, 68 Testdateien mit 442 bestanden/1 übersprungen** (OCI-Lifecycle mangels lokalem Docker).
 - CI-Wrapper lokal geprüft: `node scripts/ci-vitest-diagnostics.mjs test:integration` — **24 Dateien, 139 Tests bestanden/1 OCI-Test übersprungen**; synthetischer Fehlerlauf belegte Step-Summary, Check-Run-Annotation und Exit 1.
 - Stabilitätshinweis: Ein erster Voll-Gate-Lauf nach dem PID-Fix hatte einen 30-s-Timeout in `fault-injection-processes.test.ts`; der isolierte Prozessabbruch-Test bestand danach 5/5 und der unmittelbar folgende Voll-Gate-Lauf bestand 442/442 ausführbare Tests. Im GitHub-Integrationslauf wurde dieser Test nicht als Fehler gemeldet; bei Wiederholung beobachten.
 - Abnahme-Prüfer: `node scripts/acceptance.mjs` (**15/15 statische Prüfschritte bestanden**).
-- GitHub Actions `37002968100` auf Commit `71b67ae`: fehlgeschlagen. Docker-Daemon und Image-Pull waren erfolgreich; OCI-Lifecycle und Integration endeten mit Exit 1. Dessen Logdownload war wegen TLS/SSL-EOF nicht abrufbar.
-- Diagnostiklauf `37003972400` auf Commit `03f5ea9`: Wrapper lieferte den Fehler in Check-Run-Annotationen. Docker verwirft `--pid private` als ungültigen PID-Modus. OCI scheiterte beim Container-Create; die Integrationssuite scheiterte an demselben `tests/integration/oci-runtime.test.ts`-Fall (23 Dateien bestanden, 129 Tests bestanden, 10 übersprungen, 1 fehlgeschlagen). Security/E2E, Lint/Typecheck, Sabotageproben und Produktionsbuild waren erfolgreich; das Verification Gate wurde übersprungen.
-- Die Ursache ist im Arbeitsstand behoben: kein ungültiges `--pid private`; Docker verwendet den privaten PID-Namespace als Default und `HostConfig.PidMode` wird im Lifecycle-Test gegen `""` geprüft. Die Änderung wartet noch auf einen erfolgreichen Real-Docker-CI-Lauf. Detaillierte Rohdaten beider CI-Läufe: `docs/evidence/oci-001-ci-failure-2026-10-02.json`.
-- `OCI-001` bleibt `FAIL`, bis der echte Lifecycle-Test vollständig erfolgreich und ohne Skip durchläuft; der bekannte Fix allein ist kein PASS-Nachweis.
+- GitHub Actions `37002968100` auf `71b67ae` scheiterte mit generischem OCI-/Integrations-Exit 1; dessen Logarchiv war wegen TLS/SSL-EOF nicht abrufbar. Diagnostiklauf `37003972400` auf `03f5ea9` zeigte: Docker lehnt `--pid private` ab. Der PID-Default-Fix wurde auf `b9b9911` umgesetzt.
+- GitHub Actions `37004817061` auf `b9b9911`: **dedizierter `Real OCI Runtime`-Job 110830491535 erfolgreich** — `docker version`, Pull von `alpine:3.20` und echter Lifecycle-Test alle erfolgreich. Der Gesamtworkflow blieb rot, weil der separate Integrationsjob den OCI-Test ohne vorab geladenes Image startete (`No such image: alpine:3.20`). Der Workflow-Opt-in `BOB_OCI_REAL_TEST=1` ist im Arbeitsstand jetzt nur am dedizierten, vorgeprüften OCI-Job gesetzt; der nächste Lauf muss die Gesamtsuite bestätigen.
+- `OCI-001` ist anhand des echten, nicht übersprungenen Lifecycle-Jobs `PASS`. Positive und frühere negative CI-Nachweise: `docs/evidence/oci-001-ci-pass-2026-10-02.json` und `docs/evidence/oci-001-ci-failure-2026-10-02.json`.
 
 ## Aktuelle To-do-Liste (nach Phase geordnet; Status pro Fortsetzung aktualisieren)
 
 | Reihenfolge | Requirement | Status | Nächster konkreter Schritt |
 |---:|---|---|---|
-| 1 | P0 `OCI-001` | `FAIL` — CI zeigte `docker: --pid: invalid PID mode` (Run `37003972400`); Fix lokal umgesetzt, echter Nachweis noch offen | Fix für den Docker-PID-Default auf den festen Arena-Branch pushen; nächsten Real-Docker-Lauf und alle folgenden Lifecycle-Assertions prüfen; erst nach komplett erfolgreichem Lauf Matrixstatus auf `PASS` ändern. |
-| 2 | P2 `PROVF-002` | `NOT_VERIFIED` — extern blockiert | Provider/Endpoint auswählen, kontrollierten Egress freigeben und Credential ausschließlich per Secret Store anbinden; Live-Adapterlauf mit Telemetrie belegen. |
-| 3 | P2 `CU-001` | `PARTIAL` | Kontrollierte, isolierte Browser-/Desktop-/CLI-Treiber bereitstellen; Broker-Erfolg und Negativ-/Recovery-Pfade real testen. |
-| 4 | P3 `UI-003` | `NOT_VERIFIED` — extern blockiert | Browser-fähigen Runner bereitstellen; Login/Kernpfade real bedienen und Screenshots/Console-Evidence archivieren. |
-| 5 | P4 `LOAD-001` | `PARTIAL` | Begrenzter 40-Run mit NAMESPACES und 5-Run-Negativkontrolle bestanden; jetzt Mehrstundendauer/Abbruchregeln festlegen und Soak-Bericht/Evidence wiederholbar in CI/Betrieb sichern. Defaults: 4 Worker, p95 ≤ 5 s, Erfolgsquote ≥ 100 %. |
+| 1 | P2 `PROVF-002` | `NOT_VERIFIED` — extern blockiert | Provider/Endpoint auswählen, kontrollierten Egress freigeben und Credential ausschließlich per Secret Store anbinden; Live-Adapterlauf mit Telemetrie belegen. |
+| 2 | P2 `CU-001` | `PARTIAL` | Kontrollierte, isolierte Browser-/Desktop-/CLI-Treiber bereitstellen; Broker-Erfolg und Negativ-/Recovery-Pfade real testen. |
+| 3 | P3 `UI-003` | `NOT_VERIFIED` — extern blockiert | Browser-fähigen Runner bereitstellen; Login/Kernpfade real bedienen und Screenshots/Console-Evidence archivieren. |
+| 4 | P4 `LOAD-001` | `PARTIAL` | Begrenzter 40-Run mit NAMESPACES und 5-Run-Negativkontrolle bestanden; jetzt Mehrstundendauer/Abbruchregeln festlegen und Soak-Bericht/Evidence wiederholbar in CI/Betrieb sichern. Defaults: 4 Worker, p95 ≤ 5 s, Erfolgsquote ≥ 100 %. |
 
-`OFF-001` ist in diesem Lauf mit `PASS` abgeschlossen (Details unten). Diese To-do-Liste bleibt die laufende Arbeitsliste; in jeder Fortsetzung werden Reihenfolge, Status, Blocker und nächste Aktion aktualisiert und im Chat wieder ausgegeben. Externe Blockaden bleiben `NOT_VERIFIED` und werden nie in `PASS` umgedeutet.
+`OFF-001` und `OCI-001` sind mit `PASS` abgenommen (Details unten). Der CI-Isolationsfix (`BOB_OCI_REAL_TEST=1` nur im dedizierten OCI-Job) steht im Arbeitsstand; als unmittelbarer technischer Folgeschritt den Gesamtworkflow erneut ausführen und dessen Gate bestätigen. Danach die Restliste in Phasenreihenfolge fortsetzen. Diese Liste bleibt dauerhaft maßgeblich; externe Blockaden bleiben `NOT_VERIFIED` und werden nie in `PASS` umgedeutet.
 
 ## In diesem Durchlauf abgenommen
+
+### P0 — `OCI-001`: echte Docker-Abnahme
+
+**Status: PASS (2026-10-02).** GitHub Actions `37004817061`, Commit `b9b991139ccf6d33a39b051cb3f6024fd5bd1667`, dedizierter Job `Real OCI Runtime` (`110830491535`): Docker-Daemon, Pull von `alpine:3.20` und Lifecycle-Schritt alle erfolgreich. Der Test lief real (Docker war erreichbar; in diesem Lauf war er nicht skip-fähig durch fehlenden Daemon) und durchlief Container-Create/Start/Inspect, PID-/IPC-/Netzwerkisolation, Read-only-Rootfs, /tmp-Quota, Execute, Timeout-Stop, Reset, Snapshot, Destroy und Restore. Maschinenlesbare Evidence: `docs/evidence/oci-001-ci-pass-2026-10-02.json`.
+
+**Getrennte CI-Störung:** Derselbe Gesamtworkflow scheiterte im allgemeinen Integration-Job, weil dieser den Real-OCI-Test ohne Image-Pull erneut ausführte (`No such image: alpine:3.20`). Das entwertet nicht den erfolgreichen, vorgeprüften OCI-spezifischen Job; der Integration-Test ist jetzt auf `BOB_OCI_REAL_TEST=1` begrenzt und der vollständige Workflow wird erneut geprüft.
 
 ### P2 — `OFF-001`: Offline-Arbeit und provenance-erhaltender Sync
 
@@ -39,18 +43,7 @@
 
 ## Geordnete Restliste
 
-### 1. P0 — `OCI-001`: echte Docker-Abnahme
-
-**Status: FAIL (geprüft 2026-10-02).** Der Diagnostiklauf `37003972400` auf Commit `03f5ea9` stellte über die Check-Run-Annotation den echten Fehler bereit: `docker create` lehnte `--pid private` mit `docker: --pid: invalid PID mode` ab, bevor ein Container erzeugt wurde. Derselbe OCI-Lifecycle-Test lief wegen verfügbarem Docker auch in der Integrationssuite und war deren einziger Fehler (23 Dateien bestanden; 129 Tests bestanden, 10 übersprungen, 1 fehlgeschlagen). Der erste Lauf `37002968100` bleibt ohne abrufbare Logs; beide Läufe sind in `docs/evidence/oci-001-ci-failure-2026-10-02.json` dokumentiert. Der Arbeitsstand entfernt jetzt den ungültigen PID-Schalter: Docker nutzt den privaten PID-Namespace standardmäßig; der Lifecycle-Test prüft `HostConfig.PidMode === ""`. Das ist ein plausibler, lokal geprüfter Code-Fix, aber noch kein erfolgreicher Docker-Lifecycle-Nachweis. Ohne lokalen Docker-Daemon wird der echte Lifecycle-Test hier übersprungen.
-
-Abschlussfolge:
-1. PID-Default-Fix und angepassten Test auf den festen Arena-Branch pushen.
-2. Den nächsten Real-Docker-CI-Lauf samt Annotation/Summary prüfen; alle nachgelagerten Lifecycle-Assertions (Isolation, Quota, Timeout, Cleanup, Reset, Snapshot und Restore) vollständig durchlaufen lassen und weitere Fehler beheben.
-3. `OCI-001` erst auf `PASS` setzen, wenn der echte Lifecycle-Test in Docker ohne Skip vollständig erfolgreich ist; Run-URL und Commit dann als positive Evidence dokumentieren.
-
-**Blocker:** Der Docker-Test schlug mit einem bestätigten ungültigen CLI-Flag fehl. Die Diagnose ist bekannt; der Fix wartet auf erneuten Real-Docker-Nachweis. Die fehlende lokale Docker-Umgebung ersetzt diesen Nachweis nicht.
-
-### 2. P2 — `PROVF-002`: live Provider-Verbindung
+### 1. P2 — `PROVF-002`: live Provider-Verbindung
 
 **Status: EXTERN BLOCKIERT / NOT_VERIFIED (geprüft 2026-10-02).** Der Netzwerkpfad bleibt gemäß Vorgabe `DENY`; es gibt in dieser Abnahme keinen ausgewählten Provider/Endpoint, keine Creator-freigegebene Egress-Grenze und keine Secret-Store-Referenz für ein Live-Credential. Es wurde kein externer Aufruf versucht.
 
@@ -62,7 +55,7 @@ Abschlussfolge:
 
 **Blocker:** Es gibt weder einen freigegebenen Provider/Secret noch kontrollierten Egress in dieser Umgebung.
 
-### 3. P2 — `CU-001`: kontrollierte Browser-/Desktop-/CLI-Treiber
+### 2. P2 — `CU-001`: kontrollierte Browser-/Desktop-/CLI-Treiber
 
 **Status: PARTIAL / EXTERNE TREIBER FEHLEN (geprüft 2026-10-02).** Registrierung, Autorisierung, Broker und Adaptergrenze sind vorhanden; Adaptertests ersetzen keinen echten Treiber. Lokaler Verfügbarkeitscheck fand keine Chromium/Chrome/Firefox-/Playwright-/Desktop-Binaries, kein `DISPLAY` und keine installierten Playwright-/Puppeteer-Module. Es wurden keine Treiber heruntergeladen; beliebiger Host-Treiber wäre zudem keine Isolation.
 
@@ -74,7 +67,7 @@ Abschlussfolge:
 
 **Blocker:** Kein realer, kontrolliert isolierter Browser-/Desktop-Treiber ist verfügbar. Der konfigurierbare Testadapter gilt nicht als Realgeräte-Nachweis.
 
-### 4. P3 — `UI-003`: echter Browser-Nachweis
+### 3. P3 — `UI-003`: echter Browser-Nachweis
 
 **Status: EXTERN BLOCKIERT / NOT_VERIFIED (geprüft 2026-10-02).** Es gibt in dieser Umgebung kein Browser-Binary, kein `DISPLAY` und kein Playwright/Puppeteer-Modul. jsdom-/HTTP-Tests ersetzen keinen echten Rendering-/Interaktionsnachweis; es wurde kein Browser heruntergeladen.
 
@@ -86,7 +79,7 @@ Abschlussfolge:
 
 **Blocker:** In der aktuellen Umgebung fehlen Browser-Binary und verifizierter Browser-Runner.
 
-### 5. P4 — `LOAD-001`: Dauer-Lastnachweis
+### 4. P4 — `LOAD-001`: Dauer-Lastnachweis
 
 **Status: PARTIAL (fokussiert geprüft 2026-10-02).** Frischer begrenzter Production-HTTP-Lauf mit disposable Store/Rootfs: 40/40 erfolgreich bei Nebenläufigkeit 4, p95 503 ms / Budget 5.000 ms, `NAMESPACES`, Audit `FULL_CHAIN`, Store-Integrität 1. Eine 5-Run-Kontrolle mit 1-ms-Budget wurde erwartungsgemäß `BREACHED` (Exit 1), ohne Ausführungsfehler. JSON-Evidence und Messwerte sind in `docs/evidence/` und `docs/OPERATIONS.md` hinterlegt. Das erfüllt den begrenzten Nachweis, nicht den geforderten mehrstündigen Dauerlauf/Lastkurve.
 

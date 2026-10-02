@@ -615,14 +615,18 @@
         {
           "kind": "file",
           "path": "docs/evidence/oci-001-ci-failure-2026-10-02.json"
+        },
+        {
+          "kind": "file",
+          "path": "docs/evidence/oci-001-ci-pass-2026-10-02.json"
         }
       ],
       "docs": [
         "docs/SANDBOX.md",
         "docs/RUNTIME.md"
       ],
-      "status": "FAIL",
-      "note": "GitHub Actions-Lauf 37002968100 auf Commit 71b67ae schlug im echten OCI-Lifecycle und im Integrationstest fehl; die damaligen Logarchive konnten wegen TLS/SSL-EOF nicht abgerufen werden. Diagnostiklauf 37003972400 auf Commit 03f5ea9 machte die Ursache über Check-Run-Annotationen sichtbar: Docker lehnt `--pid private` mit `docker: --pid: invalid PID mode` ab. Der Integrationstest schlug am selben OCI-Test fehl (23 Dateien bestanden, 129 Tests bestanden, 10 übersprungen, 1 fehlgeschlagen). Beide Läufe und die Annotationen sind in docs/evidence/oci-001-ci-failure-2026-10-02.json festgehalten. Der aktuelle Arbeitsstand entfernt `--pid private` und prüft den privaten Docker-PID-Default (`HostConfig.PidMode === \"\"`); dies bleibt bis zu einem vollständig erfolgreichen Real-Docker-Lifecycle-Lauf FAIL. Lokal fehlt Docker und der Lifecycle-Test wird übersprungen."
+      "status": "PASS",
+      "note": "Nachweis `docs/evidence/oci-001-ci-pass-2026-10-02.json`: GitHub Actions-Lauf 37004817061, Commit b9b991139ccf6d33a39b051cb3f6024fd5bd1667, dedizierter Job „Real OCI Runtime“ 110830491535 erfolgreich. Docker-Daemonstart, Pull von alpine:3.20 und der reale Lifecycle-Test waren erfolgreich. Der Test war nicht übersprungen: Im damaligen Testcode aktiviert ein erreichbarer Docker-Server (`docker version` erfolgreich) die Lifecycle-Suite; der Job hatte den Operator-Image-Pull vorab bestanden. Damit wurden Create/Start/Inspect, Hardening-Flags, Read-only-/Quota-Proben, Timeout/Stop, Reset, Snapshot, Destroy und Restore durchlaufen. Der Gesamtworkflow 37004817061 war dennoch rot, weil der separate Integrationsjob denselben OCI-Test ohne vorab gepulltes Image startete (`No such image: alpine:3.20`). Diese Isolation ist getrennt behoben durch den Opt-in `BOB_OCI_REAL_TEST=1`, den nur der OCI-Job nach Docker-/Image-Preflight setzt; erneuter Gesamtworkflow ist ausstehend. Frühere Fehlversuche und deren Diagnose bleiben transparent in `docs/evidence/oci-001-ci-failure-2026-10-02.json` dokumentiert."
     },
     {
       "id": "Q-001",

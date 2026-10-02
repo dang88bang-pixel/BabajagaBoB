@@ -11,9 +11,9 @@ Eingefroren: 2026-09-25. Quellen: GESAMTAUFTRAG (53 Punkte); docs/MASTER_COMPLET
 
 | Status | Anzahl | Bedeutung |
 |---|---|---|
-| ✅ PASS | 80 | Implementierung + Test + Nachweis vorhanden |
+| ✅ PASS | 81 | Implementierung + Test + Nachweis vorhanden |
 | 🟡 PARTIAL | 2 | Teilweise umgesetzt, Lücke benannt |
-| ❌ FAIL | 1 | Umgesetzt, aber Nachweis fehlgeschlagen |
+| ❌ FAIL | 0 | Umgesetzt, aber Nachweis fehlgeschlagen |
 | ⚪ NOT_IMPLEMENTED | 0 | Bewusst nicht gebaut (Begründung) |
 | 🔵 NOT_VERIFIED | 2 | Vorhanden, aber Umgebung erlaubt keinen Nachweis |
 | ⛔ BLOCKED | 0 | Durch äußere Abhängigkeit blockiert |
@@ -24,7 +24,7 @@ Eingefroren: 2026-09-25. Quellen: GESAMTAUFTRAG (53 Punkte); docs/MASTER_COMPLET
 Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execution Broker → Runtime → Beobachtung → Evidenz → Validierung → Artefakt → Test → Approval → Deployment → Monitoring → Recovery → Lernen
 ```
 
-## P0 (16/17 PASS)
+## P0 (17/17 PASS)
 
 | ID | Bereich | Anforderung | Implementierung | Test | Nachweis | UI | Status |
 |---|---|---|---|---|---|---|---|
@@ -44,7 +44,7 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 | GATE-001 | Execution Gate | Kein Ausführungspfad um Gate und Broker herum — auch interne Läufe nicht. | `lib/execution-gate.ts`<br>`lib/execution-broker.ts`<br>`lib/system-execution.ts` | `tests/security/gate-bypass.test.ts` (3) | `POST /api/execution-gate` | Runs, Approvals | ✅ |
 | GATE-002 | Execution Gate | Verweigerungen erzeugen Evidenz (Denial-Artefakt) samt Audit und ohne Klartext-Argumente. | `lib/artifacts.ts`<br>`lib/execution-gate.ts` | `tests/integration/execution-evidence.test.ts` (5) | `GET /api/artifacts` | Evidence | ✅ |
 | GATE-003 | Execution Gate | Keine Shell-Strings: argv[] mit shell:false; Interpreter und Metazeichen sind verboten. | `lib/argv-policy.ts`<br>`lib/runtime-local.ts` | `tests/security/argv-policy.test.ts` (6) | `scripts/verify-live.sh` | — | ✅ |
-| OCI-001 | OCI-Härtung | OCI-Sandbox mit Härtungsflags, Snapshot/Restore und Quota-Durchsetzung.<br><small>GitHub Actions-Lauf 37002968100 auf Commit 71b67ae schlug im echten OCI-Lifecycle und im Integrationstest fehl; die damaligen Logarchive konnten wegen TLS/SSL-EOF nicht abgerufen werden. Diagnostiklauf 37003972400 auf Commit 03f5ea9 machte die Ursache über Check-Run-Annotationen sichtbar: Docker lehnt `--pid private` mit `docker: --pid: invalid PID mode` ab. Der Integrationstest schlug am selben OCI-Test fehl (23 Dateien bestanden, 129 Tests bestanden, 10 übersprungen, 1 fehlgeschlagen). Beide Läufe und die Annotationen sind in docs/evidence/oci-001-ci-failure-2026-10-02.json festgehalten. Der aktuelle Arbeitsstand entfernt `--pid private` und prüft den privaten Docker-PID-Default (`HostConfig.PidMode === ""`); dies bleibt bis zu einem vollständig erfolgreichen Real-Docker-Lifecycle-Lauf FAIL. Lokal fehlt Docker und der Lifecycle-Test wird übersprungen.</small> | `lib/oci-runtime.ts`<br>`lib/resource-limits.ts`<br>`.github/workflows/ci.yml`<br>`scripts/ci-vitest-diagnostics.mjs` | `tests/integration/oci-runtime.test.ts` (1) | `npm run test:oci`<br>`docs/evidence/oci-001-ci-failure-2026-10-02.json` | — | ❌ |
+| OCI-001 | OCI-Härtung | OCI-Sandbox mit Härtungsflags, Snapshot/Restore und Quota-Durchsetzung.<br><small>Nachweis `docs/evidence/oci-001-ci-pass-2026-10-02.json`: GitHub Actions-Lauf 37004817061, Commit b9b991139ccf6d33a39b051cb3f6024fd5bd1667, dedizierter Job „Real OCI Runtime“ 110830491535 erfolgreich. Docker-Daemonstart, Pull von alpine:3.20 und der reale Lifecycle-Test waren erfolgreich. Der Test war nicht übersprungen: Im damaligen Testcode aktiviert ein erreichbarer Docker-Server (`docker version` erfolgreich) die Lifecycle-Suite; der Job hatte den Operator-Image-Pull vorab bestanden. Damit wurden Create/Start/Inspect, Hardening-Flags, Read-only-/Quota-Proben, Timeout/Stop, Reset, Snapshot, Destroy und Restore durchlaufen. Der Gesamtworkflow 37004817061 war dennoch rot, weil der separate Integrationsjob denselben OCI-Test ohne vorab gepulltes Image startete (`No such image: alpine:3.20`). Diese Isolation ist getrennt behoben durch den Opt-in `BOB_OCI_REAL_TEST=1`, den nur der OCI-Job nach Docker-/Image-Preflight setzt; erneuter Gesamtworkflow ist ausstehend. Frühere Fehlversuche und deren Diagnose bleiben transparent in `docs/evidence/oci-001-ci-failure-2026-10-02.json` dokumentiert.</small> | `lib/oci-runtime.ts`<br>`lib/resource-limits.ts`<br>`.github/workflows/ci.yml`<br>`scripts/ci-vitest-diagnostics.mjs` | `tests/integration/oci-runtime.test.ts` (1) | `npm run test:oci`<br>`docs/evidence/oci-001-ci-failure-2026-10-02.json`<br>`docs/evidence/oci-001-ci-pass-2026-10-02.json` | — | ✅ |
 
 ## P1 (20/20 PASS)
 

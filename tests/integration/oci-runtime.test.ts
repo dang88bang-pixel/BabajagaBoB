@@ -4,15 +4,13 @@ import {buildOciCreateArgs, ociContainerName, ociContainerRuntime} from "../../l
 import {MAX_RESOURCE_LIMITS} from "../../lib/resource-limits";
 
 const dockerCli = "docker";
-const dockerAvailable = spawnSync(dockerCli, ["version", "--format", "{{.Server.Version}}"], {
-  encoding: "utf8",
-  timeout: 10_000
-}).status === 0;
+const realOciLifecycleEnabled = process.env.BOB_OCI_REAL_TEST === "1";
 
-if (!dockerAvailable) {
-  // Local environments without a daemon report this as skipped/UNVERIFIED.
-  // The dedicated CI job first requires `docker version`, so it cannot pass by skipping.
-  console.info("OCI lifecycle test skipped: Docker daemon is unavailable (run in the dedicated OCI CI job to verify).");
+if (!realOciLifecycleEnabled) {
+  // Only the dedicated OCI job opts into the live lifecycle test, after Docker
+  // daemon and operator-selected image preflight. A Docker daemon alone is not
+  // enough: the general integration job may not have the selected image loaded.
+  console.info("OCI lifecycle test skipped: enable BOB_OCI_REAL_TEST=1 only in the preflighted OCI job.");
 }
 
 const limits = {cpuMillicores: 500, memoryMb: 256, storageMb: 128, timeoutMs: 60_000, processes: 32};
@@ -83,7 +81,7 @@ function inspectContainer(name: string): DockerInspect {
   return (JSON.parse(result.stdout) as DockerInspect[])[0];
 }
 
-describe.skipIf(!dockerAvailable)("Real OCI runtime", () => {
+describe.skipIf(!realOciLifecycleEnabled)("Real OCI runtime", () => {
   it("enforces OCI flags and completes the real lifecycle with storage quota and restore", async () => {
     const health = await ociContainerRuntime.health();
     expect(health.ok, health.detail).toBe(true);

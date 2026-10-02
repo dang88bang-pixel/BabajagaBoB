@@ -162,6 +162,7 @@ jobs:
         env:
           BOB_STORAGE_DIR: ${{ runner.temp }}/bob-oci
           BOB_OCI_IMAGE: alpine:3.20
+          BOB_OCI_REAL_TEST: "1"
 
   verification-gate:
     name: Verification Gate
