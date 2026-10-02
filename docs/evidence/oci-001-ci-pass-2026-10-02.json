@@ -4,17 +4,17 @@
   "requirementId": "OCI-001",
   "status": "PASS",
   "branch": "arena/01a0f577-babajagabob",
-  "commit": "266408d6c827437bf4f2c6caffb8f272544c42a3",
+  "commit": "8a0d70282c61666fde0ed425df398ce450b134b1",
   "run": {
-    "id": "37005513983",
-    "url": "https://github.com/dang88bang-pixel/BabajagaBoB/actions/runs/37005513983",
+    "id": "37005852080",
+    "url": "https://github.com/dang88bang-pixel/BabajagaBoB/actions/runs/37005852080",
     "overallConclusion": "success",
     "conclusion": "success"
   },
   "job": {
-    "id": "110832742672",
+    "id": "110833825609",
     "name": "Real OCI Runtime",
-    "url": "https://github.com/dang88bang-pixel/BabajagaBoB/actions/runs/37005513983/job/110832742672",
+    "url": "https://github.com/dang88bang-pixel/BabajagaBoB/actions/runs/37005852080/job/110833825609",
     "conclusion": "success",
     "steps": [
       {
@@ -57,37 +57,37 @@
   },
   "workflowJobs": [
     {
-      "id": "110832742270",
+      "id": "110833825936",
       "name": "Unit- und Integrationstests",
       "conclusion": "success"
     },
     {
-      "id": "110832742624",
+      "id": "110833825754",
       "name": "Security- und End-to-End-Suite",
       "conclusion": "success"
     },
     {
-      "id": "110832742635",
+      "id": "110833825814",
       "name": "Sabotageproben (TEST-004)",
       "conclusion": "success"
     },
     {
-      "id": "110832742672",
+      "id": "110833825609",
       "name": "Real OCI Runtime",
       "conclusion": "success"
     },
     {
-      "id": "110832742809",
+      "id": "110833825874",
       "name": "Lint und Typecheck",
       "conclusion": "success"
     },
     {
-      "id": "110832896031",
+      "id": "110834020594",
       "name": "Produktionsbuild",
       "conclusion": "success"
     },
     {
-      "id": "110833418615",
+      "id": "110834520273",
       "name": "Verification Gate",
       "conclusion": "success"
     }
@@ -98,5 +98,11 @@
     "overallConclusion": "failure",
     "integrationJobIssue": "The general integration job auto-ran the OCI lifecycle test without pulling alpine:3.20. The test is now explicitly enabled only in the preflighted dedicated OCI job; the subsequent complete run 37005513983 passed."
   },
-  "note": "This is a real Docker lifecycle pass on the latest successful full CI run. The earlier CLI PID-mode and image-preflight failures remain documented separately in docs/evidence/oci-001-ci-failure-2026-10-02.json."
+  "note": "The most recent full GitHub Actions run confirms OCI-001 PASS and all seven CI jobs, including the Verification Gate. The earlier PID-mode and image-preflight failures remain documented separately in docs/evidence/oci-001-ci-failure-2026-10-02.json.",
+  "previousFullPass": {
+    "id": "37005513983",
+    "url": "https://github.com/dang88bang-pixel/BabajagaBoB/actions/runs/37005513983",
+    "commit": "266408d6c827437bf4f2c6caffb8f272544c42a3",
+    "conclusion": "success"
+  }
 }

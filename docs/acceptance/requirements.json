@@ -626,7 +626,7 @@
         "docs/RUNTIME.md"
       ],
       "status": "PASS",
-      "note": "Positiver Real-OCI-Nachweis in `docs/evidence/oci-001-ci-pass-2026-10-02.json`: GitHub Actions-Lauf 37005513983 auf Commit 266408d6c827437bf4f2c6caffb8f272544c42a3 und dedizierter Job `Real OCI Runtime` 110832742672 erfolgreich. Docker-Daemon, Pull von alpine:3.20 und Lifecycle-Test mit `BOB_OCI_REAL_TEST=1` liefen erfolgreich; die Live-Suite war nicht übersprungen. Der gesamte Workflow einschließlich Integration, Lint/Typecheck, Security/E2E, Sabotage, Build und Verification Gate war grün. Der frühere Lauf 37004817061 dokumentierte einen separaten Integrationsjob-Isolationsfehler (`No such image`), der durch den expliziten OCI-Opt-in behoben wurde; frühere Fehlversuche bleiben in docs/evidence/oci-001-ci-failure-2026-10-02.json nachvollziehbar."
+      "note": "Positiver Real-OCI-Nachweis in `docs/evidence/oci-001-ci-pass-2026-10-02.json`: GitHub Actions-Lauf 37005852080 auf Commit 8a0d70282c61666fde0ed425df398ce450b134b1 und dedizierter Job `Real OCI Runtime` 110833825609 erfolgreich. Docker-Daemon, Pull von alpine:3.20 und der nicht übersprungene Lifecycle-Test (`BOB_OCI_REAL_TEST=1`) liefen erfolgreich. Der gesamte Workflow einschließlich Integration, Lint/Typecheck, Security/E2E, Sabotage, Produktionsbuild und Verification Gate war grün. Der frühere Integrationsjob-Isolationsfehler aus Lauf 37004817061 (`No such image`) wurde durch den expliziten Opt-in des vorgeprüften OCI-Jobs behoben. Frühere Fehlversuche bleiben in docs/evidence/oci-001-ci-failure-2026-10-02.json nachvollziehbar."
     },
     {
       "id": "Q-001",
