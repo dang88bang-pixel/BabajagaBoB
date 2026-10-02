@@ -1503,7 +1503,7 @@
         "docs/PROVIDERS.md"
       ],
       "status": "NOT_VERIFIED",
-      "note": "Am 2026-10-02 bleibt externer Egress gemäß Vorgabe DENY; es liegt weder ein Creator-freigegebener Provider/Endpoint noch eine Secret-Store-Referenz für ein Live-Credential vor. Deshalb wurde kein externer Aufruf versucht. Ein echter Adapterlauf mit Telemetrie bleibt NOT_VERIFIED, bis Provider, kontrollierte Egress-Grenze und Secret-Store-Bindung bereitgestellt sind; Secret-Werte gehören nicht in Chat oder Repository."
+      "note": "Am 2026-10-02 hat der Creator OpenHands als Zielanbieter ausgewählt und mitgeteilt, kontrollierter Egress sowie Secret Store seien bereit. Das ist nur Ziel-/Bereitschaftsinformation aus dem Chat, keine Control-Plane-Freigabe und keine in der Anwendung registrierte Endpoint-/Credential-Referenz. Prüfung des Workspace: kein Provider-/Egress-/Secret-Connector oder entsprechender Konfigurationsschlüssel sichtbar; `lib/secrets.ts` stellt nur In-Memory-Leases aus, `connectProvider()` setzt Lifecycle-Metadaten und führt keinen Netzwerkaufruf aus; `docs/PROVIDERS.md` dokumentiert, dass kein kontrollierter Egress-Adapter eingebunden ist. Daher wurde kein externer Aufruf versucht. `PROVF-002` bleibt NOT_VERIFIED bis OpenHands-Endpoint und Secret-Store-Referenz über den autorisierten Control-Plane-Pfad gebunden sind, ein kontrollierter Egress-Adapter den echten Handshake/Heartbeat ausführt und Telemetrie-Evidence vorliegt. Secret-Werte nicht in Chat oder Repository ablegen."
     },
     {
       "id": "DEV-001",

@@ -17,12 +17,13 @@
 - Lauf `37005513983` auf `266408d`: erster vollständig grüner Workflow nach dem CI-Isolationsfix.
 - Neuester Lauf `37005852080` auf `8a0d702`: **gesamter GitHub-Actions-Workflow erfolgreich**. Integration, OCI-Lifecycle, Security/E2E, Sabotage, Lint/Typecheck, Produktionsbuild und Verification Gate waren alle grün.
 - `OCI-001` ist anhand des echten, nicht übersprungenen Lifecycle-Jobs `PASS`. Positive und frühere negative CI-Nachweise: `docs/evidence/oci-001-ci-pass-2026-10-02.json` und `docs/evidence/oci-001-ci-failure-2026-10-02.json`.
+- `PROVF-002`: OpenHands wurde als Zielanbieter ausgewählt; der Creator berichtet, kontrollierter Egress und Secret Store seien bereit. Das ist keine Control-Plane-Freigabe oder App-Konfiguration. Die Workspace-Prüfung ergab, dass `connectProvider()` keinen Netzwerkaufruf ausführt, `lib/secrets.ts` nur In-Memory-Leases verwaltet und kein Egress-Adapter eingebunden ist. Es wurde kein externer Zugriff versucht; Anforderung bleibt `NOT_VERIFIED`.
 
 ## Aktuelle To-do-Liste (nach Phase geordnet; Status pro Fortsetzung aktualisieren)
 
 | Reihenfolge | Requirement | Status | Nächster konkreter Schritt |
 |---:|---|---|---|
-| 1 | P2 `PROVF-002` | `NOT_VERIFIED` — extern blockiert | Provider/Endpoint auswählen, kontrollierten Egress freigeben und Credential ausschließlich per Secret Store anbinden; Live-Adapterlauf mit Telemetrie belegen. |
+| 1 | P2 `PROVF-002` | `NOT_VERIFIED` — extern / app-seitige Integration fehlt | OpenHands wurde als Ziel genannt; kontrollierter Egress und Secret Store seien laut Creator bereit. Endpoint und Credential-Referenz müssen dennoch im autorisierten Control Plane registriert und mit einem echten Egress-/Secret-Store-Adapter verbunden werden; danach Creator-Freigabe, Live-Handshake/Heartbeat und Telemetrie-Evidence ausführen. Keine Secrets im Chat/Repository. |
 | 2 | P2 `CU-001` | `PARTIAL` | Kontrollierte, isolierte Browser-/Desktop-/CLI-Treiber bereitstellen; Broker-Erfolg und Negativ-/Recovery-Pfade real testen. |
 | 3 | P3 `UI-003` | `NOT_VERIFIED` — extern blockiert | Browser-fähigen Runner bereitstellen; Login/Kernpfade real bedienen und Screenshots/Console-Evidence archivieren. |
 | 4 | P4 `LOAD-001` | `PARTIAL` | Begrenzter 40-Run mit NAMESPACES und 5-Run-Negativkontrolle bestanden; jetzt Mehrstundendauer/Abbruchregeln festlegen und Soak-Bericht/Evidence wiederholbar in CI/Betrieb sichern. Defaults: 4 Worker, p95 ≤ 5 s, Erfolgsquote ≥ 100 %. |
