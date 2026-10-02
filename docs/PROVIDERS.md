@@ -29,13 +29,12 @@ Verbindung ist damit `ARCHITECTURE`/`NOT_VERIFIED`, nicht „aktiviert".
 
 | Funktion | Wirkung | Bedingung |
 |---|---|---|
-| `bindProvider({providerId, scope, scopeId, capabilities})` | bindet Fähigkeiten an System/Agent/Task/Sandbox | Provider existiert; Fähigkeiten müssen gedeckt sein |
-| `setProviderState(providerId, state, actor)` | Lifecycle-Wechsel | erlaubte Übergänge, Creator für Freigaben |
-| `connectProvider(providerId, actor)` | Verbindung aufbauen | Provider `AUTHORIZED`, `enabled`, Freigabe vorhanden — sonst Denial |
-| `heartbeatProvider(providerId, …)` | Telemetrie/Health | nur bei bekannter Verbindung |
-| `disconnectProvider` / `revokeProvider` | trennen bzw. dauerhaft entziehen | auditiert |
+| `bindProvider({providerId, scope, scopeId, capabilities})` | bindet Fähigkeiten an System/Agent/Task/Sandbox | Provider existiert und ist nach erfolgreichem Live-Handshake `CONNECTED`; Fähigkeiten müssen gedeckt sein |
+| `connectProvider(id, endpoint, credentialRef, approvalId)` | prüft den Antrag, führt aber derzeit keine Verbindung aus | HTTPS ohne URL-Credentials/Query; Secret-Store-Referenz; Creator-Freigabe muss Provider-ID und exakten Endpoint-Origin abdecken; bis ein Broker-Handler für kontrollierten Egress und echten Secret Store existiert: 503 ohne Zustandsänderung |
+| `heartbeatProvider(id, {health, latencyMs})` | schreibt Health-/Latenz-Metadaten | nur nach Live-Verbindung; keine frei übergebene Meldung und kein öffentlicher API-Endpunkt |
+| `disconnectProvider` / `revokeProvider` | trennen bzw. dauerhaft entziehen und Bindungen deaktivieren | Creator-geschützter API-Pfad, auditiert |
 
-Jeder Übergang wird über `observe()` im Event-/Auditpfad festgehalten.
+Es gibt keinen öffentlichen `state`- oder `heartbeat`-API-Schreibpfad. Lifecycle-Übergänge aus einem Live-Handshake bzw. internem Monitor werden über `observe()` protokolliert; Audit- und Telemetriedaten enthalten weder Credential-Werte noch Adapter-Fehlertexte.
 
 ## 4. Daten- und Privatsphärengrenzen
 
@@ -49,16 +48,29 @@ Jeder Übergang wird über `observe()` im Event-/Auditpfad festgehalten.
   Egress-Schicht bleibt jede echte Außenverbindung fail closed (`NOT_IMPLEMENTED`).
 - `lib/privacy.ts` veröffentlicht die Datenklassifizierungsregeln über `GET /api/privacy`.
 
-## 5. Grenzen
+## 5. Grenzen und Live-Status
 
-- Es gibt **keine** Netzwerkverbindung zu den Providern; die Adapter sind
-  Beschreibungen/Bindings. Ein realer Adapter müsste die Egress-Schicht,
-  Secret-Verwaltung (`lib/secrets.ts`) und Freigabe mitbringen.
+- Es gibt keinen Broker-Handler für Provider-Liveverbindungen und keinen
+  produktiven OpenHands- oder sonstigen Live-Adapter. Der API-Pfad ist bewusst
+  nur eine fail-closed Admission-Prüfung und führt keine direkte Netzwerk-I/O aus.
+- `lib/secrets.ts` stellt derzeit In-Memory-Leases aus, ist aber kein angebundener
+  externer Secret Store. Ebenso ist kein kontrollierter Egress-Adapter im
+  Workspace eingebunden. Ein registrierter Produktivadapter muss beide Dienste
+  nutzen und darf nicht direkt am Egress-Gate vorbeifetchen.
+- Der Creator hat OpenHands als Ziel genannt und berichtet, Egress und Secret
+  Store seien bereit. Diese Chat-Angabe ist keine Control-Plane-Freigabe oder
+  Endpoint-/Credential-Registrierung. Es wurde kein externer Aufruf ausgeführt;
+  `PROVF-002` bleibt `NOT_VERIFIED` bis zur app-seitigen Einbindung und einem
+  echten Handshake samt Telemetrie-Evidence.
 - `autonomousManagement` markiert die Absicht, dass ein Provider Betriebsaufgaben
-  übernehmen darf — solange er nicht autorisiert/verbunden ist, ist das wirkungslos.
+  übernehmen darf — solange er nicht verbunden und autorisiert ist, ist das wirkungslos.
 
 ## 6. Tests
 
-- `tests/integration/provider-fabric.test.ts` — Lifecycle, Approval-Pflicht,
-  Datenrichtlinie und Denials.
+- `tests/integration/provider-fabric.test.ts` — 13 Lifecycle-/Safety-Vertragstests:
+  Creator-Approval mit exaktem Host, HTTPS-Grenzen, fehlender Broker-Adapter
+  (503 ohne Zustandsänderung), kein Spoofing per öffentlichem State-/Heartbeat-
+  Endpunkt, Secret-safe Auditdaten, Bindungs-/Widerrufsgrenzen und Datenrichtlinie.
+  Es gibt bewusst keinen Connector-Teststub, der `CONNECTED` vortäuscht; diese
+  Tests sind dennoch kein Live-Provider-Nachweis.
 - `scripts/verify-live.sh` — Provider-Status über HTTP (alle deaktiviert/unabgenommen).

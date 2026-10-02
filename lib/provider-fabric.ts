@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import {createStore} from "./persistence/store";
 import {observe} from "./observability";
 import {recordAudit} from "./audit";
-import {approvalGranted} from "./approvals";
+import {getApproval} from "./approvals";
 import {assertNoProtectedDataForThirdParty, type ProtectedDataClass} from "./data-boundary";
 
 /**
@@ -55,6 +55,18 @@ export type ProviderBinding = {
 export type ProviderTelemetry = {providerId: string; time: string; health: ProviderHealth; latencyMs?: number; message?: string};
 
 type Payload = {providers: ProviderDefinition[]; bindings: ProviderBinding[]; telemetry: ProviderTelemetry[]};
+
+/**
+ * The API deliberately has no connector fallback. A live provider connection
+ * must be implemented as a brokered operation using controlled egress and a
+ * real Secret Store resolver; this module must not make direct network calls.
+ */
+export class ProviderAdapterUnavailableError extends Error {
+  constructor() {
+    super("no brokered provider egress adapter is configured");
+    this.name = "ProviderAdapterUnavailableError";
+  }
+}
 
 /** Ausgangskatalog: alle Provider sind entdeckt, aber deaktiviert und unabgenommen. */
 const SEED: ProviderDefinition[] = [
@@ -137,7 +149,7 @@ export function listBindings() {
   return clone(store.read().bindings);
 }
 
-export function setProviderState(id: string, lifecycle: ProviderLifecycle, health: ProviderHealth, message?: string) {
+function publishProviderState(id: string, lifecycle: ProviderLifecycle, health: ProviderHealth, message?: string) {
   const provider = mutate(id, p => {
     p.lifecycle = lifecycle;
     p.health = health;
@@ -158,22 +170,71 @@ export function setProviderState(id: string, lifecycle: ProviderLifecycle, healt
   return provider;
 }
 
-export function connectProvider(id: string, endpoint?: string, credentialRef?: string, approvalId?: string) {
+function parseProviderEndpoint(endpoint?: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(endpoint ?? "");
+  } catch {
+    throw new Error("provider endpoint must be a valid HTTPS URL");
+  }
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw new Error("provider endpoint must use HTTPS and must not embed credentials, query, or fragment data");
+  }
+  return parsed;
+}
+
+function requireProviderApproval(providerId: string, approvalId: string | undefined, endpointOrigin: string) {
+  if (!approvalId) throw new Error("third-party provider connection requires explicit Creator approval");
+  const approval = getApproval(approvalId);
+  if (!approval || approval.status !== "GRANTED" || approval.resolvedBy !== "CREATOR") {
+    throw new Error("provider connection approval is not granted by the Creator");
+  }
+  const endpointApproved = approval.networkEffects.some(effect => {
+    const urls = effect.match(/https:\/\/[^\s,;]+/gi) ?? [];
+    return urls.some(candidate => {
+      try {
+        return new URL(candidate).origin === endpointOrigin;
+      } catch {
+        return false;
+      }
+    });
+  });
+  if (!approval.affectedSystems.includes(providerId) || !endpointApproved) {
+    throw new Error("provider connection approval is not scoped to this provider endpoint");
+  }
+  return approval;
+}
+
+export async function connectProvider(id: string, endpoint?: string, credentialRef?: string, approvalId?: string): Promise<never> {
   const provider = getProvider(id);
   if (!provider) throw new Error("provider not found");
   if (provider.lifecycle === "REVOKED") throw new Error("provider is revoked");
-  if (provider.requiresApproval && !approvalId) throw new Error("third-party provider connection requires explicit approval");
-  if (provider.requiresApproval && approvalId && !approvalGranted(approvalId)) throw new Error("provider connection approval is not granted");
-  mutate(id, p => {
-    p.endpoint = endpoint;
-    p.credentialRef = credentialRef;
-    p.lifecycle = "CONNECTED";
-    p.health = "HEALTHY";
-    p.enabled = true;
-    p.lastHeartbeat = new Date().toISOString();
-    p.lastError = undefined;
+  const parsedEndpoint = parseProviderEndpoint(endpoint);
+  if (!credentialRef?.trim()) throw new Error("provider Secret Store reference is required");
+  if (provider.network === "DENY") throw new Error("provider network policy denies external connections");
+
+  // Any provider that can make a network connection requires a scoped Creator approval.
+  requireProviderApproval(id, approvalId, parsedEndpoint.origin);
+
+  // Approval is necessary but not sufficient. Until an Execution-Broker handler
+  // is wired to controlled egress and the real Secret Store, fail closed without
+  // mutating the Provider or claiming a successful connection.
+  recordAudit({actor: "provider-manager", action: "provider.connect", resource: id, decision: "DENY"}, {
+    endpointOrigin: parsedEndpoint.origin,
+    approvalId,
+    reason: "brokered provider egress adapter is not configured"
   });
-  return setProviderState(id, "CONNECTED", "HEALTHY", `${provider.name} connected through managed adapter`);
+  observe({
+    type: "provider.connect.unavailable",
+    message: `Provider connection unavailable for ${provider.name}`,
+    status: "BLOCKED",
+    actor: "provider-manager",
+    resource: id,
+    action: "provider.connect",
+    decision: "DENY",
+    argumentsValue: {endpointOrigin: parsedEndpoint.origin}
+  });
+  throw new ProviderAdapterUnavailableError();
 }
 
 export function disconnectProvider(id: string) {
@@ -185,7 +246,7 @@ export function disconnectProvider(id: string) {
     p.lifecycle = "DISCONNECTED";
     p.health = "UNKNOWN";
   });
-  return setProviderState(id, "DISCONNECTED", "UNKNOWN", `${provider.name} disconnected`);
+  return publishProviderState(id, "DISCONNECTED", "UNKNOWN", `${provider.name} disconnected`);
 }
 
 export function revokeProvider(id: string) {
@@ -197,21 +258,25 @@ export function revokeProvider(id: string) {
     p.lifecycle = "REVOKED";
     p.health = "UNKNOWN";
   });
-  return setProviderState(id, "REVOKED", "UNKNOWN", `${provider.name} revoked`);
+  return publishProviderState(id, "REVOKED", "UNKNOWN", `${provider.name} revoked`);
 }
 
-export function heartbeatProvider(id: string, input: {health: ProviderHealth; latencyMs?: number; message?: string}) {
+export function heartbeatProvider(id: string, input: {health: ProviderHealth; latencyMs?: number}) {
+  const current = getProvider(id);
+  if (!current) throw new Error("provider not found");
+  if (!current.enabled || !["CONNECTED", "DEGRADED", "BLOCKED"].includes(current.lifecycle)) throw new Error("provider heartbeat requires a live connection");
+  if (input.latencyMs !== undefined && (!Number.isFinite(input.latencyMs) || input.latencyMs < 0)) throw new Error("provider heartbeat latency is invalid");
   const provider = mutate(id, p => {
     p.health = input.health;
     p.lastHeartbeat = new Date().toISOString();
-    p.lastError = input.message;
+    p.lastError = input.health === "UNHEALTHY" ? "provider health check failed" : undefined;
     if (input.health === "HEALTHY" && p.lifecycle !== "REVOKED" && p.lifecycle !== "DISCONNECTED") p.lifecycle = "CONNECTED";
     if (input.health === "DEGRADED" && p.lifecycle === "CONNECTED") p.lifecycle = "DEGRADED";
     if (input.health === "UNHEALTHY" && p.lifecycle !== "REVOKED" && p.lifecycle !== "DISCONNECTED") p.lifecycle = "BLOCKED";
   });
   store.update(payload => {
     payload.telemetry = payload.telemetry.filter(entry => entry.providerId !== id);
-    payload.telemetry.push({providerId: id, time: provider.lastHeartbeat ?? new Date().toISOString(), health: input.health, latencyMs: input.latencyMs, message: input.message});
+    payload.telemetry.push({providerId: id, time: provider.lastHeartbeat ?? new Date().toISOString(), health: input.health, latencyMs: input.latencyMs, message: "provider heartbeat recorded"});
     if (payload.telemetry.length > 500) payload.telemetry.splice(0, payload.telemetry.length - 500);
   });
   observe({
@@ -223,7 +288,7 @@ export function heartbeatProvider(id: string, input: {health: ProviderHealth; la
     resource: id,
     action: "provider.heartbeat",
     decision: "ALLOW",
-    argumentsValue: {latencyMs: input.latencyMs, message: input.message}
+    argumentsValue: {latencyMs: input.latencyMs}
   });
   return provider;
 }

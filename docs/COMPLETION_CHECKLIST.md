@@ -15,28 +15,29 @@
 - CI-Diagnoseverlauf: `37002968100` auf `71b67ae` scheiterte mit nicht abrufbaren Logs; `37003972400` auf `03f5ea9` zeigte `--pid private` als ungültigen Docker-Modus. Der PID-Default-Fix wurde auf `b9b9911` umgesetzt.
 - Lauf `37004817061` auf `b9b9911`: dedizierter Real-OCI-Job erfolgreich, aber der Gesamtworkflow scheiterte, weil die allgemeine Integrationssuite ohne Image-Pull ebenfalls den Live-OCI-Test startete (`No such image: alpine:3.20`). Der Real-Lifecycle-Test wurde danach auf `BOB_OCI_REAL_TEST=1` im vorgeprüften dedizierten OCI-Job begrenzt.
 - Lauf `37005513983` auf `266408d`: erster vollständig grüner Workflow nach dem CI-Isolationsfix.
-- Neuester Lauf `37005852080` auf `8a0d702`: **gesamter GitHub-Actions-Workflow erfolgreich**. Integration, OCI-Lifecycle, Security/E2E, Sabotage, Lint/Typecheck, Produktionsbuild und Verification Gate waren alle grün.
+- Der dokumentierte Real-OCI-Evidence-Lauf `37005852080` auf `8a0d702` war vollständig grün. Der spätere Statusupdate-Commit `3989e35` wurde ebenfalls durch den vollständigen Lauf `37024028559` (alle sieben Jobs einschließlich Real OCI und Verification Gate grün) geprüft.
 - `OCI-001` ist anhand des echten, nicht übersprungenen Lifecycle-Jobs `PASS`. Positive und frühere negative CI-Nachweise: `docs/evidence/oci-001-ci-pass-2026-10-02.json` und `docs/evidence/oci-001-ci-failure-2026-10-02.json`.
-- `PROVF-002`: OpenHands wurde als Zielanbieter ausgewählt; der Creator berichtet, kontrollierter Egress und Secret Store seien bereit. Das ist keine Control-Plane-Freigabe oder App-Konfiguration. Die Workspace-Prüfung ergab, dass `connectProvider()` keinen Netzwerkaufruf ausführt, `lib/secrets.ts` nur In-Memory-Leases verwaltet und kein Egress-Adapter eingebunden ist. Es wurde kein externer Zugriff versucht; Anforderung bleibt `NOT_VERIFIED`.
+- `PROVF-002`: OpenHands wurde als Zielanbieter ausgewählt; der Creator berichtet, kontrollierter Egress und Secret Store seien bereit. Die App hat jedoch keinen Provider-Handler im Execution Broker. `connectProvider()` verlangt nun eine exakte HTTPS-Origin-Freigabe durch den Creator; danach fail-closed 503 ohne Zustandsänderung. Öffentliche `state`-/`heartbeat`-Schreibaktionen wurden entfernt. 13 Safety-Vertragstests ohne Live-Aufruf oder Connector-Stub sind ergänzt; sie sind kein Live-Nachweis. `lib/secrets.ts` ist weiterhin kein externer Secret Store. Es wurde kein Provider-Aufruf versucht; `NOT_VERIFIED` bleibt.
+
 
 ## Aktuelle To-do-Liste (nach Phase geordnet; Status pro Fortsetzung aktualisieren)
 
 | Reihenfolge | Requirement | Status | Nächster konkreter Schritt |
 |---:|---|---|---|
-| 1 | P2 `PROVF-002` | `NOT_VERIFIED` — extern / app-seitige Integration fehlt | OpenHands wurde als Ziel genannt; kontrollierter Egress und Secret Store seien laut Creator bereit. Endpoint und Credential-Referenz müssen dennoch im autorisierten Control Plane registriert und mit einem echten Egress-/Secret-Store-Adapter verbunden werden; danach Creator-Freigabe, Live-Handshake/Heartbeat und Telemetrie-Evidence ausführen. Keine Secrets im Chat/Repository. |
+| 1 | P2 `PROVF-002` | `NOT_VERIFIED` — Produktivadapter fehlt | OpenHands ist gewählt; die app-seitige Connector-Grenze ist jetzt fail-closed. Als Nächstes Produktivadapter mit kontrolliertem Egress und echtem Secret-Store-Resolver implementieren, über Control Plane/Execution Broker und exakte Creator-Freigabe anbinden; dann Live-Handshake, Heartbeat und Telemetrie-Evidence ausführen. Keine Secrets im Chat/Repository. |
 | 2 | P2 `CU-001` | `PARTIAL` | Kontrollierte, isolierte Browser-/Desktop-/CLI-Treiber bereitstellen; Broker-Erfolg und Negativ-/Recovery-Pfade real testen. |
 | 3 | P3 `UI-003` | `NOT_VERIFIED` — extern blockiert | Browser-fähigen Runner bereitstellen; Login/Kernpfade real bedienen und Screenshots/Console-Evidence archivieren. |
 | 4 | P4 `LOAD-001` | `PARTIAL` | Begrenzter 40-Run mit NAMESPACES und 5-Run-Negativkontrolle bestanden; jetzt Mehrstundendauer/Abbruchregeln festlegen und Soak-Bericht/Evidence wiederholbar in CI/Betrieb sichern. Defaults: 4 Worker, p95 ≤ 5 s, Erfolgsquote ≥ 100 %. |
 
-`OFF-001` und `OCI-001` sind mit `PASS` abgenommen (Details unten); der vollständige Workflow samt Verification Gate bestand zuletzt in Lauf `37005852080`. Als Nächstes die verbleibenden Anforderungen in Phasenreihenfolge abarbeiten. Diese Liste bleibt dauerhaft maßgeblich; externe Blockaden bleiben `NOT_VERIFIED` und werden nie in `PASS` umgedeutet.
+`OFF-001` und `OCI-001` sind mit `PASS` abgenommen (Details unten); vor der aktuellen PROVF-Hardening-Arbeit bestand der vollständige Workflow samt Verification Gate zuletzt in Lauf `37024028559`. Als Nächstes die verbleibenden Anforderungen in Phasenreihenfolge abarbeiten. Diese Liste bleibt dauerhaft maßgeblich; externe Blockaden bleiben `NOT_VERIFIED` und werden nie in `PASS` umgedeutet.
 
 ## In diesem Durchlauf abgenommen
 
 ### P0 — `OCI-001`: echte Docker-Abnahme
 
-**Status: PASS (2026-10-02).** Neuester bestätigender GitHub-Actions-Lauf `37005852080`, Commit `8a0d70282c61666fde0ed425df398ce450b134b1`, dedizierter Job `Real OCI Runtime` (`110833825609`): Docker-Daemon, Pull von `alpine:3.20` und Lifecycle-Schritt alle erfolgreich; `BOB_OCI_REAL_TEST=1` macht den Test opt-in und nicht skip-fähig, sobald der dedizierte Job läuft. Der Test durchlief Container-Create/Start/Inspect, PID-/IPC-/Netzwerkisolation, Read-only-Rootfs, /tmp-Quota, Execute, Timeout-Stop, Reset, Snapshot, Destroy und Restore. Der vollständige Workflow einschließlich Integration und Verification Gate war ebenfalls erfolgreich. Maschinenlesbare Evidence: `docs/evidence/oci-001-ci-pass-2026-10-02.json`.
+**Status: PASS (2026-10-02).** Die maschinenlesbare OCI-Evidence (`docs/evidence/oci-001-ci-pass-2026-10-02.json`) verweist auf Lauf `37005852080`, Commit `8a0d70282c61666fde0ed425df398ce450b134b1`, Job `Real OCI Runtime` (`110833825609`): Docker-Daemon, Pull von `alpine:3.20` und nicht übersprungener Lifecycle-Schritt alle erfolgreich. Der Test umfasste Container-Create/Start/Inspect, PID-/IPC-/Netzwerkisolation, Read-only-Rootfs, /tmp-Quota, Execute, Timeout-Stop, Reset, Snapshot, Destroy und Restore. Auch der spätere vollständige Lauf `37024028559` auf `3989e35` bestand mit Real-OCI-Job `110893990549` und Verification Gate `110894944070` erfolgreich.
 
-**Behobene CI-Störung:** Lauf `37004817061` scheiterte im allgemeinen Integration-Job, weil dort der Real-OCI-Test ohne Image-Pull startete (`No such image: alpine:3.20`). Der Test ist jetzt auf `BOB_OCI_REAL_TEST=1` im dedizierten, vorgeprüften Job begrenzt. Die vollständigen Läufe `37005513983` und `37005852080` bestanden anschließend mit Verification Gate.
+**Behobene CI-Störung:** Lauf `37004817061` scheiterte im allgemeinen Integration-Job, weil dort der Real-OCI-Test ohne Image-Pull startete (`No such image: alpine:3.20`). Der Test ist jetzt auf `BOB_OCI_REAL_TEST=1` im dedizierten, vorgeprüften Job begrenzt. Die anschließenden vollständigen Läufe `37005513983`, `37005852080` und `37024028559` bestanden mit Verification Gate.
 
 ### P2 — `OFF-001`: Offline-Arbeit und provenance-erhaltender Sync
 
