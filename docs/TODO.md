@@ -1,6 +1,7 @@
 # Offene Punkte
 
-**Stand:** 2026-09-25
+**Stand:** 2026-10-03
+**Audit-Bericht:** `docs/ABSCHLUSSBERICHT_AUDIT_2026-10-03.md`
 **Hinweis:** Die ursprüngliche Roadmap-Fassung dieser Datei (246 Zeilen mit 132
 unbearbeiteten Checkboxen) war ein Planungsdokument aus der Startphase und hat
 den Umsetzungsstand nicht mehr korrekt abgebildet. Sie wurde durch diese
@@ -48,8 +49,10 @@ Smoke-Test laufen als SYSTEM-WORKER über Gate, Broker und Evidenz).
 
 - WebAuthn als Alternative zu TOTP (TOTP ist implementiert: `BOB_CREATOR_TOTP_SECRET`).
 - Automatisches Deployment (Promotion bleibt manuell und Creator-gebunden).
-- Vektor-/Embedding-Suche im Knowledge Graph.
-- Statistische Signifikanzprüfung in der Kausalvalidierung.
+- Vektor-/Embedding-Suche im Knowledge Graph (Kosinus-Abstand in `lib/knowledge-vector.ts` ist implementiert; Embedding-Suche fehlt).
+- Statistische Signifikanzprüfung in der Kausalvalidierung (numerische Plausibilität ist implementiert; statistischer Signifikanztest fehlt).
+- Speicher- und Prozesslimits via cgroup v2 (`lib/ns-isolation.ts:150`, NOT_IMPLEMENTED): Nur CPU_TIME und FILE_SIZE sind kernel-seitig enforced; Speicherlimits werden nicht kernel-seitig durchgesetzt (NOT_IMPLEMENTED).
+- Creator-Anmeldung mit TOTP als zweitem Faktor (`lib/totp.ts:5`, Abschnitt 15/38, NOT_IMPLEMENTED): TOTP-Modul vollständig implementiert; Creator-Login-Weg mit TOTP-Abfrage noch nicht gebaut.
 
 ## 4. Regeln für neue Einträge
 
