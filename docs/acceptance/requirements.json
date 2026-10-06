@@ -1644,15 +1644,47 @@
       "area": "Offline Fabric",
       "phase": "P2",
       "requirement": "Arbeiten ohne Internet mit lokalem Paket-/Modell-/Wissensbestand und späterem, herkunftstreuem Abgleich.",
-      "implementation": [],
-      "tests": [],
-      "ui": [],
-      "evidence": [],
-      "docs": [
-        "docs/TODO.md"
+      "implementation": [
+        "lib/offline.ts",
+        "app/api/offline/route.ts",
+        "components/control-center.tsx"
       ],
-      "status": "NOT_IMPLEMENTED",
-      "note": "Es gibt keinen Offline-Paketbestand, keinen lokalen Modell-/Vektorindex und keinen Sync-/Merge-Pfad."
+      "tests": [
+        {
+          "file": "tests/integration/offline.test.ts",
+          "min": 2
+        }
+      ],
+      "ui": [
+        "Offline"
+      ],
+      "evidence": [
+        {
+          "kind": "route",
+          "method": "GET",
+          "path": "/api/offline",
+          "expect": [
+            200
+          ]
+        },
+        {
+          "kind": "route",
+          "method": "POST",
+          "path": "/api/offline",
+          "expect": [
+            201,
+            400,
+            401,
+            403,
+            428
+          ]
+        }
+      ],
+      "docs": [
+        "docs/OFFLINE.md"
+      ],
+      "status": "PASS",
+      "note": "Lokale Assets, signierte SHA-256 Task-Pakete, netzwerkfreier Offline-Run und herkunftstreuer Sync/Merge sind persistent. Konflikte werden niemals überschrieben, sondern als PRESERVE_BOTH erfasst."
     },
     {
       "id": "OPR-001",
