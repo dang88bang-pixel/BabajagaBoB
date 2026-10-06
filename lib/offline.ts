@@ -180,9 +180,6 @@ export function finishOfflineExecution(executionId: string, input: {status:"SUCC
   return clone(execution);
 }
 
-function syncDigest(record: OfflineSyncRecord): string {
-  return digest({...record, exportedAt:undefined});
-}
 
 export function exportOfflineSync(origin: string): OfflineSyncRecord[] {
   const source = safeOrigin(origin);
