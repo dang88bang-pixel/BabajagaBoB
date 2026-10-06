@@ -55,36 +55,64 @@ export type DomainEvent = {
   purpose?: string;
   /** Richtung von causalParentId: immer das ältere (vorhergehende) Event. */
   parentDirection: "PREVIOUS";
+  /** Hash-Kette des kanonischen Event-Logs. */
+  previousHash?: string;
+  hash?: string;
 };
 
 export type DomainEventInput = Omit<DomainEvent, "eventId" | "sequence" | "timestamp" | "parentDirection" | "causalParentId"> & {
   causalParentId?: string;
 };
 
-type EventTrimCheckpoint = {sequence: number; eventId: string; trimmedAt: string; reconstructed?: boolean};
+type EventTrimCheckpoint = {sequence: number; eventId: string; hash?: string; trimmedAt: string; reconstructed?: boolean};
 type Payload = {events: DomainEvent[]; maxRetained: number; trimmedThrough?: EventTrimCheckpoint | null};
 const MAX_EVENTS = 5000;
+const GENESIS = "GENESIS";
 const store = createStore<Payload>("events", 1, () => ({events: [], maxRetained: MAX_EVENTS, trimmedThrough: null}));
+const eventMaterial = (event: DomainEvent, previousHash: string) => JSON.stringify([
+  event.eventId,event.sequence,event.timestamp,event.type,event.message,event.status,event.actor,
+  event.agentId??null,event.taskId??null,event.runId??null,event.jobId??null,event.sandboxId??null,
+  event.experimentId??null,event.action??null,event.decision??null,event.inputRef??null,
+  event.outputRef??null,event.authorizationRef??null,event.provenanceRef??null,event.result??null,
+  event.causedBy??[],event.causalParentId??null,event.purpose??null,event.parentDirection,previousHash
+]);
+const hashEvent = (event: DomainEvent, previousHash: string) =>
+  crypto.createHash("sha256").update(eventMaterial(event, previousHash)).digest("hex");
+
+function normalizeHashChain(payload: Payload) {
+  let previousHash = payload.trimmedThrough ? hashCheckpoint(payload.trimmedThrough) : GENESIS;
+  for (const event of payload.events) {
+    event.previousHash = previousHash;
+    event.hash = hashEvent(event, previousHash);
+    previousHash = event.hash;
+  }
+}
+function hashCheckpoint(checkpoint: EventTrimCheckpoint): string {
+  return checkpoint.hash ?? checkpoint.eventId;
+}
 
 export function appendDomainEvent(input: DomainEventInput): DomainEvent {
   const payload = store.read();
+  normalizeHashChain(payload);
   const previous = payload.events[payload.events.length - 1];
   const next: DomainEvent = {
     ...input,
     eventId: `EVT-${crypto.randomUUID()}`,
-    sequence: (previous?.sequence ?? 0) + 1,
+    sequence: (previous?.sequence ?? payload.trimmedThrough?.sequence ?? 0) + 1,
     timestamp: new Date().toISOString(),
     causalParentId: input.causalParentId ?? previous?.eventId,
     parentDirection: "PREVIOUS"
   };
+  next.previousHash = previous?.hash ?? hashCheckpoint(payload.trimmedThrough ?? {sequence:0,eventId:GENESIS,trimmedAt:""});
+  next.hash = hashEvent(next,next.previousHash);
   payload.events.push(next);
   if (payload.events.length > payload.maxRetained) {
     const removed = payload.events.splice(0, payload.events.length - payload.maxRetained);
     const last = removed.at(-1);
-    if (last) payload.trimmedThrough = {sequence: last.sequence, eventId: last.eventId, trimmedAt: new Date().toISOString()};
+    if (last) payload.trimmedThrough = {sequence: last.sequence, eventId: last.eventId, hash: last.hash, trimmedAt: new Date().toISOString()};
   }
   store.write(payload);
-  return next;
+  return structuredClone(next);
 }
 
 export type EventQuery = {
@@ -137,7 +165,7 @@ function ensureEventTrimCheckpoint(): {reconstructed: boolean; sequence: number}
   const payload = store.read();
   const first = payload.events[0];
   if (!first || first.sequence <= 1 || payload.trimmedThrough) return {reconstructed: false, sequence: payload.trimmedThrough?.sequence ?? 0};
-  const checkpoint: EventTrimCheckpoint = {sequence: first.sequence - 1, eventId: first.causalParentId ?? "UNKNOWN", trimmedAt: new Date().toISOString(), reconstructed: true};
+  const checkpoint: EventTrimCheckpoint = {sequence: first.sequence - 1, eventId: first.causalParentId ?? "UNKNOWN", hash: first.previousHash, trimmedAt: new Date().toISOString(), reconstructed: true};
   store.update(current => { current.trimmedThrough = checkpoint; });
   return {reconstructed: true, sequence: checkpoint.sequence};
 }
@@ -145,13 +173,18 @@ function ensureEventTrimCheckpoint(): {reconstructed: boolean; sequence: number}
 export function verifyEventChain(): EventChainVerification {
   const repaired = ensureEventTrimCheckpoint();
   const payload = store.read();
+  normalizeHashChain(payload);
   const {events} = payload;
   const issues: string[] = [];
+  let previousHash = payload.trimmedThrough?.eventId ?? GENESIS;
   const checkpoint = payload.trimmedThrough ?? null;
   let expected = (checkpoint?.sequence ?? 0) + 1;
   let previousTimestamp = "";
   for (const event of events) {
     if (event.sequence !== expected) issues.push("sequence gap at " + event.eventId + ": expected " + expected + ", found " + event.sequence);
+    if (event.previousHash !== previousHash) issues.push("hash-chain break at " + event.eventId);
+    if (event.hash !== hashEvent(event,event.previousHash ?? previousHash)) issues.push("hash mismatch at " + event.eventId);
+    previousHash = event.hash ?? previousHash;
     expected = event.sequence + 1;
     if (event.causalParentId) {
       const parent = events.find(e => e.eventId === event.causalParentId);
@@ -166,6 +199,7 @@ export function verifyEventChain(): EventChainVerification {
     if (previousTimestamp && event.timestamp < previousTimestamp) issues.push("timestamp regression at " + event.eventId);
     previousTimestamp = event.timestamp;
   }
+  store.write(payload);
   return {valid: issues.length === 0, length: events.length, issues, trimmedSequence: checkpoint?.sequence ?? 0, ...(checkpoint?.reconstructed || repaired.reconstructed ? {headReconstructed: true} : {}), retentionIntegrity: (checkpoint?.sequence ?? 0) === 0 ? "FULL_CHAIN" : checkpoint?.reconstructed || repaired.reconstructed ? "HEAD_RECONSTRUCTED_FROM_FIRST_RETAINED_EVENT" : "TRIMMED_WITH_CHECKPOINT"};
 }
 
