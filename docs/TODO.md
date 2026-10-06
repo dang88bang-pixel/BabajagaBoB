@@ -1,60 +1,40 @@
 # Offene Punkte
 
-**Stand:** 2026-09-25
-**Hinweis:** Die ursprüngliche Roadmap-Fassung dieser Datei (246 Zeilen mit 132
-unbearbeiteten Checkboxen) war ein Planungsdokument aus der Startphase und hat
-den Umsetzungsstand nicht mehr korrekt abgebildet. Sie wurde durch diese
-faktische Liste ersetzt. Maßgeblich für Reifegrade sind `docs/STATUS.md`,
-`docs/SPEC_COMPLIANCE.md` und der Abschlussbericht `docs/ABSCHLUSSBERICHT.md`.
-Die historische Zerlegung bleibt in `docs/IMPLEMENTATION_ROADMAP.md` erhalten
-(ebenfalls Planungsstand, keine Statusaussage).
+**Stand:** 2026-10-06  
+**Maßgebliche Quellen:** `docs/STATUS.md`, `docs/SPEC_COMPLIANCE.md`, `docs/ABSCHLUSSBERICHT.md`.
 
-## 1. Erledigt und nachgewiesen (Kurzfassung)
+## 1. Im Completion-Hardening ergänzt
 
-Vollständige Liste mit Belegen: `docs/STATUS.md`, `docs/ABSCHLUSSBERICHT.md` §B/§C.
+- **Lokale Embedding-Suche:** `lib/knowledge-vector.ts` liefert einen deterministischen, netzwerkfreien 256-dimensionalen Embedding-Fallback; der Knowledge Graph bleibt die Wahrheitsquelle.
+- **Experimentstatistik:** `lib/statistics.ts` liefert Stichprobenkennzahlen, Welch-t-Test, Effektstärke und p-Wert ohne externe Abhängigkeit. Die Statistik ist ein Analysewerkzeug und darf Evidenz nicht automatisch zu `ESTABLISHED` machen.
+- **Geräte-Discovery:** `lib/device-discovery.ts` ergänzt passive ARP-Auswertung und zeitlich begrenzte mDNS-Discovery. Discovery erzeugt niemals automatisch Trust/Authorization; diese bleibt im Authority-System.
+- **Discovery-Tests:** `tests/integration/device-discovery.test.ts`.
+- **Statistik-Tests:** `tests/unit/statistics.test.ts`.
 
-Control Plane über HTTP, Server-Authentifizierung (Session + Creator-Login +
-Capability-Weg), aktionsspezifische Routen-Guards auf **allen** Routen (strukturell
-erzwungen), Betriebsmetriken (Prometheus-Text), Backup/Restore mit Digest-Prüfung, Execution Gate + Broker mit 17
-Prüfungen, argv-Policy ohne Shell, Sandbox-Fabric mit Task-/Agent-Bindung,
-Snapshots mit SHA-256 und verifiziertem Restore, lokale Runtime mit Timeout-Kill,
-Experiment-Engine mit Kausalvalidierung, Error Intelligence bis
-`REGRESSION_LOCKED`, Recovery mit Verifikationspflicht, Regression Engine,
-Knowledge Graph mit negativem Wissen, Agent Fabric (11 Rollen mit
-Autonomie-Vertrag), Provider-Fabric mit Approval-Pflicht, Privacy default `DENY`,
-Device- und Computer-Use-Autorisierung, CI/CD mit Promotion-Gate, 14 §44-Dokumente,
-Live-Nachweis über 171 HTTP-Prüfungen (inkl. Agentenweg über Capability-Token,
-Lockdown-Nachweis für interne Läufe und Kernel-Isolation mit Ressourcenlimits),
-kein Ausführungspfad um den Broker (`lib/system-execution.ts`; Regression und
-Smoke-Test laufen als SYSTEM-WORKER über Gate, Broker und Evidenz).
+## 2. Verbleibende umgebungsabhängige Nachweise
 
-## 2. Offen – als `PARTIAL` geführt
-
-| Punkt | Warum offen | Nächster Schritt |
+| Punkt | Status | Voraussetzung |
 |---|---|---|
-| OCI-Runtime verifizieren | kein Container-Daemon in der Umgebung | Lauf mit Docker/Podman auf einem Host mit Daemon; Härtungsflags und Snapshot prüfen |
-| Egress-Allowlist | bewusst fail closed, bis ein kontrollierter Proxy existiert | Egress-Proxy + DNS-Pinning implementieren, dann `ALLOWLIST` freischalten |
-| Provider live verbinden | keine externen Verbindungen erlaubt (Netzwerk `DENY`) | mit Allowlist + Approval einen Adapter real anbinden und Telemetrie prüfen |
-| ~~Geräte-Discovery~~ | erledigt: `lib/device-enrollment.ts` + `scripts/discover-host.mjs` (Meldung mit Geheimnis, fail closed, nur Discovery/Heartbeat), Autorisierung bleibt Creator-Akt | offen: Netz-Scan (ARP/mDNS) und Attestierung sind `NOT_IMPLEMENTED`; Scheduling nach CPU/RAM/GPU/OS/Architektur/Capabilities ist jetzt implementiert und getestet |
-| Computer Use | kein Browser-/Desktop-Treiber angebunden | Playwright-/VNC-Treiber im Sandbox-Workspace, Aktionen über Broker |
-| ~~Simulation/Visualisierung~~ | erledigt | Renderer `lib/visualization.ts` für alle sieben Arten (aus dem echten Zustand), Bildroute + Evidenzartefakt, `tests/integration/visualization.test.ts` |
-| Control-Center-UI | kein Browser in der Umgebung (geprüft: kein Chromium/Chrome/Firefox, kein Playwright-Cache; Download-Hosts gesperrt) | Browser-E2E bleibt `NOT_VERIFIED`; ersatzweise jsdom-Tests gegen echte Routen-Handler + `audit-ui.mjs` |
-| ~~Recovery-Tier-Ableitung~~ | erledigt | automatische, begründete Klassifikation in `lib/recovery-tier.ts` (Tests: `tests/unit/recovery-tier.test.ts`) |
-| ~~Alarmierung (Regeln)~~ | erledigt | 16 Regeln in `lib/alerting.ts`, an die echten Kennzahlen gebunden, `GET /api/alerts[?format=prometheus]`, UI-Anzeige, Tests; offen bleibt der Betrieb von Scraper/Alertmanager (`NOT_VERIFIED`) |
-| ~~Backup-Automation~~ | erledigt: `lib/backup-policy.ts` (idempotenter geplanter Lauf, Aufbewahrungsgrenze je Store, Audit + Ereignis, UI-Panel) | offen bleibt ein echter Scheduler-Daemon (externer Auslöser, `NOT_VERIFIED`) |
-| ~~Last-/Soak-Tests~~ | erledigt: begrenzter Nachweis **mit definierten Schwellen** (`SOAK_SLO_P95_MS`, `SOAK_SLO_MIN_SUCCESS_RATIO`, Negativnachweis Exit 1) und betriebsweite SLO-Bewertung (`lib/slo.ts`, `/api/slo`, UI „Service-Level“) | offen bleibt ein **Dauerlauf** über Stunden/Lastkurve (`NOT_VERIFIED`) |
+| OCI-Runtime live | `NOT_VERIFIED` | Docker/Podman-Daemon und reale Host-Isolation |
+| Egress-Allowlist | `PARTIAL / FAIL-CLOSED` | kontrollierter Egress-Proxy + DNS-Pinning |
+| Provider live | `NOT_VERIFIED` | explizite Allowlist + Provider-Credentials + Approval |
+| Geräte-Attestierung | `PARTIAL` | vertrauenswürdige Hardware-/Enrollment-Attestation |
+| Browser/Desktop-Treiber | `NOT_VERIFIED` | Playwright/Browser bzw. VNC/Desktop-Host |
+| Control-Center Browser-E2E | `NOT_VERIFIED` | realer Browser |
+| Scheduler-Daemon | `NOT_VERIFIED` | dauerhafter Betriebsprozess/Orchestrator |
+| Dauer-Soak | `NOT_VERIFIED` | Stunden-/Lastlauf auf Zielumgebung |
 
-## 3. Nicht implementiert (bewusst)
+## 3. Noch echte Entwicklungsarbeit
 
-- WebAuthn als Alternative zu TOTP (TOTP ist implementiert: `BOB_CREATOR_TOTP_SECRET`).
-- Automatisches Deployment (Promotion bleibt manuell und Creator-gebunden).
-- Vektor-/Embedding-Suche im Knowledge Graph.
-- Statistische Signifikanzprüfung in der Kausalvalidierung.
+- Statistik in die verbindliche Kausalvalidierung integrieren, sobald ein Experiment quantitative Messwerte führt.
+- WebAuthn als optionale zweite Authentisierungsmethode ergänzen; TOTP bleibt vorhanden.
+- Egress-Proxy mit Allowlist und DNS-Pinning als kontrollierten Netzwerkpfad implementieren.
+- Provider-Adapter nur hinter Data-Boundary, Approval und Audit aktivieren.
+- Browser-/Desktop-Adapter als reale Sandbox-Treiber bereitstellen und auf einem geeigneten Host verifizieren.
+- Dauer-Scheduler und Dauer-Soak auf einem betrieblich geeigneten Host verifizieren.
 
-## 4. Regeln für neue Einträge
+## 4. Abnahmeregel
 
-- Kein Punkt gilt als erledigt ohne Implementierung + Integration + Persistenz
-  (falls nötig) + Fehlerpfade + Security-Grenze + Test + Regressionstest +
-  sichtbaren UI-Zustand + Dokumentation + erfolgreichen E2E-Nachweis.
-- Unsichere oder nicht prüfbare Punkte werden als `UNKNOWN`, `UNVERIFIED`,
-  `BLOCKED` oder `NOT_IMPLEMENTED` geführt – nie als Erfolg.
+Kein Punkt wird als `DONE` bezeichnet, solange Implementierung, Integration, Persistenz (falls erforderlich), Fehlerpfad, Security-Grenze, Test, Regression, sichtbarer Status, Dokumentation und ein reproduzierbarer Nachweis fehlen.
+
+Umgebungsabhängige Fähigkeiten bleiben ausdrücklich `NOT_VERIFIED`, `BLOCKED` oder `PARTIAL`; sie werden niemals durch eine bloße Architekturbehauptung zu `PASS`.
