@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     switch (action) {
       case "register-asset":
         if (!body.asset || typeof body.asset !== "object" || Array.isArray(body.asset)) throw new Error("asset object required");
-        return NextResponse.json(registerOfflineAsset(body.asset as never),{status:201});
+        return NextResponse.json(registerOfflineAsset(body.asset as Parameters<typeof registerOfflineAsset>[0]),{status:201});
       case "create-package":
         if (!body.task || typeof body.task !== "object" || Array.isArray(body.task)) throw new Error("task object required");
         return NextResponse.json(createOfflineTaskPackage(stringField(body,"taskId",256), body.task as Record<string,unknown>, stringArray(body.assetIds,"assetIds",100,256), stringField(body,"origin",200)),{status:201});
