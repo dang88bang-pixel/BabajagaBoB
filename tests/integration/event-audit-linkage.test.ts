@@ -34,7 +34,7 @@ describe("canonical event/audit linkage",()=>{
     const envelope=JSON.parse(fs.readFileSync(file,"utf8"));
     envelope.payload.events[0].message="tampered";
     fs.writeFileSync(file,JSON.stringify(envelope,null,2),{mode:0o600});
-    await expect(async()=>verifyEventChain()).rejects.toThrow(/integrity digest mismatch/i);
+    expect(()=>verifyEventChain()).toThrow(/integrity digest mismatch/i);
   });
 
   it("rejects a fabricated causal reference during verification",async()=>{
