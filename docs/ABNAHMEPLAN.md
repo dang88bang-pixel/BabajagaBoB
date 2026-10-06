@@ -19,7 +19,7 @@ Prüfer wurde nicht abgeschwächt.
 **Stand der Umsetzung:** P0 vollständig (außer `OCI-001`, extern), **P1 abgeschlossen**
 (Status-Modell, Observatory und „Warum?" sind implementiert, getestet und live belegt),
 P4 ohne offene Pflicht (Fehlerinjektion, Sabotageautomatisierung und Dauerlauf bleiben
-benannte Lücken), P2/P3/P5 mit dokumentierten externen Abhängigkeiten bzw. Entscheidungen.
+benannte Lücken), P2/P3/P5 mit dokumentierten externen Abhängigkeiten bzw. Entscheidungen; Offline Fabric (`OFF-001`) ist seit 2026-10-06 implementiert, getestet und in die UI integriert.
 
 ---
 
@@ -89,7 +89,7 @@ Punkte 2, 6 und 9 werden **maschinell** geprüft; 1, 3–5, 7, 8 über die verla
 | ✅ PASS | 77 | 91 % | mit Implementierung, Test, Nachweis — inkl. Fehlerinjektion und Sabotage |
 | 🟡 PARTIAL | 3 | 4 % | Lücke benannt (Computer-Use-Treiber `CU-001`, Dauerlauf `LOAD-001`, Checkpointing/Planer `CH-04`) |
 | 🔵 NOT_VERIFIED | 3 | 4 % | OCI-Runtime (`OCI-001`), Provider-Live-Verbindung (`PROVF-002`), Browser-E2E (`UI-003`) |
-| ⚪ NOT_IMPLEMENTED | 2 | 2 % | Offline Fabric (`OFF-001`), Betriebshärtung (`OPS-004`) |
+| ⚪ NOT_IMPLEMENTED | 1 | 1 % | keine Offline-Lücke mehr; verbleibende bewusste Nichtimplementierung siehe Matrix |
 | ❌ FAIL / ⛔ BLOCKED | 0 | — | keine |
 
 Nachtrag 2026-09-26: `TEST-003` ist zusätzlich auf **Prozessebene** belegt (echter SIGKILL mitten im
@@ -106,7 +106,7 @@ Oberflächensektion und CI-Pflichtstufe, nicht durch Statusänderung allein. Fr�
 Die vollständige Tabelle steht in `docs/ACCEPTANCE.md` (generiert), die Einzelbegründungen in
 `docs/acceptance/requirements.json` (`note`-Feld).
 
-**Nicht** als erledigt markiert, obwohl technisch möglich wäre — hier ist bewusst ehrlich:
+**Noch offen** und deshalb nicht als vollständig erledigt markiert — hier ist bewusst ehrlich:
 
 - **Deployment** (`CH-15`/`OPS-003`): Promotion-Gates existieren, ein Ausrollvorgang mit
   Health-Check und Rollback nicht. Solange fehlt der letzte Schritt der Zielkette.
@@ -116,6 +116,7 @@ Die vollständige Tabelle steht in `docs/ACCEPTANCE.md` (generiert), die Einzelb
   fehlt weiterhin. Sabotageproben laufen seit dieser Runde automatisiert in CI (`TEST-004` → PASS).
 - **Geräte-Scheduling/Computer-Use-Treiber** (`DEV-001`, `CU-001`): Discovery, Autorisierung und
   Freigabe sind umgesetzt; echte Treiber bzw. Ressourcenplanung fehlen ohne Umgebung.
+- **Offline Fabric** ist nicht mehr offen: `lib/offline.ts`, `/api/offline`, persistente Task-Pakete, netzwerkfreie Runs und provenance-erhaltender Sync/Merge sind implementiert und getestet.
 
 ## 4a. Reparaturen am eingefrorenen Rahmen (2026-09-25, Abnahme-Runde)
 
