@@ -64,7 +64,7 @@ export type DomainEventInput = Omit<DomainEvent, "eventId" | "sequence" | "times
   causalParentId?: string;
 };
 
-type EventTrimCheckpoint = {sequence: number; eventId: string; trimmedAt: string; reconstructed?: boolean};
+type EventTrimCheckpoint = {sequence: number; eventId: string; hash?: string; trimmedAt: string; reconstructed?: boolean};
 type Payload = {events: DomainEvent[]; maxRetained: number; trimmedThrough?: EventTrimCheckpoint | null};
 const MAX_EVENTS = 5000;
 const GENESIS = "GENESIS";
@@ -88,7 +88,7 @@ function normalizeHashChain(payload: Payload) {
   }
 }
 function hashCheckpoint(checkpoint: EventTrimCheckpoint): string {
-  return checkpoint.eventId;
+  return checkpoint.hash ?? checkpoint.eventId;
 }
 
 export function appendDomainEvent(input: DomainEventInput): DomainEvent {
@@ -109,7 +109,7 @@ export function appendDomainEvent(input: DomainEventInput): DomainEvent {
   if (payload.events.length > payload.maxRetained) {
     const removed = payload.events.splice(0, payload.events.length - payload.maxRetained);
     const last = removed.at(-1);
-    if (last) payload.trimmedThrough = {sequence: last.sequence, eventId: last.hash ?? last.eventId, trimmedAt: new Date().toISOString()};
+    if (last) payload.trimmedThrough = {sequence: last.sequence, eventId: last.eventId, hash: last.hash, trimmedAt: new Date().toISOString()};
   }
   store.write(payload);
   return structuredClone(next);
@@ -165,7 +165,7 @@ function ensureEventTrimCheckpoint(): {reconstructed: boolean; sequence: number}
   const payload = store.read();
   const first = payload.events[0];
   if (!first || first.sequence <= 1 || payload.trimmedThrough) return {reconstructed: false, sequence: payload.trimmedThrough?.sequence ?? 0};
-  const checkpoint: EventTrimCheckpoint = {sequence: first.sequence - 1, eventId: first.causalParentId ?? "UNKNOWN", trimmedAt: new Date().toISOString(), reconstructed: true};
+  const checkpoint: EventTrimCheckpoint = {sequence: first.sequence - 1, eventId: first.causalParentId ?? "UNKNOWN", hash: first.previousHash, trimmedAt: new Date().toISOString(), reconstructed: true};
   store.update(current => { current.trimmedThrough = checkpoint; });
   return {reconstructed: true, sequence: checkpoint.sequence};
 }
