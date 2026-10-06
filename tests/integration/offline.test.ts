@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import {vi} from "vitest";
 
 describe("Offline Fabric", () => {
   it("builds and validates a task package without network", async () => {
