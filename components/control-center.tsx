@@ -50,6 +50,7 @@ type SectionId =
   | "Providers"
   | "Devices"
   | "ComputerUse"
+  | "Offline"
   | "Pipeline"
   | "Deployment"
   | "Tests"
@@ -95,6 +96,7 @@ const NAV: {id: SectionId; label: string; group: string}[] = [
   {id: "Providers", label: "Provider", group: "Fabric"},
   {id: "Devices", label: "Geräte", group: "Fabric"},
   {id: "ComputerUse", label: "Computer Use", group: "Fabric"},
+  {id: "Offline", label: "Offline Fabric", group: "Fabric"},
   {id: "Pipeline", label: "CI/CD-Pipeline", group: "Lieferkette"},
   {id: "Deployment", label: "Deployment", group: "Lieferkette"},
   {id: "Tests", label: "Tests", group: "Lieferkette"},
@@ -413,6 +415,19 @@ const SOURCES: Partial<Record<SectionId, {url: string; path?: string[]; columns:
       {key: "state", label: "Zustand"},
       {key: "sandboxId", label: "Sandbox"},
       {key: "taskId", label: "Task"}
+    ]
+  },
+  Offline: {
+    url: "/api/offline",
+    path: ["packages"],
+    note: "Offline Fabric: lokale Assets, Task-Pakete, Ausführungen und herkunftstreuer Sync. Netzwerk bleibt DENY.",
+    columns: [
+      {key: "packageId", label: "Paket"},
+      {key: "taskId", label: "Task"},
+      {key: "origin", label: "Herkunft"},
+      {key: "state", label: "Zustand"},
+      {key: "digest", label: "Digest"},
+      {key: "assetIds", label: "Assets", render: row => (Array.isArray(row.assetIds) ? String((row.assetIds as unknown[]).length) : "0")}
     ]
   },
   Slo: {
