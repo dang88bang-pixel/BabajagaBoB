@@ -42,7 +42,7 @@ export async function executeComputerAction(req: ComputerExecutionRequest): Prom
     recordAudit({actor:"AG-BROWSER",action:"computer.execute",resource:req.computerId,decision:"DENY"},{reason:"DRIVER_NOT_CONFIGURED",action:req.action});
     throw new Error("computer driver is not configured; execution remains fail closed");
   }
-  if (/[\\s;|&<>\u0000]/.test(command)) throw new Error("computer driver path is invalid");
+  if (/[\\s;|&<>]/.test(command) || command.includes(String.fromCharCode(0))) throw new Error("computer driver path is invalid");
   const timeout = Math.min(Math.max(Number(req.timeoutMs ?? 30_000), 1_000), 120_000);
   const started = Date.now();
   const result = await new Promise<{code:number|null;stdout:string;stderr:string;timedOut:boolean}>((resolve) => {
