@@ -135,15 +135,13 @@ export class OciContainerRuntimeAdapter implements SandboxRuntime {
       `${spec.limits.memoryMb}m`,
       "--pids-limit",
       String(spec.limits.processes),
-      "--storage-opt",
-      `size=${spec.limits.storageMb}m`,
       "--read-only",
       "--cap-drop",
       "ALL",
       "--security-opt",
       "no-new-privileges",
       "--tmpfs",
-      "/tmp:rw,noexec,nosuid,size=64m",
+      `/tmp:rw,noexec,nosuid,size=${Math.max(16, Math.min(spec.limits.storageMb, 1024))}m`,
       image,
       ...command
     ];

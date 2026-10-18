@@ -10,6 +10,8 @@ import {addProvenanceEdge, addProvenanceNode} from "./provenance";
 import {MAX_ARGV_LENGTH, firstMetacharacterArg, isShellInterpreter} from "./argv-policy";
 import type {ExecutionResult} from "./runtime";
 import type {Risk} from "./types";
+import {executeComputerAction, type ComputerExecutionResult} from "./computer-driver";
+import {listComputers} from "./computer-use";
 
 /**
  * Execution Broker (Abschnitt 10).
@@ -346,6 +348,37 @@ export async function executeAuthorized(request: ExecutionRequest): Promise<Exec
       truncated: artifact.truncated
     }
   };
+}
+
+export async function executeComputerAuthorized(request: ExecutionRequest & {computerId:string;computerAction:string;computerInput:Record<string,unknown>}): Promise<ComputerExecutionResult> {
+  const check = preflight(request);
+  if (!check.allowed) deny(request,"COMPUTER_PREFLIGHT",check.reasons.join("; "));
+  const state = getControlState();
+  const task = state.tasks.find(t=>t.taskId===request.taskId);
+  const sandbox = state.sandboxes.find(s=>s.sandboxId===request.sandboxId);
+  if (!task || !sandbox) deny(request,"COMPUTER_CONTEXT","task or sandbox not found");
+  if (task.assignedAgent!==request.agentId) deny(request,"AGENT_TASK_BINDING","task is assigned to another agent");
+  if (sandbox.agentId!==request.agentId || sandbox.taskId!==request.taskId) deny(request,"SANDBOX_BINDING","sandbox task/agent binding mismatch");
+  const environment=request.environment ?? sandbox.type;
+  const valid=validateCapabilityToken(request.capabilityTokenId,["task:execute","sandbox:run","computer:execute"],{subject:request.agentId,taskId:request.taskId,sandboxId:request.sandboxId,risk:task.risk,environment});
+  if (!valid.valid) deny(request,"COMPUTER_CAPABILITY",valid.reason);
+  const computer=listComputers().find(c=>c.id===request.computerId);
+  if (!computer) deny(request,"COMPUTER_EXISTS","computer not found");
+  if (!computer.authorized) deny(request,"COMPUTER_AUTHORIZATION","computer is not authorized");
+  if (computer.state!=="EXECUTING") deny(request,"COMPUTER_STATE","computer must be executing");
+  if (computer.taskId!==request.taskId || computer.sandboxId!==request.sandboxId) deny(request,"COMPUTER_BINDING","computer is allocated to a different task or sandbox");
+  if (computer.network !== "DENY") deny(request,"COMPUTER_NETWORK","computer network policy is not DENY");
+  if (!computer.capabilities.some(c=>c.kind===computer.kind && c.environments.includes(environment) && c.network==="DENY" && c.actions.includes(request.computerAction as never))) deny(request,"COMPUTER_ACTION","computer capability does not permit this action in the requested environment");
+  try { consumeCapabilityToken(request.capabilityTokenId,request.agentId); }
+  catch (error) { deny(request,"TOKEN_REPLAY",error instanceof Error?error.message:"capability token could not be consumed"); }
+  const result=await executeComputerAction({computerId:computer.id,action:request.computerAction,input:request.computerInput,timeoutMs:request.timeoutMs});
+  if (request.runId) {
+    addProvenanceNode({id:request.runId,kind:"RUN",label:request.runId,runId:request.runId});
+    addProvenanceNode({id:computer.id,kind:"DEVICE",label:computer.id,runId:request.runId});
+    addProvenanceEdge({from:request.runId,to:computer.id,relation:"EXECUTED_IN"});
+  }
+  observe({type:result.status==="SUCCEEDED"?"computer.authorized.completed":"computer.authorized.failed",message:"Computer Use "+computer.id+"/"+request.computerAction+": "+result.status,status:result.status==="SUCCEEDED"?"COMPLETED":"ERROR",actor:request.agentId,agentId:request.agentId,taskId:request.taskId,runId:request.runId,sandboxId:request.sandboxId,action:"computer.execute",resource:computer.id,decision:result.status==="SUCCEEDED"?"ALLOW":"DENY",authorizationRef:request.capabilityTokenId,argumentsValue:{action:request.computerAction,exitCode:result.exitCode,stdoutDigest:result.stdoutDigest,stderrDigest:result.stderrDigest}});
+  return result;
 }
 
 /** Prüfprotokoll ohne Ausführung (Dry-Run für UI/Governance). */

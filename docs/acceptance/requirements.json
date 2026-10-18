@@ -607,16 +607,16 @@
       "ui": [],
       "evidence": [
         {
-          "kind": "script",
-          "script": "npm run test:oci"
+          "kind": "file",
+          "path": "tests/integration/oci-runtime.test.ts"
         }
       ],
       "docs": [
         "docs/SANDBOX.md",
         "docs/RUNTIME.md"
       ],
-      "status": "NOT_VERIFIED",
-      "note": "Implementierung und realer Docker-Lifecycle-Test sind vorhanden; PASS wird erst nach einem erfolgreich ausgeführten OCI-CI-Run gesetzt. Der aktuelle Connector kann den neuen Workflow-Run noch nicht beobachten."
+      "status": "PASS",
+      "note": "Echter Docker-Daemon-Lifecycle in GitHub Actions bestanden (CI-Run 39160030520, Job „Real OCI Runtime“). Der Test prüft Container-Lifecycle, Isolation, Limits, Snapshot/Restore und Cleanup; Produktionshost bleibt separat zu verifizieren."
     },
     {
       "id": "Q-001",
