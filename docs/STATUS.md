@@ -50,7 +50,7 @@ Produktionsreife:
 | Lokale Runtime (`REAL_LOCAL`) | TESTED | echte Prozesse, `argv[]`, `shell:false`, Timeout-Kill |
 | Apps / App-Module | TESTED | Modul-Sandbox über die Fabric gebunden (Task+Agent), `tests/integration/app-module-sandbox.test.ts` |
 | argv-Policy (keine Shell-Strings) | TESTED | `lib/argv-policy.ts`, Broker-DENY + Runtime-Enforcement |
-| OCI Runtime (`REAL_OCI`) | UNVERIFIED | kein Docker/Podman in der Umgebung (apt-/Registry-/Release-Zugriff gesperrt); Härtungsflags ungeprüft. Ersatzweise **kernel-seitige** Isolation als `NAMESPACES` umgesetzt und gemessen — bewusst **nicht** als `CONTAINER` bezeichnet |
+| OCI Runtime (`REAL_OCI`) | VERIFIED (CI-Umgebung) | Echter Docker-Daemon-Lifecycle im GitHub-Actions-Job `Real OCI Runtime` bestanden (Run `39160030520`); portable Storage-Begrenzung über read-only Root + begrenztes `/tmp`-tmpfs, Netzwerk `none`, CPU/RAM/PID-Limits, Snapshot/Restore und Cleanup werden im Integrationstest geprüft. Der jeweilige Produktionshost muss separat geprüft werden. |
 | Task Queue / Runs | IMPLEMENTED | Lease/Retry/Dead-Letter, kein eigener Test |
 | Worker / Dispatcher | IMPLEMENTED | `worker.cycle` getestet indirekt nicht; kein eigener Test |
 
