@@ -44,6 +44,19 @@ Recovery`
   auf der Instanz `:3100` mit Kernel-Isolation und cgroup-Limits; dazu der Abnahmeprüfer
   `node scripts/acceptance.mjs --live` (**82 / 0**, 66/66 Routennachweise).
 
+## Sofort starten
+
+Die deutsche Schritt-für-Schritt-Anleitung für den ersten lokalen Start steht in [`docs/START_HERE.md`](docs/START_HERE.md).
+
+Für eine lokale Entwicklerinstanz reicht:
+
+```bash
+npm ci
+npm run dev:ready
+```
+
+Danach `http://localhost:3000` öffnen und den vom Setup ausgegebenen Bootstrap-Secret im Creator-Bootstrap eingeben.
+
 ## Dokumentation
 
 | Datei | Inhalt |
