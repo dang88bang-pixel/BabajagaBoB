@@ -66,7 +66,7 @@ export function collectMetrics(): Metric[] {
   });
   push({name: "bob_store_integrity_ok", help: "1 wenn alle Stores integer sind, sonst 0", type: "gauge", value: stores.ok ? 1 : 0});
 
-  const events = safe(() => eventStoreIntegrity(), {ok: false, count: 0, issues: [] as string[], file: ""});
+  const events = safe(() => eventStoreIntegrity(), {ok: false, count: 0, issues: [] as string[], trimmedSequence: 0, canonical: false, digest: undefined, version: 1});
   push({name: "bob_events_total", help: "Anzahl persistierter Domain-Events", type: "gauge", value: events.count});
   push({name: "bob_event_store_ok", help: "1 wenn das Event-Log integer ist", type: "gauge", value: events.ok ? 1 : 0});
 

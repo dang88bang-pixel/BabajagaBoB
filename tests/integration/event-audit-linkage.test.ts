@@ -26,6 +26,17 @@ describe("canonical event/audit linkage",()=>{
     expect(verifyAuditChain().valid).toBe(true);
   });
 
+  it("detects tampering of the canonical event hash chain",async()=>{
+    const {observe}=await import("../../lib/observability");
+    const {verifyEventChain}=await import("../../lib/events/log");
+    observe({type:"test.hash",message:"hash",status:"COMPLETED",actor:"TEST",action:"test.hash"});
+    const file=path.join(root,"events.json");
+    const envelope=JSON.parse(fs.readFileSync(file,"utf8"));
+    envelope.payload.events[0].message="tampered";
+    fs.writeFileSync(file,JSON.stringify(envelope,null,2),{mode:0o600});
+    expect(()=>verifyEventChain()).toThrow(/integrity digest mismatch/i);
+  });
+
   it("rejects a fabricated causal reference during verification",async()=>{
     const {appendDomainEvent,verifyEventChain}=await import("../../lib/events/log");
     appendDomainEvent({type:"test",message:"fabricated",status:"COMPLETED",actor:"TEST",causedBy:["EVT-does-not-exist"]});

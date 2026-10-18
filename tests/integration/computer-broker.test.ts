@@ -8,6 +8,7 @@ describe("Computer Use through Execution Broker",()=>{
   beforeEach(()=>{
     root=fs.mkdtempSync(path.join(os.tmpdir(),"bob-computer-broker-"));
     process.env.BOB_STORAGE_DIR=root;
+    process.env.BOB_BOOTSTRAP_SECRET="test-bootstrap-secret-only-for-tests";
     vi.resetModules();
   });
 
@@ -17,6 +18,10 @@ describe("Computer Use through Execution Broker",()=>{
     fs.chmodSync(driver,0o700);
     process.env.BOB_COMPUTER_DRIVER=driver;
 
+    const bootstrap=await import("../../lib/bootstrap");
+    await bootstrap.completeBootstrap({secret:"test-bootstrap-secret-only-for-tests",creatorName:"Computer Test"});
+    const bootstrap=await import("../../lib/bootstrap");
+    await bootstrap.completeBootstrap({secret:"test-bootstrap-secret-only-for-tests",creatorName:"Computer Test"});
     const computers=await import("../../lib/computer-use");
     const authority=await import("../../lib/authority");
     const broker=await import("../../lib/execution-broker");

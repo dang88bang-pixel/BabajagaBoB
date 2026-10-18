@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import {spawn} from "node:child_process";
 import {getControlState} from "./control-plane";
 import {executionGate} from "./execution-gate";
 import {capabilityTokens, consumeCapabilityToken, validateCapabilityToken} from "./authority";
@@ -8,6 +10,7 @@ import {activeSandboxRuntime, runtimeHandle} from "./runtime-factory";
 import {observe} from "./observability";
 import {addProvenanceEdge, addProvenanceNode} from "./provenance";
 import {MAX_ARGV_LENGTH, firstMetacharacterArg, isShellInterpreter} from "./argv-policy";
+import {listComputers, releaseComputer, startComputer} from "./computer-use";
 import type {ExecutionResult} from "./runtime";
 import type {Risk} from "./types";
 
@@ -380,4 +383,99 @@ export function preflight(request: Omit<ExecutionRequest, "argv">): {allowed: bo
     if (!gate.allowed) reasons.push(...gate.reasons);
   }
   return {allowed: reasons.length === 0, checks, reasons};
+}
+
+
+export type ComputerExecutionRequest = {
+  taskId:string;
+  agentId:string;
+  sandboxId:string;
+  capabilityTokenId:string;
+  runId?:string;
+  environment?:string;
+  computerId:string;
+  computerAction:import("./computer-use").ComputerUseAction;
+  computerInput:Record<string,unknown>;
+};
+
+export type ComputerExecutionResult = {
+  status:"SUCCEEDED"|"FAILED";
+  computerId:string;
+  action:string;
+  output:unknown;
+  durationMs:number;
+};
+
+function runComputerDriver(driver:string,input:Record<string,unknown>,timeoutMs:number):Promise<{status:number|null;stdout:string;stderr:string;timedOut:boolean}>{
+  return new Promise((resolve,reject)=>{
+    const child=spawn(driver,[],{shell:false,stdio:["pipe","pipe","pipe"]});
+    let stdout="",stderr="",timedOut=false;
+    const timer=setTimeout(()=>{timedOut=true;child.kill("SIGKILL");},timeoutMs);
+    child.stdout.on("data",chunk=>{stdout=(stdout+String(chunk)).slice(-200_000);});
+    child.stderr.on("data",chunk=>{stderr=(stderr+String(chunk)).slice(-20_000);});
+    child.once("error",error=>{clearTimeout(timer);reject(error);});
+    child.once("close",code=>{clearTimeout(timer);resolve({status:code,stdout,stderr,timedOut});});
+    child.stdin.end(JSON.stringify(input));
+  });
+}
+
+/**
+ * Computer-Use-Ausführung läuft ausschließlich über denselben Capability-/Audit-
+ * Pfad wie Sandbox-Ausführung. Discovery oder Registrierung allein reichen nicht.
+ * Der konkrete Treiber bleibt außerhalb des Agent-Kontexts und wird mit shell:false
+ * gestartet; Netzwerkzugriff wird nicht durch diesen Adapter freigeschaltet.
+ */
+export async function executeComputerAuthorized(request:ComputerExecutionRequest):Promise<ComputerExecutionResult>{
+  if(!request||typeof request!=="object") throw new ExecutionDeniedError("REQUEST_SHAPE","malformed computer execution request");
+  const computer=listComputers().find(item=>item.id===request.computerId);
+  if(!computer) throw new ExecutionDeniedError("COMPUTER_EXISTS","computer not found");
+  if(!computer.authorized) throw new ExecutionDeniedError("COMPUTER_AUTHORIZATION","computer is not authorized");
+  if(computer.state!=="ALLOCATED"&&computer.state!=="EXECUTING") throw new ExecutionDeniedError("COMPUTER_STATE","computer is not allocated");
+  if(computer.taskId!==request.taskId) throw new ExecutionDeniedError("COMPUTER_TASK_BINDING","computer belongs to a different task");
+  if(request.sandboxId && computer.sandboxId && computer.sandboxId!==request.sandboxId) throw new ExecutionDeniedError("COMPUTER_SANDBOX_BINDING","computer belongs to a different sandbox");
+  const capability=capabilityTokens().find(token=>token.id===request.capabilityTokenId);
+  if(!capability) throw new ExecutionDeniedError("TOKEN_EXISTS","computer capability token not found");
+  const validation=validateCapabilityToken(request.capabilityTokenId,["computer:execute"],{
+    subject:request.agentId,taskId:request.taskId,sandboxId:request.sandboxId,environment:request.environment??"development"
+  });
+  if(!validation.valid) throw new ExecutionDeniedError("TOKEN_VALIDATION",validation.reason);
+  const computerCapability=computer.capabilities.find(cap=>cap.kind===computer.kind&&cap.actions.includes(request.computerAction));
+  if(!computerCapability) throw new ExecutionDeniedError("COMPUTER_CAPABILITY",`computer action ${request.computerAction} is not available`);
+  if(!computerCapability.environments.includes(request.environment??"development")) throw new ExecutionDeniedError("COMPUTER_ENVIRONMENT","computer action is not allowed in this environment");
+  const driver=process.env.BOB_COMPUTER_DRIVER;
+  if(!driver||!pathIsSafeExecutable(driver)) throw new ExecutionDeniedError("COMPUTER_DRIVER","computer driver is unavailable or invalid");
+  consumeCapabilityToken(request.capabilityTokenId,request.agentId);
+  startComputer(request.computerId);
+  const started=Date.now();
+  try{
+    const result=await runComputerDriver(driver,{action:request.computerAction,input:request.computerInput,computerId:request.computerId},30_000);
+    let output:unknown=result.stdout;
+    try{output=JSON.parse(result.stdout);}catch{}
+    const ok=!result.timedOut&&result.status===0;
+    observe({
+      type:ok?"computer.execution.completed":"computer.execution.failed",
+      message:ok?`Computer-Use ${request.computerAction} abgeschlossen`:`Computer-Use ${request.computerAction} fehlgeschlagen`,
+      status:ok?"COMPLETED":"ERROR",
+      actor:request.agentId,
+      agentId:request.agentId,
+      taskId:request.taskId,
+      sandboxId:request.sandboxId,
+      runId:request.runId,
+      action:"computer.execute",
+      resource:request.computerId,
+      decision:ok?"ALLOW":"ERROR",
+      authorizationRef:request.capabilityTokenId,
+      argumentsValue:{action:request.computerAction,durationMs:Date.now()-started,timedOut:result.timedOut,stderr:result.stderr}
+    });
+    return {status:ok?"SUCCEEDED":"FAILED",computerId:request.computerId,action:request.computerAction,output,durationMs:Date.now()-started};
+  }finally{
+    releaseComputer(request.computerId);
+  }
+}
+
+function pathIsSafeExecutable(candidate:string):boolean{
+  try{
+    const stat=fs.statSync(candidate);
+    return stat.isFile() && candidate.length<=4096 && !candidate.includes("\\0");
+  }catch{return false;}
 }

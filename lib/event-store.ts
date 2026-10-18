@@ -1,52 +1,55 @@
-/**
- * Kompatibilitätsgrenze zum kanonischen Event-Log.
- *
- * Es gibt genau EINEN Event-Persistenzpfad: `lib/events/log.ts`.
- * Dieses Modul existiert nur, damit bestehende Importe weiter funktionieren,
- * und darf nicht selbst persistieren.
- */
-import type {Event, Status} from "./types";
+import type {Event} from "./types";
 import {
   appendDomainEvent,
   eventLogIntegrity,
-  latestDomainEvent,
   listDomainEvents,
   type DomainEvent
 } from "./events/log";
 
-function toLegacy(domain: DomainEvent): Event {
+/**
+ * Kompatibilitätsadapter für ältere Timeline-/Control-Plane-Aufrufer.
+ *
+ * Dieser Adapter besitzt KEINE eigene Persistenz mehr. Der kanonische
+ * Event-Fabric liegt ausschließlich im Domain-Event-Log.
+ */
+const toLegacyEvent=(event:DomainEvent):Event=>({
+  id:event.eventId,
+  type:event.type,
+  message:event.message,
+  status:event.status,
+  time:event.timestamp,
+  actor:event.actor,
+  taskId:event.taskId,
+  resource:event.outputRef,
+  causalParentId:event.causalParentId
+});
+
+export function loadEvents():Event[]{
+  return listDomainEvents({order:"desc"}).map(toLegacyEvent);
+}
+
+export function appendEventPersistent(event:Event):Event{
+  const persisted=appendDomainEvent({
+    type:event.type,
+    message:event.message,
+    status:event.status,
+    actor:event.actor,
+    taskId:event.taskId,
+    causalParentId:event.causalParentId,
+    outputRef:event.resource
+  });
+  return toLegacyEvent(persisted);
+}
+
+export function eventStoreIntegrity(){
+  const report=eventLogIntegrity();
   return {
-    id: domain.eventId,
-    type: domain.type,
-    message: domain.message,
-    status: domain.status,
-    time: domain.timestamp,
-    actor: domain.actor,
-    taskId: domain.taskId,
-    resource: domain.sandboxId ?? domain.taskId,
-    causalParentId: domain.causalParentId
+    ok:report.valid,
+    digest:undefined,
+    version:1,
+    count:report.length,
+    issues:report.issues,
+    trimmedSequence:report.trimmedSequence??0,
+    canonical:true
   };
 }
-
-export function loadEvents(): Event[] {
-  return listDomainEvents({order: "asc"}).map(toLegacy).reverse();
-}
-
-export function appendEventPersistent(event: Event): Event {
-  const appended = appendDomainEvent({
-    type: event.type,
-    message: event.message,
-    status: (event.status ?? "RUNNING") as Status,
-    actor: event.actor,
-    taskId: event.taskId,
-    causalParentId: event.causalParentId
-  });
-  return toLegacy(appended);
-}
-
-export function eventStoreIntegrity() {
-  const integrity = eventLogIntegrity();
-  return {ok: integrity.ok && integrity.valid, count: integrity.length, issues: integrity.issues, file: integrity.file};
-}
-
-export {latestDomainEvent};
