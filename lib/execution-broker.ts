@@ -367,7 +367,8 @@ export async function executeComputerAuthorized(request: ExecutionRequest & {com
   if (!computer.authorized) deny(request,"COMPUTER_AUTHORIZATION","computer is not authorized");
   if (computer.state!=="EXECUTING") deny(request,"COMPUTER_STATE","computer must be executing");
   if (computer.taskId!==request.taskId || computer.sandboxId!==request.sandboxId) deny(request,"COMPUTER_BINDING","computer is allocated to a different task or sandbox");
-  if (!computer.capabilities.some(c=>c.kind===computer.kind && c.actions.includes(request.computerAction as never))) deny(request,"COMPUTER_ACTION","computer capability does not permit this action");
+  if (computer.network !== "DENY") deny(request,"COMPUTER_NETWORK","computer network policy is not DENY");
+  if (!computer.capabilities.some(c=>c.kind===computer.kind && c.environments.includes(environment) && c.network==="DENY" && c.actions.includes(request.computerAction as never))) deny(request,"COMPUTER_ACTION","computer capability does not permit this action in the requested environment");
   try { consumeCapabilityToken(request.capabilityTokenId,request.agentId); }
   catch (error) { deny(request,"TOKEN_REPLAY",error instanceof Error?error.message:"capability token could not be consumed"); }
   const result=await executeComputerAction({computerId:computer.id,action:request.computerAction,input:request.computerInput,timeoutMs:request.timeoutMs});
