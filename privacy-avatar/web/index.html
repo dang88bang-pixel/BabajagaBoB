@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Privacy Avatar</title>
+<style>
+body{font:16px system-ui;margin:0;background:#10131a;color:#eee}main{max-width:1000px;margin:auto;padding:24px}video{width:100%;max-height:55vh;background:#000;border-radius:16px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.card{padding:16px;background:#181d27;border-radius:16px}button,input,textarea,select{font:inherit;padding:10px;border-radius:10px;border:1px solid #3a4353;background:#111;color:#eee}button{cursor:pointer}.status{font-weight:700}.safe{color:#72e6a2}.avatar{height:220px;display:grid;place-items:center}.face{width:170px;height:170px;border-radius:50%;background:#ddd;position:relative}.eye{position:absolute;top:55px;width:16px;height:22px;border-radius:50%;background:#111}.eye.l{left:42px}.eye.r{right:42px}.mouth{position:absolute;left:57px;bottom:42px;width:56px;height:10px;border-radius:0 0 30px 30px;background:#111}
+</style></head>
+<body><main>
+<h1>Privacy Avatar</h1>
+<p class="status safe">● CAMERA LOCAL ONLY · RAW FRAMES NEVER SENT TO THIS SERVER</p>
+<div class="grid">
+<section class="card"><video id="cam" autoplay muted playsinline></video><button id="start">Kamera starten</button><button id="scan">Lokal sehen</button><pre id="obs">Noch keine Beobachtung.</pre></section>
+<section class="card"><div class="avatar"><div class="face"><i class="eye l"></i><i class="eye r"></i><i class="mouth" id="mouth"></i></div></div>
+<label>Stimme <select id="voice"></select></label><br><label>Tempo <input id="rate" type="range" min="0.6" max="1.5" step="0.05" value="1"></label><br><label>Tonhöhe <input id="pitch" type="range" min="0.5" max="1.5" step="0.05" value="1"></label></section></div>
+<section class="card"><textarea id="message" rows="4" style="width:100%" placeholder="Was möchtest du wissen?"></textarea><button id="send">Senden</button><p id="reply"></p></section>
+</main>
+<script>
+const cam=document.querySelector('#cam'),obs=document.querySelector('#obs'),reply=document.querySelector('#reply'),voice=document.querySelector('#voice');let observation=null;
+const LOCAL_VISION='http://127.0.0.1:8091/analyze';
+async function start(){cam.srcObject=await navigator.mediaDevices.getUserMedia({video:true,audio:false});}
+function frame(){const c=document.createElement('canvas');c.width=Math.min(cam.videoWidth,1280);c.height=Math.round(c.width*cam.videoHeight/c.videoWidth);c.getContext('2d').drawImage(cam,0,0,c.width,c.height);return new Promise(r=>c.toBlob(r,'image/jpeg',.72));}
+async function scan(){if(!cam.srcObject)await start();const fd=new FormData();fd.append('file',await frame(),'frame.jpg');const r=await fetch(LOCAL_VISION,{method:'POST',body:fd});if(!r.ok)throw new Error('Lokaler Vision-Dienst nicht erreichbar');const j=await r.json();const content=j.result?.choices?.[0]?.message?.content??JSON.stringify(j.result);try{observation=typeof content==='string'?JSON.parse(content):content}catch{observation={summary:String(content).slice(0,1200),objects:[],text:[],confidence:.5}}obs.textContent=JSON.stringify(observation,null,2);}
+function speak(t){const u=new SpeechSynthesisUtterance(t);u.rate=+rate.value;u.pitch=+pitch.value;u.voice=speechSynthesis.getVoices()[voice.selectedIndex]||null;speechSynthesis.cancel();speechSynthesis.speak(u);}
+function voices(){voice.replaceChildren(...speechSynthesis.getVoices().map((v,i)=>new Option(v.name+' ('+v.lang+')',i)))}speechSynthesis.onvoiceschanged=voices;voices();
+start.onclick=start;scan.onclick=()=>scan().catch(e=>obs.textContent=e.message);
+send.onclick=async()=>{const message=document.querySelector('#message').value;if(!message)return;const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message,observation})});const j=await r.json();reply.textContent=j.reply||j.detail||'Fehler';if(j.reply)speak(j.reply)};
+</script></body></html>
