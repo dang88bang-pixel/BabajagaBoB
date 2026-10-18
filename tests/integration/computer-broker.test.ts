@@ -8,7 +8,7 @@ beforeEach(()=>{
   root=fs.mkdtempSync(path.join(os.tmpdir(),"bob-computer-broker-"));
   process.env.BOB_STORAGE_DIR=root;
   process.env.BOB_COMPUTER_DRIVER=path.join(root,"driver.mjs");
-  fs.writeFileSync(process.env.BOB_COMPUTER_DRIVER,'process.stdin.on("data",b=>{const x=JSON.parse(String(b));process.stdout.write(JSON.stringify({ok:true,action:x.action}));process.exit(0);});');
+  fs.writeFileSync(process.env.BOB_COMPUTER_DRIVER,'#!/usr/bin/env node\nprocess.stdin.on("data",b=>{const x=JSON.parse(String(b));process.stdout.write(JSON.stringify({ok:true,action:x.action}));process.exit(0);});');
   fs.chmodSync(process.env.BOB_COMPUTER_DRIVER,0o700);
   vi.resetModules();
 });
