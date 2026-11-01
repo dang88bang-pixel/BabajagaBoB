@@ -52,6 +52,24 @@ const say = text => console.log(text);
 const ok = text => console.log(`  \u001b[32mPASS\u001b[0m ${text}`);
 const bad = text => console.log(`  \u001b[31mFAIL\u001b[0m ${text}`);
 
+/**
+ * Schreibt eine Markdown-Zusammenfassung in die GitHub-Step-Summary, wenn die
+ * Umgebung sie anbietet. Der Job-Log ist von außen oft nicht abrufbar; die
+ * Summary steht auf der Run-Seite und macht Fehlschläge diagnostizierbar.
+ */
+function summarize(lines) {
+  const target = process.env.GITHUB_STEP_SUMMARY;
+  if (!target) return;
+  try {
+    fs.appendFileSync(target, `${lines.join("\n")}\n`);
+  } catch {
+    /* Die Summary ist Komfort, kein Prüfergebnis — ein Schreibfehler darf nichts verfälschen. */
+  }
+}
+
+/** Letzte Zeilen eines Testlaufs, für Summary und Konsole. */
+const tail = (output, count = 40) => output.split("\n").slice(-count).join("\n");
+
 function loadProbes() {
   if (!fs.existsSync(CATALOG)) {
     console.error(`Sabotage-Katalog fehlt: ${CATALOG}`);
@@ -217,7 +235,18 @@ if (!baseline.skipped) {
   baseline.durationMs = run.durationMs;
   if (run.exitCode !== 0 || run.failedTests > 0 || run.infrastructureError) {
     bad(`Grundprobe rot (Exit ${run.exitCode}, ${run.failedTests} Fehler) — ohne grünen Ausgangszustand beweist die Sabotage nichts.`);
-    say(run.output.split("\n").slice(-25).join("\n"));
+    say(tail(run.output, 25));
+    summarize([
+      "## Sabotageproben: Grundprobe rot",
+      "",
+      `- Exit-Code: ${run.exitCode}`,
+      `- Testfehler: ${run.failedTests}`,
+      `- Suiten: ${baseline.tests.join(", ")}`,
+      "",
+      "```",
+      tail(run.output, 60),
+      "```"
+    ]);
     process.exit(2);
   }
   ok(`Grundprobe grün (${baseline.tests.length} Suiten, ${Math.round(baseline.durationMs / 1000)} s).`);
@@ -258,6 +287,13 @@ try {
       console.error(`Sabotage: Testlauf für ${probe.id} brach ohne Auswertung ab — Lauf gilt als ungültig.`);
       if (VERBOSE) say(run.output.split("\n").slice(-40).join("\n"));
       fs.writeFileSync(REPORT, JSON.stringify({ranAt: new Date().toISOString(), mode: "INVALID", results}, null, 1));
+      summarize([
+        `## Sabotageproben: Testlauf für ${probe.id} ohne Auswertung abgebrochen`,
+        "",
+        "```",
+        tail(run.output, 60),
+        "```"
+      ]);
       process.exit(2);
     }
     if (caught) ok(`${probe.id}: erkannt (${run.failedTests} Testfehler in ${Math.round(run.durationMs / 1000)} s) — ${probe.guard}`);
@@ -318,11 +354,24 @@ const report = {
 fs.writeFileSync(REPORT, JSON.stringify(report, null, 1), {mode: 0o600});
 
 if (CHECK_ONLY) {
-  say(`\nErgebnis: ${results.filter(entry => entry.outcome === "VALID").length}/${results.length} Anker gültig, ${invalid} ungültig.`);
+  const valid = results.filter(entry => entry.outcome === "VALID").length;
+  say(`\nErgebnis: ${valid}/${results.length} Anker gültig, ${invalid} ungültig.`);
+  summarize([`## Sabotagekatalog: ${valid}/${results.length} Anker gültig, ${invalid} ungültig`, ""]);
   process.exit(invalid === 0 ? 0 : 1);
 }
 
 say(`\nErgebnis: ${caught} erkannt, ${missed} nicht erkannt, ${invalid} ungültig — Bericht: ${path.relative(ROOT, REPORT)}`);
+summarize([
+  `## Sabotageproben: ${caught} erkannt, ${missed} nicht erkannt, ${invalid} ungültig`,
+  "",
+  `Grundprobe: ${baseline.skipped ? "übersprungen" : `grün (Exit ${baseline.exitCode}, ${baseline.tests.length} Suiten)`}`,
+  "",
+  "| Probe | Ergebnis |",
+  "| --- | --- |",
+  ...results.map(entry => `| \`${entry.id}\` | ${entry.outcome} |`),
+  "",
+  integrityWarnings.length > 0 ? `Zurückgebliebene Änderungen: ${integrityWarnings.join(", ")}` : ""
+]);
 if (integrityWarnings.length > 0) bad(`Zurückgebliebene Änderungen: ${integrityWarnings.join(", ")}`);
 // Exit 0 = alle Proben erkannt, 1 = mindestens eine Probe nicht erkannt,
 // 2 = Lauf ungültig (ungültiger Anker, Abbruch oder zurückgebliebene Änderung).
