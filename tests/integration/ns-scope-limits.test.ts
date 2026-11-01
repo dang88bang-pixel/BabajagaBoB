@@ -54,7 +54,16 @@ describe("systemd-Scope als Limit-Mechanismus", () => {
     launcher = await import("../../lib/sandbox-launcher");
     ns = await import("../../lib/ns-isolation");
     const probe = launcher.systemdScopeAvailable();
-    if (!probe.available) unavailable = probe.reason ?? "Launcher nicht nutzbar";
+    if (!probe.available) {
+      unavailable = probe.reason ?? "Launcher nicht nutzbar";
+      return;
+    }
+    // Die Nachweise unten laufen *innerhalb* der Namespace-Isolation. Fehlt die
+    // (z. B. CI-Runner mit eingeschränkten User-Namespaces), ist der Scope zwar
+    // nutzbar, aber die Ausführung wird fail closed verweigert — dann wird der
+    // Nachweis sichtbar übersprungen statt falsch zu scheitern.
+    const isolation = ns.isolationReport(true);
+    if (isolation.level !== "NAMESPACES") unavailable = `Kernel-Isolation nicht aktiv: ${isolation.detail}`;
   });
 
   afterAll(() => {

@@ -81,6 +81,11 @@ describe("cgroup-Bericht", () => {
     await load();
 
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "bob-cg-work-"));
+    // Geprüft wird die **fail-closed-Zusage**, nicht ein bestimmter Wortlaut: Läuft
+    // die Kernel-Isolation (Namensräume erlaubt), bricht die Ausführung am nicht
+    // nutzbaren cgroup-Unterbaum ab; ist sie in der Umgebung gar nicht verfügbar
+    // (z. B. CI-Runner mit `apparmor_restrict_unprivileged_userns=1`), bricht sie
+    // vorher ab. Beides ist „nichts wird ausgeführt" — und genau das ist der Punkt.
     await expect(
       ns.runIsolated(["node", "-e", "process.stdout.write('nie')"], {
         workspace,
@@ -88,7 +93,7 @@ describe("cgroup-Bericht", () => {
         sandboxId: "SB-CGROUP-FAKE",
         limits: {cpuMillicores: 500, memoryMb: 256, storageMb: 8, timeoutMs: 10_000, processes: 16}
       })
-    ).rejects.toThrow(/cgroup limits requested but unavailable/);
+    ).rejects.toThrow(/cgroup limits requested but unavailable|isolation is not active/);
   });
 
   it("prüft bei einem echten cgroup-v2-Unterbaum den Beitritt, nicht nur die Dateirechte", async () => {

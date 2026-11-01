@@ -11,11 +11,10 @@ export default defineConfig({
     environment: "node",
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
     globals: false,
-    // Persistenz-Tests laufen isoliert, damit Storen sich nicht vermischen.
+    // Persistenz-Tests laufen isoliert (ein eigener Fork je Datei, damit sich
+    // Storen nicht vermischen). Ab Vitest 5 ist `poolOptions` entfallen; der
+    // Standard ist bereits ein Prozess je Testdatei, deshalb steht hier nur der Pool.
     pool: "forks",
-    poolOptions: {
-      forks: { singleFork: false }
-    },
     testTimeout: 30_000,
     hookTimeout: 30_000,
     reporters: ["default"]

@@ -61,7 +61,9 @@ export function systemdScopeAvailable(): LauncherProbe {
 }
 
 function probeScope(): LauncherProbe {
-  if (!fs.existsSync(systemdRunBinary())) {
+  // Der Pfad ist über die Umgebung überschreibbar; `turbopackIgnore` verhindert,
+  // dass der Bundler deswegen das ganze Projekt in die Server-Trace zieht.
+  if (!fs.existsSync(/*turbopackIgnore: true*/ systemdRunBinary())) {
     return {available: false, reason: `${systemdRunBinary()} fehlt; transiente Scopes sind nicht verfügbar`};
   }
   if (!fs.existsSync("/run/systemd/private")) {
@@ -132,7 +134,7 @@ function unprivilegedPrefix(): string[] {
   const uid = process.getuid?.() ?? 0;
   const gid = process.getgid?.() ?? 0;
   if (uid === 0) return []; // läuft die Plattform selbst als root, ist nichts zu senken
-  if (!fs.existsSync(setprivBinary())) throw new Error(`${setprivBinary()} fehlt; ein Scope als root wäre eine Rechteausweitung`);
+  if (!fs.existsSync(/*turbopackIgnore: true*/ setprivBinary())) throw new Error(`${setprivBinary()} fehlt; ein Scope als root wäre eine Rechteausweitung`);
   return [setprivBinary(), `--reuid=${uid}`, `--regid=${gid}`, "--clear-groups"];
 }
 

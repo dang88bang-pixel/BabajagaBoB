@@ -1,7 +1,7 @@
 # Deep Verification — 2026-11-01
 
 **Branch:** `arena/f9c14737-babajagabob`
-**Umgebung:** Node 22.22.3, Vitest 3.2.7, Next 16.3.6; kein Docker-Daemon, keine
+**Umgebung:** Node 22.22.3, Vitest 5.0.5, Next 16.4.3; kein Docker-Daemon, keine
 cgroup-Delegation (`/sys/fs/cgroup` nicht beschreibbar), Kernel-Namespaces
 verfügbar (`unshare -Ur` aktiv, Rootfs 126 MB gebaut).
 
