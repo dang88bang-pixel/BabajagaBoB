@@ -151,6 +151,17 @@ Delegation ehrlich `UNAVAILABLE`).
 Ist `BOB_CGROUP_DIR` gesetzt, aber nicht nutzbar (fehlt, nicht beschreibbar), dann werden
 Ausführungen mit Limits **verweigert** statt still ohne Limit zu laufen.
 
+Wichtig (2026-11-01 nachgemessen): Ein per `mkdir` + `chown` „delegierter" Unterbaum ist
+**keine** Delegation. Die Kontrolldateien (`cgroup.procs`, `memory.max`, `pids.max`) legt der
+Kernel beim Anlegen mit dem Eigentümer des übergeordneten cgroups an — gehören sie root,
+scheitert schon der Schreibzugriff; selbst mit Schreibrechten verweigert der Kernel den
+Prozess-Beitritt ohne Privilegien im cgroup-Namespace (`EACCES`). `cgroupAvailable()` prüft
+deshalb `statfs` (echtes cgroup-v2-Dateisystem) **und** einen echten Beitritt in ein
+Probe-cgroup; beides muss gelingen, sonst meldet der Bericht `UNAVAILABLE` mit Grund und
+führt **keine** CGROUP-Limits in `enforced[]`. Wer Limits wirklich braucht, nimmt den
+Scope-Launcher (§2c) — oder eine echte Delegation (systemd `Delegate=yes`, `chown` aller
+Kontrolldateien durch den Delegierenden).
+
 ### 2c. Scope-Launcher statt cgroup-Delegation (bevorzugt)
 
 Gemessen (2026-11-01): Ein delegierter Unterbaum ist einem unprivilegierten Prozess

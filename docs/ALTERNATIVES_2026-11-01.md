@@ -218,6 +218,37 @@ Gemessene Innenansicht einer isolierten Ausführung (Test `ns-scope-limits`, Lim
 "max":"100663296",   (96 MiB)    "pids":"32"
 ```
 
+### 5a.3a Gegenprobe: warum die cgroup-Delegation hier unbrauchbar bleibt
+
+Nachgemessen mit `sudo mkdir /sys/fs/cgroup/bob && sudo chown user:user …`:
+
+```
+/usr/bin/setpriv --reuid=1001 … unshare … → echo $$ > /sys/fs/cgroup/bob/probe/cgroup.procs
+→ EACCES (unprivilegiert)          sudo sh -c 'echo … > cgroup.procs' → Erfolg (root)
+```
+
+Zwei Gründe, beide strukturell: (a) die Kontrolldateien gehören root, wenn root das
+Verzeichnis angelegt hat — „delegiert" per `chown` auf das Verzeichnis genügt nicht;
+(b) selbst mit Schreibrechten verlangt der Prozess-Beitritt Privilegien im
+cgroup-Namespace. `cgroupAvailable()` prüft deshalb `statfs` **und** einen echten
+Beitritt (Probe-cgroup) und meldet sonst `UNAVAILABLE` mit Grund — lieber ein
+ehrliches „nicht durchgesetzt" als ein Bericht, der `ENFORCED` behauptet, während
+jeder Lauf fail closed abbricht. Für den Betrieb ist der Scope (§5a.3) der Weg.
+
+Nachgewiesen mit genau so einem Verzeichnis (`BOB_CGROUP_DIR=/sys/fs/cgroup/bob`,
+als Benutzer angelegt und geeignet, aber ohne Delegation):
+
+```
+cgroupAvailable() → { available: false,
+  reason: "cgroup-Unterbaum nicht beschreibbar: /sys/fs/cgroup/bob
+           (EACCES: permission denied, access '/sys/fs/cgroup/bob/cgroup.procs')" }
+isolationReport() → resourceLimits.cgroup: "UNAVAILABLE", enforced[] ohne CGROUP_*
+```
+
+Die Tests decken beide Gründe ab (`cgroup-Beitritt nicht möglich` **oder**
+`cgroup-Unterbaum nicht beschreibbar`) und überspringen den echten
+Delegationsnachweis sichtbar mit Grund, statt ihn stillschweigend zu bestehen.
+
 ### 5a.4 Betrieb
 
 ```bash

@@ -132,19 +132,25 @@ describe("Fehlerinjektion: Prozessabbruch", () => {
 });
 
 describe("Fehlerinjektion: konkurrierende Schreibvorgänge", () => {
-  it("verliert bei vier echten Writer-Prozessen keine Aktualisierung", async () => {
+  it("verliert bei sechs echten Writer-Prozessen keine Aktualisierung", async () => {
+    // Bewusst mehr Prozesse und mehr Iterationen als nötig: Diese Prüfung ist der
+    // Nachweis für die Sabotageprobe `STORE_WRITE_LOCK_OFF`. Mit sechs Writern à
+    // 80 Aktualisierungen (statt vier à 60) liegt die Kollisionswahrscheinlichkeit
+    // so hoch, dass eine entfernte Schreibsperre **zuverlässig** auffällt — eine
+    // Erkennung, die nur manchmal greift, wäre kein Nachweis (TEST-004).
     const concurrentRoot = fs.mkdtempSync(path.join(root, "concurrent-"));
-    const perWriter = 60;
-    const codes = await spawnWriters(concurrentRoot, 4, perWriter, "update");
-    expect(codes).toEqual([0, 0, 0, 0]);
+    const writers = 6;
+    const perWriter = 80;
+    const codes = await spawnWriters(concurrentRoot, writers, perWriter, "update");
+    expect(codes).toEqual(Array.from({length: writers}, () => 0));
 
     const result = readCounter(concurrentRoot);
-    expect(result.payload.writers).toHaveLength(4 * perWriter);
-    expect(new Set(result.payload.writers).size).toBe(4 * perWriter);
-    expect(result.payload.counter).toBe(4 * perWriter);
+    expect(result.payload.writers).toHaveLength(writers * perWriter);
+    expect(new Set(result.payload.writers).size).toBe(writers * perWriter);
+    expect(result.payload.counter).toBe(writers * perWriter);
     // Die Revision zählt die Schreibvorgänge: sie muss mindestens der Anzahl
     // erfolgreicher Aktualisierungen entsprechen (Retries zählen mit).
-    expect(result.revision ?? 0).toBeGreaterThanOrEqual(4 * perWriter);
+    expect(result.revision ?? 0).toBeGreaterThanOrEqual(writers * perWriter);
   });
 
   it("erkennt den Verlust bei unbedingtem Überschreiben (Gegenprobe)", async () => {

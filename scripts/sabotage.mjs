@@ -127,7 +127,10 @@ function runTests(testFiles) {
     const started = Date.now();
     execFile(
       process.execPath,
-      [path.join(ROOT, "node_modules", "vitest", "vitest.mjs"), "run", "--reporter=basic", ...testFiles],
+      // `--reporter=basic` gibt es ab Vitest 5 nicht mehr (der Reporter wurde
+      // entfernt); `default` druckt dieselbe Zusammenfassung ("Tests N failed"),
+      // die hier ausgewertet wird.
+      [path.join(ROOT, "node_modules", "vitest", "vitest.mjs"), "run", "--reporter=default", ...testFiles],
       {cwd: ROOT, timeout: TEST_TIMEOUT, maxBuffer: 32 * 1024 * 1024, env: {...process.env, CI: "true"}},
       (error, stdout, stderr) => {
         // Farbcodes entfernen — sonst zerbricht die Auswertung der Zusammenfassung.

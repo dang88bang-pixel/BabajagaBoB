@@ -210,6 +210,19 @@ isolationDescribe("Kernel-Isolation (NAMESPACES)", () => {
       ctx.skip(`cgroup-Limits nicht prüfbar: ${availability.reason}`);
       return;
     }
+    // Ein vom Betreiber gesetzter, wirklich nutzbarer Unterbaum soll den Nachweis
+    // auch dann erlauben, wenn `beforeEach` den Pfad für die übrigen Tests entfernt
+    // hat: hier wird er ausdrücklich wieder eingesetzt (und danach zurückgesetzt).
+    if (ambientCgroupDir !== undefined) {
+      process.env.BOB_CGROUP_DIR = ambientCgroupDir;
+      vi.resetModules();
+      ns = await import("../../lib/ns-isolation");
+      const again = ns.cgroupAvailable();
+      if (!again.available) {
+        ctx.skip(`cgroup-Limits nicht prüfbar: ${again.reason}`);
+        return;
+      }
+    }
     const limits = {cpuMillicores: 1000, memoryMb: 48, storageMb: 8, timeoutMs: 20_000, processes: 16};
     const hog = await ns.runIsolated(
       ["node", "-e", 'const a=[];for(;;)a.push(Buffer.alloc(8*1024*1024))'],

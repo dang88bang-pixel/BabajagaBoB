@@ -113,7 +113,10 @@ describe("cgroup-Bericht", () => {
       expect(report.resourceLimits.cgroup).toBe("ENFORCED");
     } else {
       // Delegation ohne Privilegien: Bericht muss die Wahrheit sagen.
-      expect(availability.reason).toMatch(/cgroup-Beitritt nicht möglich/);
+      // Beide Gründe bedeuten „nicht nutzbar": fehlende Dateirechte (typisch für
+      // ein nur per `mkdir`+`chown` „delegiertes" Verzeichnis, dessen
+      // Kontrolldateien root gehören) oder ein Beitritt, den der Kernel verweigert.
+      expect(availability.reason).toMatch(/cgroup-Beitritt nicht möglich|cgroup-Unterbaum nicht beschreibbar/);
       expect(report.resourceLimits.cgroup).toBe("UNAVAILABLE");
       expect(report.enforced).not.toContain("CGROUP_MEMORY_LIMIT");
     }
