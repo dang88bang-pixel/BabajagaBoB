@@ -41,12 +41,12 @@ Recovery`
   Bindung an Task/Sandbox/Instanz, Treiberprozess mit `argv[]` und `shell:false`,
   digestgebundene Evidenz je Lauf — ohne konfigurierten Treiber wird **nichts** als
   ausgeführt gemeldet (fail closed). Ein echter Browser-/Desktop-Treiber fehlt weiterhin.
-- Nachweis (2026-11-01): **67 Testdateien / 434 Tests** (432 grün, 2 ausdrücklich
+- Nachweis (2026-11-01): **68 Testdateien / 440 Tests** (438 grün, 2 ausdrücklich
   übersprungen: OCI ohne Docker-Daemon, cgroup ohne delegierten Unterbaum) sowie die Live-Prüfungen
-  `scripts/verify-live.sh` (**171 / 0**), `scripts/audit-actions.mjs` (**544 / 0**),
+  `scripts/verify-live.sh` (**177 / 0**), `scripts/audit-actions.mjs` (**544 / 0**),
   `scripts/audit-api.sh` (**251 / 0**), `scripts/audit-ui.mjs` (**93 / 0**) auf der Instanz
   `:3100` mit gemessener Kernel-Isolation; dazu der Abnahmeprüfer
-  `node scripts/acceptance.mjs --live` (**86 / 0**, 70/70 Routennachweise).
+  `node scripts/acceptance.mjs --live` (**87 / 0**, 71/71 Routennachweise).
 
 ## Dokumentation
 

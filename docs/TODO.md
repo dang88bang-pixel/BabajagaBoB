@@ -32,6 +32,10 @@ Smoke-Test laufen als SYSTEM-WORKER über Gate, Broker und Evidenz).
 
 **Alternativen zu allen offenen Punkten** sind in `docs/ALTERNATIVES_2026-11-01.md`
 gemessen und bewertet (Treiber, OCR, Desktop, OCI, cgroup-Limits, Betriebspunkte).
+Die cgroup-Lücke ist **geschlossen**: Speicher-, Prozess- und CPU-Limits setzt ein
+transienter systemd-Scope durch (`BOB_SANDBOX_LAUNCHER=systemd-scope`,
+`lib/sandbox-launcher.ts`, Nachweis `tests/integration/ns-scope-limits.test.ts`);
+Details und Online-Quellen in `docs/ALTERNATIVES_2026-11-01.md` §5a.
 
 | Punkt | Warum offen | Nächster Schritt |
 |---|---|---|

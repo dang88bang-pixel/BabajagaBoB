@@ -71,7 +71,8 @@ Steuerung (Umgebungsvariablen):
 | --- | --- | --- |
 | `BOB_NS_ISOLATION` | `auto` (Standard), `on`, `off` | `on` erzwingt Kernel-Isolation: fehlen die Voraussetzungen, wird die Ausführung **verweigert** statt unisoliert zu laufen. `off` deaktiviert sie ausdrücklich (nur für Diagnose). |
 | `BOB_NS_ROOTFS` | Pfad | Wurzeldateisystem der Isolation; Standard `${BOB_STORAGE_DIR}/ns-rootfs`. |
-| `BOB_CGROUP_DIR` | Pfad | Delegierter cgroup-v2-Unterbaum; nur dann werden Speicher- und Prozesslimits kernel-seitig durchgesetzt (sonst `UNAVAILABLE`). |
+| `BOB_CGROUP_DIR` | Pfad | Delegierter cgroup-v2-Unterbaum. Ohne Privilegien nicht nutzbar (der Kernel verlangt Schreibrecht am gemeinsamen Vorfahren) — deshalb heute der zweite Weg. |
+| `BOB_SANDBOX_LAUNCHER` | `none` (Standard), `systemd-scope` | Startet jede Ausführung in einem transienten systemd-Scope mit `MemoryMax`, `TasksMax` und `CPUQuota`. Braucht **kein** D-Bus und **keine** cgroup-Delegation, nur ein enges sudoers-Recht für `/usr/bin/systemd-run --scope`; die Nutzlast fällt per `setpriv` auf den aufrufenden Benutzer zurück. Ist der Launcher konfiguriert, aber nicht nutzbar, wird **nichts** ausgeführt (fail closed). |
 | `BOB_NS_PROBE_FORCE_UNAVAILABLE` | `1` | Nur Diagnose/Testnachweis: meldet User-Namespaces als nicht verfügbar und belegt damit den Skip-Pfad der Testsuite und das fail-closed-Verhalten. |
 
 Rootfs bauen (Node + Bibliotheken + BusyBox, ca. 126 MB, ohne Netzwerkzugriff auf
@@ -148,7 +149,40 @@ durch den Live-Nachweis (`scripts/verify-live.sh` prüft `resourceLimits` beding
 Delegation ehrlich `UNAVAILABLE`).
 
 Ist `BOB_CGROUP_DIR` gesetzt, aber nicht nutzbar (fehlt, nicht beschreibbar), dann werden
-Ausführungen mit Limits **verweigert** statt still ohne Limit zu laufen. `GET /api/runtime`
+Ausführungen mit Limits **verweigert** statt still ohne Limit zu laufen.
+
+### 2c. Scope-Launcher statt cgroup-Delegation (bevorzugt)
+
+Gemessen (2026-11-01): Ein delegierter Unterbaum ist einem unprivilegierten Prozess
+verschlossen — der Kernel verlangt Schreibzugriff auf `cgroup.procs` des nächsten
+gemeinsamen Vorfahren, also auf `/`. Ein transienter Scope umgeht das, weil systemd
+den Knoten anlegt und den Prozess hineinsetzt:
+
+```bash
+echo '<user> ALL=(root) NOPASSWD: /usr/bin/systemd-run --scope *' | sudo tee /etc/sudoers.d/bob-scope
+BOB_NS_ISOLATION=on BOB_SANDBOX_LAUNCHER=systemd-scope npm start
+```
+
+Was der Launcher zusätzlich garantiert und prüft:
+
+- **Probelauf statt Annahme:** `systemdScopeAvailable()` startet einen Kindprozess im
+  Scope und verlangt einen eigenen cgroup-Knoten, `memory.max` exakt in der
+  angeforderten Höhe und einen **nicht** als root laufenden Nutzlastprozess
+  (`setpriv --reuid/--regid/--clear-groups`). Fehlt `setpriv`, wird der Scope
+  verweigert — ein root-laufender „Sandbox"-Prozess wäre eine Rechteausweitung.
+- **Umgebung wird explizit übergeben:** `sudo` verwirft die Umgebung; rlimits,
+  `NODE_OPTIONS` und der eigene cgroup-Pfad gehen über `systemd-run --setenv=…`
+  mit. (Vorher — ohne Launcher — waren die rlimits innerhalb des Scopes still wirkungslos.)
+- **Selbstauskunft:** `ns-exec.sh` bindet den eigenen cgroup-Knoten read-only als
+  `/.bob/cgroup` in den Rootfs. Die Nutzlast kann `memory.max`/`pids.max` lesen, das
+  Limit ist also von innen prüfbar. Fehlt der angekündigte Knoten: `exit 126`, nichts läuft.
+- **Grenzen:** `TasksMax` wirkt im Scope (gemessen: `pids.max=8`, 20 von 20 Starts
+  scheitern). Ein OOM-Kill erscheint über die `unshare`-Kette als **Exit 1** statt
+  137; deshalb weist `tests/integration/ns-scope-limits.test.ts` die Grenze über
+  `memory.max` und den stdout-Fortschritt nach. Sandbox-Eigenschaften
+  (`PrivateNetwork`, `ProtectSystem`, `SystemCallFilter`) sind Service-Properties,
+  brauchen den System-D-Bus und sind hier **nicht** verfügbar — die Isolation kommt
+  weiterhin aus `unshare`/`ns-exec.sh` (Stufe `NAMESPACES`, nicht `CONTAINER`). `GET /api/runtime`
 weist unter `isolation.resourceLimits` aus, welche Mechanismen greifen
 (`kernel: ["CPU_TIME","FILE_SIZE"]`, `cgroup: "ENFORCED" | "UNAVAILABLE"`, plus Begründung);
 jede Ausführung trägt denselben Zustand in der Evidenz (`resourceLimits`).

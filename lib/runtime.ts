@@ -73,7 +73,12 @@ export type ExecutionResult = {
   /** Isolationsstufe, in der dieser Lauf tatsächlich ausgeführt wurde. */
   isolation?: IsolationLevel;
   /** Durchgesetzte Ressourcenlimits dieses Laufs (kernel rlimits / cgroup). */
-  resourceLimits?: {kernel: string[]; cgroup: "ENFORCED" | "UNAVAILABLE"};
+  resourceLimits?: {
+    kernel: string[];
+    cgroup: "ENFORCED" | "UNAVAILABLE";
+    mechanism?: "cgroup-delegation" | "systemd-scope" | "none";
+    launcher?: {mode: string; available: boolean; reason?: string; detail?: string};
+  };
 };
 
 export type RuntimeObservation = {

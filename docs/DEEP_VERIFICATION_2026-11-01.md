@@ -119,8 +119,33 @@ Ergebnissen. Wichtigste Befunde:
   **sichtbar mit Grund**; zuvor „bestand" er bei fehlgeschlagenem Beitritt, weil ein
   fail-closed-Abbruch als Zählerstand `0` durchging (falscher grüner Test).
 
-Teststand nach dem Nachtrag: **67 Dateien / 434 Tests**, 432 grün, 2 benannt
+Teststand nach dem Nachtrag: **68 Dateien / 440 Tests**, 438 grün, 2 benannt
 übersprungen; Lint 0 Fehler; `tsc` und Build fehlerfrei.
+
+## 4b. Nachtrag: Speicher-/Prozesslimits **live durchgesetzt** (systemd-Scope)
+
+Die Aussage in §3 („cgroup-Limits sind in dieser Umgebung **nicht** durchsetzbar")
+gilt nur für den Delegationsweg. Über einen **transienten systemd-Scope** sind
+Speicher, Prozesse und CPU sehr wohl durchsetzbar — ohne D-Bus, ohne User-Session,
+ohne Delegation (`docs/ALTERNATIVES_2026-11-01.md` §5a, mit Online-Quellen).
+
+Live gemessen (frische Instanz `:3000`, `BOB_NS_ISOLATION=on`,
+`BOB_SANDBOX_LAUNCHER=systemd-scope`, `BOB_NS_ROOTFS` gebaut):
+
+| Prüfung | Ergebnis |
+|---|---|
+| `GET /api/runtime` → `isolation.resourceLimits` | `cgroup: "ENFORCED"`, `mechanism: "systemd-scope"`, `launcher.available: true`, `enforced[]` enthält `CGROUP_MEMORY_LIMIT`/`CGROUP_PIDS_LIMIT` |
+| `scripts/verify-live.sh` | **177 / 0** (inkl. neuer Schritte: 32 MiB innerhalb 64 MiB Limit laufen durch; 512 MiB unter 64 MiB Limit werden beendet) |
+| `node scripts/acceptance.mjs --live` | **87 / 0**, 71/71 Routen-Nachweise |
+| `scripts/audit-actions.mjs` / `audit-api.sh` / `audit-ui.mjs` | **544 / 0**, **251 / 0**, **93 / 0** |
+| `npx vitest run` | **68 Dateien / 440 Tests**, 438 grün, 2 benannt übersprungen |
+
+Gemessene Einzelbelege: 96-MiB-Scope beendet eine 512-MiB-Allokation nach
+10 × 8 MiB; `TasksMax=8` → `pids.max=8`, `pids.current=8`, 20 von 20
+Prozessstarts scheitern; die Nutzlast liest ihr Limit selbst über `/.bob/cgroup`.
+Ehrlich benannt: der OOM-Exit erscheint über die `unshare`-Kette als `1` statt
+`137`, die Isolationsstufe bleibt `NAMESPACES` (der Scope ersetzt keine
+Sandbox-Properties, weil systemd dafür den System-D-Bus bräuchte).
 
 ## 5. Offen (unverändert ehrlich)
 

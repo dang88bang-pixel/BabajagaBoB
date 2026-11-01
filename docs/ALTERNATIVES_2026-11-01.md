@@ -165,6 +165,82 @@ Beitritt, weil ein fail-closed-Abbruch als Zählerstand `0` durchging.
 
 ---
 
+## 5a. Recherche-Ergebnis und Lösung: transienter systemd-Scope (umgesetzt)
+
+Der Punkt aus §5 wurde **online gegen die Stellen geprüft, an denen genau dieses
+Problem verhandelt wird** — Kernel-Dokumentation, Stack Exchange/Stack Overflow,
+systemd-Handbuch, systemd-Härtungs-Praxis. Ergebnis: Es gibt einen Weg, der ohne
+D-Bus, ohne User-Session und ohne cgroup-Delegation **echte** Speicher-, Prozess-
+und CPU-Limits durchsetzt — und er ist in diesem Branch implementiert.
+
+### 5a.1 Was die Quellen sagen
+
+| Quelle | Aussage | Konsequenz hier |
+|---|---|---|
+| [cgroup v2, „Delegation Containment"](https://docs.kernel.org/admin-guide/cgroup-v2.html) | Ein nicht-privilegierter Schreiber darf eine PID nur migrieren, wenn er `cgroup.procs` des Ziels **und** des nächsten gemeinsamen Vorfahren schreiben darf. | Erklärt das gemessene `EACCES` exakt: unser Prozess lebt in `user.slice/…`, der gemeinsame Vorfahre ist `/` — nur root darf dort schreiben. Kein Trick hilft, die Delegation braucht Privilegien. |
+| [unix.stackexchange.com/questions/725112](https://unix.stackexchange.com/questions/725112/using-cgroups-v2-without-root) | Gleiches Bild (`Permission denied` auf `…/cgroup.procs`), keine unprivilegierte Lösung. | Bestätigt: der unprivilegierte Delegationsweg ist eine Sackgasse. |
+| [Kerrisk, „cgroups v2 — diving deeper"](https://man7.org/conf/ndctechtown2021/cgroups-v2-part-2-diving-deeper-NDC-TechTown-2021.pdf) | Ein privilegierter Prozess muss den **ersten** Prozess in den delegierten Teilbaum setzen; der Delegierte kann danach nur innerhalb bewegen. | Genau das leistet der Scope: systemd legt den Knoten an und setzt den Prozess hinein. |
+| [stackoverflow.com/questions/70064457](https://stackoverflow.com/questions/70064457/move-a-process-to-a-new-cgroup-in-cgroup-v2) | `sudo tee` funktioniert nur, weil root auf `/sys/fs/cgroup/cgroup.procs` schreiben darf. | Dasselbe Muster wie unser Launcher: **ein** privilegierter Schritt, danach unprivilegiert weiterlaufen. |
+| [systemd-run(1)](https://www.freedesktop.org/software/systemd/man/latest/systemd-run.html) | `--scope` führt das Kommando **selbst** als Elternprozess aus (synchron, erbt die Aufrufumgebung); `--unit=` benennt die Unit, `-p` setzt Properties. | Basis der Implementierung: `systemd-run --scope --unit=… -p MemoryMax=…` |
+| [oneuptime: cgroups v2 resource control](https://oneuptime.com/blog/post/2026-01-15-setup-cgroups-v2-resource-control-ubuntu/view) | Praktisches Rezept `systemd-run --scope --property=MemoryMax=… --property=TasksMax=… -- cmd`. | Dasselbe Muster, unabhängig bestätigt. |
+| systemd-Härtungs-Praxis ([gntech](https://blog.gntech.me/posts/2026-05-15-systemd-sandboxing/), [alphabravo](https://blog.alphabravo.io/posts/systemd-sandboxing-part-5/), [oneuptime 2026-03-02](https://oneuptime.com/blog/post/2026-03-02-systemd-sandboxing-hardening/view)) | Container-ähnliche Härtung über `PrivateNetwork=`, `ProtectSystem=`, `SystemCallFilter=`, … | **Hier nicht nutzbar**: diese Properties sind Service-Eigenschaften. In dieser Umgebung gibt es kein D-Bus (`Failed to connect to bus`), und im Scope-Modus lehnt systemd sie ab (`Unknown assignment: PrivateNetwork=yes`). Was bleibt, sind die Ressourcen-Properties — und die reichen für die offene Lücke. |
+
+### 5a.2 Gemessene Wirkung (2026-11-01, Debian 12, systemd 252)
+
+```
+$ sudo -n systemd-run --scope --quiet --collect -p MemoryMax=48M -- node -e '…alloc loop…'
+→ Exit 137                       # OOM-Kill durch den Kernel, nicht durch die App
+
+$ sudo -n systemd-run --scope --quiet --collect -p TasksMax=8 -p MemoryMax=256M --       setpriv --reuid=1001 --regid=1001 --clear-groups unshare --user --map-root-user       … scripts/ns-exec.sh … node -e '<48 Kinder starten>'
+→ {"pidsMax":"8","pidsCurrent":"8","ok":0,"fail":20}   # 20 von 20 Starts scheitern
+```
+
+Wichtig: `TasksMax` **wirkt** im Scope (pids.max = 8, `pids.current` klebt am Limit,
+jeder weitere Start scheitert). Eine frühere Gegenmessung („50 Kinder unter
+`TasksMax=8`") war fehlerhaft — sie zählte Starts, die nie stattfanden.
+
+### 5a.3 Die Lösung im Repository
+
+| Baustein | Datei | Wirkung |
+|---|---|---|
+| Launcher | `lib/sandbox-launcher.ts` | `BOB_SANDBOX_LAUNCHER=systemd-scope` schaltet den Scope ein. Probelauf prüft **Wirkung**: eigener cgroup-Knoten, `memory.max` = angeforderter Wert, Nutzlast per `setpriv` wieder auf den aufrufenden Benutzer zurückgesetzt. Ohne `setpriv` wird der Scope **verweigert** (sonst wäre der Launcher eine Rechteausweitung). |
+| Ausführung | `lib/ns-isolation.ts` | `runIsolated` startet `unshare … ns-exec.sh` innerhalb des Scopes. Ist der Launcher konfiguriert, aber nicht nutzbar, wird **nichts** ausgeführt (fail closed). |
+| Selbstauskunft | `scripts/ns-exec.sh` | Bindet den eigenen cgroup-Knoten read-only als `/.bob/cgroup` ein. Die Nutzlast kann ihre echten Limits lesen — Limit ist prüfbar, nicht behauptet. Fehlt der angekündigte Knoten: `exit 126`, nichts läuft. |
+| Bericht | `GET /api/runtime` → `isolation.resourceLimits` | Neu: `mechanism: "cgroup-delegation" \| "systemd-scope" \| "none"` und `launcher`-Zustand. `cgroup: "ENFORCED"` gilt nur, wenn einer der Wege **nachgewiesen** ist. |
+| Nachweis | `tests/integration/ns-scope-limits.test.ts` | 5 Tests: Probelauf/Plan, Limits von innen lesbar, OOM-Abbruch am Limit, `TasksMax` erzwingt Startfehler, fail closed bei kaputtem Launcher. |
+
+Gemessene Innenansicht einer isolierten Ausführung (Test `ns-scope-limits`, Limit
+96 MiB / 32 Tasks):
+
+```
+/1/2/3/…/9,          → nach 10 Schritten à 8 MiB beendet (Limit 96 MiB)
+"cg":"/system.slice/bob-scope-SB-SCOPE-PROBE-….scope",
+"max":"100663296",   (96 MiB)    "pids":"32"
+```
+
+### 5a.4 Betrieb
+
+```bash
+# sudoers (eng): nur dieser eine Aufruf ist erlaubt
+echo '<user> ALL=(root) NOPASSWD: /usr/bin/systemd-run --scope *' | sudo tee /etc/sudoers.d/bob-scope
+BOB_NS_ISOLATION=on BOB_SANDBOX_LAUNCHER=systemd-scope npm start
+```
+
+`scripts/dev-up.sh` setzt die Variable automatisch, wenn `sudo -n` verfügbar ist.
+Ohne dieses Recht bleibt der Bericht bei `cgroup: "UNAVAILABLE"` und Ausführungen
+mit Limits werden verweigert — kein stiller Lauf ohne Limit.
+
+**Ehrliche Grenzen:** Der Scope setzt *Ressourcen*-Grenzen, keine
+Sandbox-Eigenschaften (`PrivateNetwork`, `ProtectSystem`, `SystemCallFilter` sind
+Service-Properties und hier nicht verfügbar). Die Namespace-Isolation kommt
+weiterhin aus `unshare`/`ns-exec.sh`; die Isolationsstufe bleibt `NAMESPACES`,
+**nicht** `CONTAINER`. Der Exit-Code eines OOM-Kills erscheint über die
+`unshare`-Kette als `1` (util-linux meldet „sigprocmask unblock failed") statt
+`137` — der Lauf wird deshalb am `stdout`-Fortschritt und an `memory.max`
+nachgewiesen, nicht am Exit-Code, und der Bericht benennt das ausdrücklich.
+
+---
+
 ## 6. Betriebsbeobachtungen aus dem Deeptest
 
 | Punkt | Optionen | Empfehlung |
@@ -184,13 +260,13 @@ Beitritt, weil ein fail-closed-Abbruch als Zählerstand `0` durchging.
 | 3 | OCR | `tesseract.js` + vendored Sprachdaten — nur wenn gefordert | ~0,5 Tag | `OCR` real | WASM-Größe, Datenherkunft |
 | 4 | DESKTOP | offen lassen (`BLOCKED`: kein X-Server) | 0 | Status bleibt ehrlich | — |
 | 5 | OCI (`OCI-001`) | offen lassen (`UNVERIFIED`), Betreiberentscheidung | 0 | keine Scheinsicherheit | — |
-| 6 | cgroup-Limits | **C: `RLIMIT_AS`-Fallback** + A (Root-Helper) optional | 0,5–1 Tag | Speicherlimit kernel-seitig ohne Privilegien | VA ≠ RSS, Node-Untergrenze |
+| 6 | cgroup-/Speicherlimits | **erledigt: transienter systemd-Scope** (§5a, implementiert + 5 Tests); `RLIMIT_AS` nur noch Fallback, wenn kein `sudo` erlaubt ist | ~0,5 Tag | Speicher, Prozesse **und** CPU kernel-seitig durchgesetzt, ohne D-Bus und ohne Delegation | braucht ein enges sudoers-Recht; OOM-Exit erscheint als 1 |
 | 7 | cgroup-Bericht | **erledigt in diesem Branch** (statfs + echter Beitrittstest + Regressionstest + Live-Beleg) | ~1 h | Bericht sagt die Wahrheit | gering |
 | 8 | Session-Secret | Startprüfung (fail fast) | ~0,5 h | kein 500-Lauf ohne Secret | gering |
 
-**Reihenfolge:** ~~7~~ (erledigt) → 8 → 1 → 2 → 6 → 3. (7/8 sind Minuten und schließen
-Irreführungen; 1 bringt den größten Reifegradsprung; 6 verbessert die Grenze ohne
-neue Abhängigkeit.)
+**Reihenfolge:** ~~7~~, ~~6~~ (erledigt: Scope-Launcher, §5a) → 8 → 1 → 2 → 3.
+(7 schließt eine Irreführung, 6 schließt die einzige Lücke bei den
+Ressourcenlimits; 1 bringt den größten Reifegradsprung.)
 
 ---
 

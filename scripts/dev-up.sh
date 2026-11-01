@@ -6,6 +6,7 @@
 #   1. Repository-Stand ausrichten (HEAD = Remote, keine Änderungen verlieren)
 #   2. Abhängigkeiten installieren            (npm ci)
 #   3. cgroup-v2-Delegation einrichten        (scripts/setup-cgroup-delegation.sh)
+#      und Scope-Launcher freischalten        (BOB_SANDBOX_LAUNCHER=systemd-scope)
 #   4. Namespace-Rootfs bauen                 (scripts/build-ns-rootfs.sh)
 #   5. Anwendung bauen                        (next build)
 #   6. Server **innerhalb der Delegation** starten (scripts/cgroup-exec.sh)
@@ -14,6 +15,9 @@
 #   bash scripts/dev-up.sh                 # Standard: Port 3000, Storage /tmp/bob-live
 #   PORT=3200 STORAGE=/tmp/bob-x bash scripts/dev-up.sh
 #
+# Ressourcenlimits (Speicher/Prozesse/CPU) setzt der **transiente systemd-Scope**
+# durch (`BOB_SANDBOX_LAUNCHER=systemd-scope`): er braucht kein D-Bus und keine
+# cgroup-Delegation, nur ein enges sudoers-Recht für `/usr/bin/systemd-run --scope`.
 # Ohne `sudo` wird Schritt 3 übersprungen und die Plattform läuft ehrlich mit
 # `cgroup: UNAVAILABLE` (Ausführungen mit Speicher-/Prozesslimits werden dann
 # verweigert, statt still ohne Limit zu laufen) — siehe docs/RUNTIME.md §2b.
@@ -28,6 +32,11 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="${PORT:-3000}"
 STORAGE="${STORAGE:-/tmp/bob-live}"
 CGROUP_DIR="${BOB_CGROUP_DIR:-/sys/fs/cgroup/bob}"
+LAUNCHER="${BOB_SANDBOX_LAUNCHER:-}"
+if [ -z "$LAUNCHER" ]; then
+  # Der Scope ist der Weg, der ohne Delegation wirklich Limits durchsetzt.
+  if [ "$(id -u)" = "0" ] || sudo -n true 2>/dev/null; then LAUNCHER="systemd-scope"; fi
+fi
 BRANCH="${BRANCH:-$(git -C "$REPO" rev-parse --abbrev-ref HEAD)}"
 
 say() { printf '\n\033[1m== %s\033[0m\n' "$1"; }
@@ -87,6 +96,7 @@ echo "  Log: $STORAGE/server.log — Stoppen mit: pkill -f 'next start'"
 cd "$REPO"
 export BOB_STORAGE_DIR="$STORAGE" BOB_CGROUP_DIR="$CGROUP_DIR" BOB_NS_ISOLATION="${BOB_NS_ISOLATION:-on}" \
        BOB_SANDBOX_RUNTIME="${BOB_SANDBOX_RUNTIME:-local}" PORT
+if [ -n "$LAUNCHER" ]; then export BOB_SANDBOX_LAUNCHER="$LAUNCHER"; fi
 if [ "$(id -u)" = "0" ] || sudo -n true 2>/dev/null; then
   exec bash "$REPO/scripts/cgroup-exec.sh" npx next start -p "$PORT" -H 0.0.0.0
 else

@@ -2,13 +2,15 @@
 
 **Stand:** 2026-11-01
 **Testrunner:** Vitest 3 (`vitest.config.ts`, Node ≥ 22)
-**Letzter verifizierter Lauf (2026-11-01):** `npx vitest run` → **67 Dateien, 434 Tests** (432 grün, 2 ausdrücklich übersprungen:
+**Letzter verifizierter Lauf (2026-11-01):** `npx vitest run` → **68 Dateien, 440 Tests** (438 grün, 2 ausdrücklich übersprungen:
 OCI ohne Docker-Daemon und cgroup-Nachweis ohne delegierten Unterbaum).
 Lint 0 Fehler / 12 Warnungen, `tsc --noEmit` fehlerfrei, `npm run build` erfolgreich.
 Live gegen `node server.mjs` auf `:3100` (frisches Storage, `BOB_NS_ISOLATION=on` mit gebautem
-Rootfs, cgroup **nicht** delegierbar): `scripts/verify-live.sh` → **171 / 0**,
+Rootfs, cgroup **nicht** delegierbar, Speicher-/Prozesslimits über den transienten
+systemd-Scope `BOB_SANDBOX_LAUNCHER=systemd-scope` **live durchgesetzt**):
+`scripts/verify-live.sh` → **177 / 0**,
 `scripts/audit-actions.mjs` → **544 / 0**, `scripts/audit-api.sh` → **251 / 0**,
-`scripts/audit-ui.mjs` → **93 / 0**, `node scripts/acceptance.mjs --live` → **86 / 0**
+`scripts/audit-ui.mjs` → **93 / 0**, `node scripts/acceptance.mjs --live` → **87 / 0**
 (70/70 Routen-Nachweise, mit Sitzung). Der statische Prüfer meldet **15 / 0**.
 
 Alter Kopf (2026-09-26, historisch): `npx vitest run` → **63 Dateien, 422 Tests, alle grün**

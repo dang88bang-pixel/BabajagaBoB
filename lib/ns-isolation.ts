@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {spawn, spawnSync} from "node:child_process";
 import {storageRoot} from "./persistence/store";
+import {launcherPlan, launcherReport} from "./sandbox-launcher";
 import type {ExecutionResult} from "./runtime";
 
 /**
@@ -48,11 +49,15 @@ export type IsolationReport = {
    * Durchgesetzte Ressourcenlimits — getrennt nach Mechanismus, damit nichts
    * behauptet wird, was nicht gilt:
    *  - `kernel`: immer verfügbar (rlimits: CPU-Zeit, Dateigröße)
-   *  - `cgroup`: nur mit delegiertem cgroup-v2-Unterbaum (`BOB_CGROUP_DIR`)
+   *  - `cgroup`: mit delegiertem cgroup-v2-Unterbaum (`BOB_CGROUP_DIR`) **oder**
+   *    mit transientem systemd-Scope (`BOB_SANDBOX_LAUNCHER=systemd-scope`)
+   *  - `mechanism`: welcher der beiden Wege tatsächlich greift
    */
   resourceLimits: {
     kernel: string[];
     cgroup: "ENFORCED" | "UNAVAILABLE";
+    mechanism: "cgroup-delegation" | "systemd-scope" | "none";
+    launcher: {mode: string; available: boolean; reason?: string; detail?: string};
     detail: string;
   };
   reason?: string;
@@ -142,12 +147,21 @@ export function isolationReport(refresh = false): IsolationReport {
   const rootfs = nsRootfsPath();
   const capabilities: IsolationReport["capabilities"] = fs.existsSync("/usr/bin/setpriv") ? "BOUNDING_SET_EMPTY" : "INHERITABLE_AMBIENT_ONLY";
   const cgroup = cgroupAvailable();
+  // Zweiter, gleichwertiger Mechanismus: ein transienter systemd-Scope. Er wird
+  // nur geprüft, wenn er konfiguriert ist (Standard: aus) — sonst kostete jeder
+  // Bericht einen privilegierten Probeaufruf.
+  const launcher = launcherReport();
+  const limitsEnforced = cgroup.available || launcher.available;
   const resourceLimits: IsolationReport["resourceLimits"] = {
     kernel: ["CPU_TIME", "FILE_SIZE"],
-    cgroup: cgroup.available ? "ENFORCED" : "UNAVAILABLE",
+    cgroup: limitsEnforced ? "ENFORCED" : "UNAVAILABLE",
+    mechanism: cgroup.available ? "cgroup-delegation" : launcher.available ? "systemd-scope" : "none",
+    launcher: {mode: launcher.mode, available: launcher.available, reason: launcher.reason, detail: launcher.detail},
     detail: cgroup.available
       ? `cgroup v2 aktiv (${cgroupRoot()}): Speicher- und Prozesslimit werden je Ausführung kernel-seitig durchgesetzt`
-      : `cgroup v2 nicht verfügbar (${cgroup.reason}); Speicher- und Prozesslimits sind nicht kernel-seitig durchsetzbar (NOT_IMPLEMENTED), CPU-Zeit und Dateigröße sind es`
+      : launcher.available
+        ? `Speicher-, Prozess- und CPU-Limit werden je Ausführung durch einen transienten systemd-Scope durchgesetzt (${launcher.detail}); eine Delegation von cgroup-Unterbäumen ist nicht nötig`
+        : `weder cgroup-Delegation (${cgroup.reason}) noch systemd-Scope (${launcher.reason}) verfügbar; Speicher- und Prozesslimits sind nicht kernel-seitig durchsetzbar (BLOCKED im Host), CPU-Zeit und Dateigröße sind es`
   };
   if (requested === "off") {
     cachedReport = {
@@ -191,7 +205,7 @@ export function isolationReport(refresh = false): IsolationReport {
       capabilities === "BOUNDING_SET_EMPTY" ? "CAPABILITY_BOUNDING_SET_EMPTY" : "CAPABILITY_INHERITABLE_CLEARED",
       "CPU_TIME_LIMIT",
       "FILE_SIZE_LIMIT",
-      ...(cgroup.available ? ["CGROUP_MEMORY_LIMIT", "CGROUP_PIDS_LIMIT"] : [])
+      ...(limitsEnforced ? ["CGROUP_MEMORY_LIMIT", "CGROUP_PIDS_LIMIT"] : [])
     ],
     capabilities,
     rootfs,
@@ -410,8 +424,13 @@ export async function runIsolated(argv: string[], options: IsolationRunOptions):
     options.workspace,
     ...argv
   ];
+  // Ressourcenlimits: Ohne delegierbaren cgroup-Unterbaum übernimmt ein
+  // transienter systemd-Scope (MemoryMax/TasksMax/CPUQuota) die Durchsetzung —
+  // privilegiert angelegt, Nutzlast per setpriv wieder unprivilegiert. Ist der
+  // Launcher konfiguriert, aber nicht nutzbar, wird **nichts** ausgeführt.
+  const plan = launcherPlan([unshare, ...args], options.limits, options.sandboxId, env);
   return new Promise<ExecutionResult>((resolve, reject) => {
-    const child = spawn(unshare, args, {
+    const child = spawn(plan.command, plan.args, {
       cwd: options.workspace,
       shell: false,
       detached: true,
@@ -462,11 +481,13 @@ export async function runIsolated(argv: string[], options: IsolationRunOptions):
             ? `execution timed out after ${timeout}ms`
             : code === 0
               ? "execution completed (kernel-isolated)"
-              : `execution failed with exit code ${code}`,
+              : plan.label === "SYSTEMD_SCOPE" && /sigprocmask unblock failed|Killed/i.test(stderr)
+                ? "execution terminated inside the resource-limited scope (signal death; unshare reports exit 1 instead of 137)"
+                : `execution failed with exit code ${code}`,
         isolation: "NAMESPACES",
         resourceLimits: {
           kernel: ["CPU_TIME", "FILE_SIZE"],
-          cgroup: cgroupDir ? "ENFORCED" : "UNAVAILABLE"
+          cgroup: cgroupDir || plan.label === "SYSTEMD_SCOPE" ? "ENFORCED" : "UNAVAILABLE"
         }
       });
     });
