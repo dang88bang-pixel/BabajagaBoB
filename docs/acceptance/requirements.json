@@ -1569,12 +1569,18 @@
       "phase": "P2",
       "requirement": "Browser-, Desktop- und CLI-Instanzen sind registriert, erzwungen unautorisiert und nur über Gate/Broker nutzbar.",
       "implementation": [
-        "lib/computer-use.ts"
+        "lib/computer-use.ts",
+        "lib/execution-broker.ts",
+        "app/api/computer-use/route.ts"
       ],
       "tests": [
         {
           "file": "tests/integration/computer-use.test.ts",
           "min": 4
+        },
+        {
+          "file": "tests/integration/computer-broker.test.ts",
+          "min": 6
         }
       ],
       "ui": [
@@ -1594,7 +1600,43 @@
         "docs/COMPUTER_USE.md"
       ],
       "status": "PARTIAL",
-      "note": "Registrierung, Autorisierung und Belegungsgrenze sind umgesetzt; echte Treiber (Browser-Automation, Desktop-Eingabe, Screenshots) fehlen, deshalb kein Ausführungsnachweis."
+      "note": "Registrierung, Autorisierung, Belegungsgrenze und der Ausführungspfad über den Broker (Fähigkeit computer:execute, Bindung an Task/Sandbox, Treiberprozess mit argv[] und shell:false, Evidenzartefakt) sind implementiert und getestet; ohne BOB_COMPUTER_DRIVER wird nichts als ausgeführt gemeldet. Ein echter Browser-/Desktop-Treiber (Playwright, VNC) ist in dieser Umgebung nicht verfügbar und bleibt NOT_IMPLEMENTED."
+    },
+    {
+      "id": "CU-002",
+      "area": "Computer Use",
+      "phase": "P2",
+      "requirement": "Eine Computer-Aktion ist nur über Execution Gate und Broker ausführbar: Fähigkeit computer:execute, Bindung an Task/Sandbox/Instanz, verbotene Shell als Treiber, Verweigerung ohne Treiber, Evidenz je Lauf.",
+      "implementation": [
+        "lib/execution-broker.ts",
+        "lib/computer-use.ts",
+        "app/api/computer-use/route.ts"
+      ],
+      "tests": [
+        {
+          "file": "tests/integration/computer-broker.test.ts",
+          "min": 6
+        }
+      ],
+      "ui": [
+        "ComputerUse"
+      ],
+      "evidence": [
+        {
+          "kind": "route",
+          "method": "GET",
+          "path": "/api/computer-use",
+          "expect": [
+            200
+          ]
+        }
+      ],
+      "docs": [
+        "docs/COMPUTER_USE.md",
+        "docs/AUTHORIZATION.md"
+      ],
+      "status": "PARTIAL",
+      "note": "Der Ausführungspfad ist implementiert, im Ablauf verdrahtet und mit sechs Fällen getestet (Erfolg mit Evidenz, Fremdaufgabe, fehlende Fähigkeit, nicht gedeckte Aktion, fehlender Treiber, Shell als Treiber). Live gegen eine echte Anwendung ist der Lauf ohne realen Browser-Treiber nicht führbar, deshalb kein VERIFIED."
     },
     {
       "id": "SIM-001",

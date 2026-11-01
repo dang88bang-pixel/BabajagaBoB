@@ -4,13 +4,13 @@
 **Maschinenlesbare Quelle:** `docs/acceptance/requirements.json`.
 **Prüfer:** `node scripts/acceptance.mjs` (statisch, in CI) und `… --live` (gegen einen laufenden Server).
 **Generierte Übersicht:** `docs/ACCEPTANCE.md` (`node scripts/acceptance.mjs --write`).
-**Letzter Prüferlauf:** 2026-09-25 → **15 Prüfungen bestanden, 0 fehlgeschlagen**; die
+**Letzter Prüferlauf:** 2026-11-01 → **15 Prüfungen bestanden, 0 fehlgeschlagen**; die
 Abnahme-Selbsttests `tests/unit/acceptance-matrix.test.ts` (4/4) und
 `tests/e2e/acceptance-chain.test.ts` (4/4, 18 Stufen) laufen mit.
 **Live-Prüferlauf** gegen die Instanz `:3100` (cgroup-delegiert, `BOB_NS_ISOLATION=on`,
 `BOB_DEVICE_ENROLLMENT_SECRET` gesetzt):
-`node scripts/acceptance.mjs --live` → **84 bestanden / 0 fehlgeschlagen**, davon
-**68/68 Routen-Nachweise** mit Creator-Session. Der Prüfer erkennt jetzt beide
+`node scripts/acceptance.mjs --live` → **86 bestanden / 0 fehlgeschlagen**, davon
+**70/70 Routen-Nachweise** mit Creator-Session. Der Prüfer erkennt jetzt beide
 Schreibweisen von `BOB_SESSION_COOKIE` (reiner Sitzungswert oder fertiger Cookie-Kopf) — zuvor
 sahen gültige Sitzungen wie `401`-Fehlschläge aus, was ein Prüferfehler war und nicht
 abgeschwächt, sondern behoben wurde. Zwei Nachweise waren zuerst falsch

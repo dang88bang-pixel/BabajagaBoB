@@ -12,7 +12,7 @@ Eingefroren: 2026-09-25. Quellen: GESAMTAUFTRAG (53 Punkte); docs/MASTER_COMPLET
 | Status | Anzahl | Bedeutung |
 |---|---|---|
 | ✅ PASS | 80 | Implementierung + Test + Nachweis vorhanden |
-| 🟡 PARTIAL | 2 | Teilweise umgesetzt, Lücke benannt |
+| 🟡 PARTIAL | 3 | Teilweise umgesetzt, Lücke benannt |
 | ❌ FAIL | 0 | Umgesetzt, aber Nachweis fehlgeschlagen |
 | ⚪ NOT_IMPLEMENTED | 0 | Bewusst nicht gebaut (Begründung) |
 | 🔵 NOT_VERIFIED | 3 | Vorhanden, aber Umgebung erlaubt keinen Nachweis |
@@ -44,7 +44,7 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 | GATE-001 | Execution Gate | Kein Ausführungspfad um Gate und Broker herum — auch interne Läufe nicht. | `lib/execution-gate.ts`<br>`lib/execution-broker.ts`<br>`lib/system-execution.ts` | `tests/security/gate-bypass.test.ts` (3) | `POST /api/execution-gate` | Runs, Approvals | ✅ |
 | GATE-002 | Execution Gate | Verweigerungen erzeugen Evidenz (Denial-Artefakt) samt Audit und ohne Klartext-Argumente. | `lib/artifacts.ts`<br>`lib/execution-gate.ts` | `tests/integration/execution-evidence.test.ts` (5) | `GET /api/artifacts` | Evidence | ✅ |
 | GATE-003 | Execution Gate | Keine Shell-Strings: argv[] mit shell:false; Interpreter und Metazeichen sind verboten. | `lib/argv-policy.ts`<br>`lib/runtime-local.ts` | `tests/security/argv-policy.test.ts` (6) | `scripts/verify-live.sh` | — | ✅ |
-| OCI-001 | OCI-Härtung | OCI-Sandbox mit Härtungsflags, Snapshot/Restore und Quota-Durchsetzung.<br><small>Kein Container-Daemon in der Umgebung (Docker/Podman-Downloads gesperrt); Flags sind definiert, aber nicht real ausgeführt.</small> | `lib/oci-runtime.ts` | — | — | — | 🔵 |
+| OCI-001 | OCI-Härtung | OCI-Sandbox mit Härtungsflags, Snapshot/Restore und Quota-Durchsetzung.<br><small>Implementierung und realer Docker-Lifecycle-Test sind vorhanden; PASS wird erst nach einem erfolgreich ausgeführten OCI-CI-Run gesetzt. Der aktuelle Connector kann den neuen Workflow-Run noch nicht beobachten.</small> | `lib/oci-runtime.ts`<br>`.github/workflows/ci.yml` | `tests/integration/oci-runtime.test.ts` (1) | `npm run test:oci` | — | 🔵 |
 
 ## P1 (20/20 PASS)
 
@@ -71,7 +71,7 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 | INB-001 | Creator-Inbox | Die Creator-Inbox kennt INFORM/ASK/BLOCK/ESCALATE und kann nur vom Creator beantwortet werden. | `lib/inbox.ts` | `tests/security/inbox-route.test.ts` (4) | `GET /api/inbox` | Inbox | ✅ |
 | GOV-001 | Governance | Kill Switches wirken auf den gesamten Ausführungspfad bis in interne Läufe; Lockdown hält Ausführung an. | `lib/governance.ts`<br>`lib/system-execution.ts` | `tests/security/gate-bypass.test.ts` (3) | `GET /api/governance` | Governance | ✅ |
 
-## P2 (10/13 PASS)
+## P2 (11/14 PASS)
 
 | ID | Bereich | Anforderung | Implementierung | Test | Nachweis | UI | Status |
 |---|---|---|---|---|---|---|---|
@@ -83,9 +83,10 @@ Creator → Mission → Agent → Plan → Sandbox → Experiment/Code → Execu
 | PROVF-002 | Provider Fabric | Echte externe Verbindung eines Providers (live) inklusive Telemetrie.<br><small>Netzwerk ist per Vorgabe DENY und die Umgebung erlaubt keine externen Dienstverbindungen; ein Adapterlauf ist damit nicht belegbar.</small> | `lib/provider-fabric.ts` | — | — | — | 🔵 |
 | DEV-001 | Device Fabric | Geräte-Lebenszyklus mit Discovery ≠ Autorisierung, Allokation nur mit Creator-Freigabe. | `lib/devices.ts`<br>`app/api/devices/route.ts` | `tests/integration/computer-use.test.ts` (6) | `GET /api/devices` | Devices | ✅ |
 | DEV-002 | Device Fabric | Selbstmeldende Geräte-Registrierung (Enrollment) ist minimal berechtigt, fail closed und ohne Selbst-Grant. | `lib/device-enrollment.ts`<br>`scripts/discover-host.mjs` | `tests/security/device-enrollment.test.ts` (8) | `GET /api/devices` | Devices | ✅ |
-| CU-001 | Computer Use | Browser-, Desktop- und CLI-Instanzen sind registriert, erzwungen unautorisiert und nur über Gate/Broker nutzbar.<br><small>Registrierung, Autorisierung und Belegungsgrenze sind umgesetzt; echte Treiber (Browser-Automation, Desktop-Eingabe, Screenshots) fehlen, deshalb kein Ausführungsnachweis.</small> | `lib/computer-use.ts` | `tests/integration/computer-use.test.ts` (4) | `GET /api/computer-use` | ComputerUse | 🟡 |
+| CU-001 | Computer Use | Browser-, Desktop- und CLI-Instanzen sind registriert, erzwungen unautorisiert und nur über Gate/Broker nutzbar.<br><small>Registrierung, Autorisierung, Belegungsgrenze und der Ausführungspfad über den Broker (Fähigkeit computer:execute, Bindung an Task/Sandbox, Treiberprozess mit argv[] und shell:false, Evidenzartefakt) sind implementiert und getestet; ohne BOB_COMPUTER_DRIVER wird nichts als ausgeführt gemeldet. Ein echter Browser-/Desktop-Treiber (Playwright, VNC) ist in dieser Umgebung nicht verfügbar und bleibt NOT_IMPLEMENTED.</small> | `lib/computer-use.ts`<br>`lib/execution-broker.ts`<br>`app/api/computer-use/route.ts` | `tests/integration/computer-use.test.ts` (4)<br>`tests/integration/computer-broker.test.ts` (6) | `GET /api/computer-use` | ComputerUse | 🟡 |
+| CU-002 | Computer Use | Eine Computer-Aktion ist nur über Execution Gate und Broker ausführbar: Fähigkeit computer:execute, Bindung an Task/Sandbox/Instanz, verbotene Shell als Treiber, Verweigerung ohne Treiber, Evidenz je Lauf.<br><small>Der Ausführungspfad ist implementiert, im Ablauf verdrahtet und mit sechs Fällen getestet (Erfolg mit Evidenz, Fremdaufgabe, fehlende Fähigkeit, nicht gedeckte Aktion, fehlender Treiber, Shell als Treiber). Live gegen eine echte Anwendung ist der Lauf ohne realen Browser-Treiber nicht führbar, deshalb kein VERIFIED.</small> | `lib/execution-broker.ts`<br>`lib/computer-use.ts`<br>`app/api/computer-use/route.ts` | `tests/integration/computer-broker.test.ts` (6) | `GET /api/computer-use` | ComputerUse | 🟡 |
 | SIM-001 | Simulation/Visualisierung | Visualisierung erzeugt aus dem echten Zustand passive Artefakte (7 Arten) mit Digest und Szenario-Bezug. | `lib/visualization.ts` | `tests/integration/visualization.test.ts` (11) | `GET /api/simulation`<br>`GET /api/simulation/render` | Simulation, Gallery | ✅ |
-| OFF-001 | Offline Fabric | Arbeiten ohne Internet mit lokalem Paket-/Modell-/Wissensbestand und späterem, herkunftstreuem Abgleich. | `lib/offline.ts`<br>`app/api/offline/route.ts`<br>`components/control-center.tsx` | `tests/integration/offline.test.ts` (2) | `GET /api/offline`<br>`POST /api/offline` | Offline | ✅ |
+| OFF-001 | Offline Fabric | Arbeiten ohne Internet mit lokalem Paket-/Modell-/Wissensbestand und späterem, herkunftstreuem Abgleich.<br><small>Lokale Assets, signierte SHA-256 Task-Pakete, netzwerkfreier Offline-Run und herkunftstreuer Sync/Merge sind persistent. Konflikte werden niemals überschrieben, sondern als PRESERVE_BOTH erfasst.</small> | `lib/offline.ts`<br>`app/api/offline/route.ts`<br>`components/control-center.tsx` | `tests/integration/offline.test.ts` (2) | `GET /api/offline`<br>`POST /api/offline` | Offline | ✅ |
 | OPR-001 | Betriebliche Wiederherstellung | Sicherungen laufen geplant und verifiziert, mit Aufbewahrungsgrenze und schützendem Verhalten für das neueste Backup. | `lib/backup-policy.ts`<br>`lib/persistence/store.ts` | `tests/integration/backup-automation.test.ts` (9) | `GET /api/persistence` | Operations | ✅ |
 | OPR-002 | Persistenz | Jeder Store ist ein digest-geprüfter Envelope mit atomarem Schreiben, Migration und Reparaturpfad. | `lib/persistence/store.ts` | `tests/unit/persistence.test.ts` (5)<br>`tests/unit/store-migration.test.ts` (22) | `GET /api/persistence` | — | ✅ |
 

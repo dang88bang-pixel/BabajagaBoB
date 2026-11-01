@@ -180,8 +180,18 @@ step("2. Nachweisregel (kein DONE ohne Nachweis)");
   if (brokenRoutes.length === 0) ok("Jeder Routen-Nachweis zeigt auf eine existierende Route", `${routeEvidence.length} Routen`);
   else bad("Jeder Routen-Nachweis zeigt auf eine existierende Route", brokenRoutes.join(", "));
 
+  // Ein Skript-Nachweis ist entweder eine Datei (`scripts/…`) **oder** ein
+  // npm-Skript (`npm run test:oci`). Beides wird gegen die reale Quelle geprüft:
+  // eine Datei gegen das Dateisystem, ein npm-Skript gegen `package.json`.
+  // Früher wurde `npm run test:oci` als Dateipfad geprüft und konnte deshalb
+  // niemals existieren — der Prüfer war hier falsch, nicht die Anforderung.
   const scriptEvidence = requirements.flatMap(entry => (entry.evidence ?? []).filter(item => item.kind === "script").map(item => item.script));
-  const missingScripts = [...new Set(scriptEvidence)].filter(script => !existsSync(script) && script !== "scripts/acceptance.mjs");
+  const packageScripts = new Set(Object.keys(JSON.parse(readFileSync("package.json", "utf8")).scripts ?? {}));
+  const missingScripts = [...new Set(scriptEvidence)].filter(script => {
+    const npmScript = /^npm (?:run|run-script) ([\w:.-]+)$/.exec(script);
+    if (npmScript) return !packageScripts.has(npmScript[1]);
+    return !existsSync(script) && script !== "scripts/acceptance.mjs";
+  });
   if (missingScripts.length === 0) ok("Jeder Skript-Nachweis existiert", `${new Set(scriptEvidence).size} Skripte`);
   else bad("Jeder Skript-Nachweis existiert", missingScripts.join(", "));
 
