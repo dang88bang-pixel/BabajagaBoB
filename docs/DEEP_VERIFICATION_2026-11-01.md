@@ -97,12 +97,41 @@ durchsetzbar (kein delegierter Unterbaum); das wird ausgewiesen, nicht behauptet
   `scripts/verify-rate-limit.sh` gegen eine **frische** Instanz mit Standardbudget
   nachgewiesen (in dieser Runde nicht gefahren).
 
+## 4a. Nachtrag: Alternativen-Evaluation und cgroup-Korrektur
+
+`docs/ALTERNATIVES_2026-11-01.md` bewertet alle offenen Punkte mit **gemessenen**
+Ergebnissen. Wichtigste Befunde:
+
+- **Ein echter Browser-Treiber ist in dieser Umgebung möglich**: `@sparticuz/chromium`
+  + `puppeteer-core` (npm) startet Chromium 153, navigiert, tippt, klickt und liefert
+  einen echten PNG-Screenshot (7 580 Bytes) — nachgewiesen, nicht angenommen.
+- **Nicht möglich** (gemessen): System-Chromium/`Xvfb` über apt (`deb.debian.org`
+  nicht erreichbar), `runc`/`crun`-Binärdateien (GitHub-Release-Assets nicht
+  erreichbar, npm-Pakete enthalten keine Binärdatei), Playwright-Browser-Download.
+- **Neu und behoben:** `cgroupAvailable()` prüfte nur Dateirechte. Mit einem
+  delegierten, aber unprivilegierten Unterbaum meldete der Isolationsbericht
+  `CGROUP_MEMORY_LIMIT`/`CGROUP_PIDS_LIMIT` als erzwungen, während **jeder** Lauf
+  fail closed abbrach. Jetzt: `statfs`-Prüfung auf cgroup-v2, echter Beitrittstest,
+  Bericht `UNAVAILABLE` mit Kernel-Grund (`EACCES`) und keine CGROUP-Einträge in
+  `enforced[]` — live gegen `GET /api/runtime` belegt, Regression in
+  `tests/integration/ns-cgroup-report.test.ts` (3 Tests).
+- Zusätzlich: der cgroup-Nachweis in `ns-isolation.test.ts` überspringt sich jetzt
+  **sichtbar mit Grund**; zuvor „bestand" er bei fehlgeschlagenem Beitritt, weil ein
+  fail-closed-Abbruch als Zählerstand `0` durchging (falscher grüner Test).
+
+Teststand nach dem Nachtrag: **67 Dateien / 434 Tests**, 432 grün, 2 benannt
+übersprungen; Lint 0 Fehler; `tsc` und Build fehlerfrei.
+
 ## 5. Offen (unverändert ehrlich)
 
-1. **Echter Computer-Treiber** (Playwright/VNC/Desktop-Eingabe): `NOT_IMPLEMENTED` —
-   die Umgebung hat keinen Browser. Der Pfad ist gebaut, getestet und fail closed.
+1. **Echter Computer-Treiber**: `NOT_IMPLEMENTED` im Repository — aber **machbar**
+   (siehe `docs/ALTERNATIVES_2026-11-01.md` §1, mit Messwerten). Bis zur
+   Entscheidung bleibt der Pfad gebaut, getestet und fail closed.
 2. **OCI-Runtime**: `UNVERIFIED` — kein Daemon; der Test überspringt sich mit Grund.
-3. **cgroup-Limits**: nicht delegierbar in dieser Umgebung → `UNAVAILABLE`, gemeldet.
+3. **cgroup-Limits**: Delegation ist mit `sudo` möglich, der Beitritt bleibt dem
+   Benutzer aber verwehrt (`EACCES`) → `UNAVAILABLE`, jetzt korrekt gemeldet.
+   Alternativen (Root-Helper bzw. `RLIMIT_AS`-Fallback) in
+   `docs/ALTERNATIVES_2026-11-01.md` §5.
 4. **Dauerlauf/SLO-Zusage**, externer Scheduler für Backups, Netz-Scan/Attestierung
    der Geräte: unverändert offen.
 5. **Startprüfung für `BOB_SESSION_SECRET`**: Der Dienst startet ohne Secret und

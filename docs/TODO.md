@@ -30,6 +30,9 @@ Smoke-Test laufen als SYSTEM-WORKER über Gate, Broker und Evidenz).
 
 ## 2. Offen – als `PARTIAL` geführt
 
+**Alternativen zu allen offenen Punkten** sind in `docs/ALTERNATIVES_2026-11-01.md`
+gemessen und bewertet (Treiber, OCR, Desktop, OCI, cgroup-Limits, Betriebspunkte).
+
 | Punkt | Warum offen | Nächster Schritt |
 |---|---|---|
 | OCI-Runtime verifizieren | kein Container-Daemon in der Umgebung | Lauf mit Docker/Podman auf einem Host mit Daemon; Härtungsflags und Snapshot prüfen |

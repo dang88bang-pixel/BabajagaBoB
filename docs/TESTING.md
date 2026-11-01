@@ -2,8 +2,8 @@
 
 **Stand:** 2026-11-01
 **Testrunner:** Vitest 3 (`vitest.config.ts`, Node ≥ 22)
-**Letzter verifizierter Lauf (2026-11-01):** `npx vitest run` → **66 Dateien, 431 Tests** (430 grün,
-1 ausdrücklich übersprungen: OCI gegen einen Docker-Daemon, der in der Umgebung fehlt).
+**Letzter verifizierter Lauf (2026-11-01):** `npx vitest run` → **67 Dateien, 434 Tests** (432 grün, 2 ausdrücklich übersprungen:
+OCI ohne Docker-Daemon und cgroup-Nachweis ohne delegierten Unterbaum).
 Lint 0 Fehler / 12 Warnungen, `tsc --noEmit` fehlerfrei, `npm run build` erfolgreich.
 Live gegen `node server.mjs` auf `:3100` (frisches Storage, `BOB_NS_ISOLATION=on` mit gebautem
 Rootfs, cgroup **nicht** delegierbar): `scripts/verify-live.sh` → **171 / 0**,

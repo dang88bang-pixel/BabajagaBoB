@@ -234,18 +234,101 @@ export function cgroupRoot(): string | null {
   return dir && dir.length > 0 ? dir : null;
 }
 
+/**
+ * Ergebnis der cgroup-Prüfung je Wurzel (der Beitrittstest startet einen kurzen
+ * Kindprozess und wird deshalb nicht bei jeder Anfrage wiederholt). Ein Wechsel
+ * von `BOB_CGROUP_DIR` erzeugt einen neuen Schlüssel.
+ */
+const cgroupProbes = new Map<string, {available: boolean; reason?: string}>();
+
+const CGROUP2_SUPER_MAGIC = 0x63677270;
+
+/**
+ * Ist der Pfad wirklich ein cgroup-v2-Dateisystem?
+ *
+ * Ein gewöhnliches Verzeichnis mit einer Datei namens `cgroup.procs` sieht für
+ * Schreibprüfungen wie ein delegierter Unterbaum aus — es setzt aber **nichts**
+ * durch. Ohne diese Prüfung hätte der Bericht Speicher-/Prozesslimits als
+ * erzwungen ausgegeben, obwohl nur in eine Datei geschrieben wurde.
+ */
+function isCgroup2Filesystem(root: string): boolean {
+  try {
+    return fs.statfsSync(root).type === CGROUP2_SUPER_MAGIC;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Kann dieser Prozess einem Kind-cgroup beitreten?
+ *
+ * Schreibrechte auf `cgroup.procs` genügen nicht: Der Kernel verlangt für das
+ * Verschieben eines Prozesses Privilegien im cgroup-Namespace. Bei bloßer
+ * Datei-Delegation (Eigentümer = Benutzer) endet der Beitritt mit EACCES, und
+ * `ns-exec.sh` bricht dann fail closed mit Exit 126 ab. Genau dieser Fall ist
+ * aufgetreten: Der Bericht führte `CGROUP_MEMORY_LIMIT`/`CGROUP_PIDS_LIMIT` in
+ * `enforced[]`, während **jeder** Lauf scheiterte.
+ *
+ * Deshalb wird der Beitritt einmal real geprüft (kurzer Kindprozess, der sich
+ * selbst in das Probe-cgroup schreibt und wieder verschwindet).
+ */
+function cgroupJoinWorks(root: string): {available: boolean; reason?: string} {
+  const probeDir = path.join(root, `bob-probe-${process.pid}-${Date.now().toString(36)}`);
+  try {
+    fs.mkdirSync(probeDir, {recursive: true, mode: 0o755});
+  } catch (error) {
+    return {available: false, reason: `cgroup-Probe konnte nicht angelegt werden: ${root} (${error instanceof Error ? error.message : String(error)})`};
+  }
+  const procs = path.join(probeDir, "cgroup.procs");
+  try {
+    const child = spawnSync(
+      process.execPath,
+      ["-e", `require("node:fs").writeFileSync(${JSON.stringify(procs)}, String(process.pid))`],
+      {timeout: 5_000, encoding: "utf8", env: {...process.env, PATH: "/usr/bin:/bin"}}
+    );
+    if (child.status !== 0) {
+      const lines = (child.stderr ?? "").trim().split("\n").filter(line => line.trim().length > 0);
+      const relevant = lines.find(line => /EACCES|EPERM|ENOENT|Error/.test(line)) ?? lines[0] ?? `exit ${child.status ?? "null"}`;
+      const detail = relevant.trim().slice(0, 200);
+      return {
+        available: false,
+        reason: `cgroup-Beitritt nicht möglich (${detail}); Delegation ohne Privilegien — Speicher- und Prozesslimits sind nicht durchsetzbar`
+      };
+    }
+    return {available: true};
+  } finally {
+    try {
+      fs.rmdirSync(probeDir);
+    } catch {
+      /* Aufräumen ist Best-effort; ein liegenbleibendes Probe-cgroup setzt nichts durch. */
+    }
+  }
+}
+
 export function cgroupAvailable(): {available: boolean; reason?: string} {
   const root = cgroupRoot();
   if (!root) return {available: false, reason: "kein delegierter cgroup-Unterbaum gesetzt (BOB_CGROUP_DIR)"};
+  const cached = cgroupProbes.get(root);
+  if (cached) return cached;
   if (!fs.existsSync(path.join(root, "cgroup.procs"))) return {available: false, reason: `cgroup.procs fehlt in ${root}`};
+  if (!isCgroup2Filesystem(root)) {
+    return {available: false, reason: `${root} ist kein cgroup-v2-Dateisystem; ein Verzeichnis allein setzt keine Limits durch`};
+  }
   try {
-    for (const file of ["cgroup.procs", "cgroup.subtree_control", "memory.max"]) {
+    for (const file of ["cgroup.procs", "cgroup.subtree_control", "memory.max", "pids.max"]) {
       fs.accessSync(path.join(root, file), fs.constants.W_OK);
     }
   } catch (error) {
     return {available: false, reason: `cgroup-Unterbaum nicht beschreibbar: ${root} (${error instanceof Error ? error.message : String(error)})`};
   }
-  return {available: true};
+  const probed = cgroupJoinWorks(root);
+  cgroupProbes.set(root, probed);
+  return probed;
+}
+
+/** Nur für Tests/Live-Prüfer: zwischengespeichertes cgroup-Ergebnis verwerfen. */
+export function resetCgroupProbe(): void {
+  cgroupProbes.clear();
 }
 
 /** CPU-Zeitlimit in Sekunden: Millicores über die maximale Laufzeit. */

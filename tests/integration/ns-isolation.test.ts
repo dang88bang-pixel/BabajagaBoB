@@ -1,7 +1,7 @@
 import {execFileSync} from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import {beforeEach, describe, expect, it, vi} from "vitest";
+import {afterAll, beforeEach, describe, expect, it, vi} from "vitest";
 import {isolatedStorageRoot} from "../helpers/runtime";
 import {probeUserNamespaces} from "../../lib/ns-isolation";
 
@@ -71,11 +71,25 @@ process.env.BOB_NS_ROOTFS = rootfs;
 /** Nur in Umgebungen mit nachweisbarer Isolation; sonst als `skipped` gemeldet. */
 const isolationDescribe = isolationAvailable ? describe : describe.skip;
 
+/**
+ * Ein vom Betreiber gesetzter `BOB_CGROUP_DIR` würde jeden Lauf dieser Suite
+ * Limits anfordern lassen und — wenn der Unterbaum nicht privilegiert
+ * beigetreten werden kann — die rlimit-Tests mit einem fail-closed-Abbruch
+ * scheitern lassen. Der cgroup-Pfad wird deshalb ausschließlich von dem Test
+ * gesetzt, der ihn prüft; danach wird der vorherige Wert wiederhergestellt.
+ */
+const ambientCgroupDir = process.env.BOB_CGROUP_DIR;
+
 beforeEach(async () => {
+  delete process.env.BOB_CGROUP_DIR;
   process.env.BOB_NS_ROOTFS = rootfs;
   process.env.BOB_NS_ISOLATION = "auto";
   vi.resetModules();
   ns = await import("../../lib/ns-isolation");
+});
+
+afterAll(() => {
+  if (ambientCgroupDir !== undefined) process.env.BOB_CGROUP_DIR = ambientCgroupDir;
 });
 
 isolationDescribe("Kernel-Isolation (NAMESPACES)", () => {
@@ -178,8 +192,24 @@ isolationDescribe("Kernel-Isolation (NAMESPACES)", () => {
     expect(written).toBeLessThan(4 * 1024 * 1024);
   }, 60_000);
 
-  it("erzwingt Speicher- und Prozesslimits über einen delegierten cgroup-Unterbaum", async () => {
-    if (ns.cgroupAvailable().available === false) return; // ohne Delegation nicht prüfbar
+  it("erzwingt Speicher- und Prozesslimits über einen delegierten cgroup-Unterbaum", async ctx => {
+    // Ein vom Betreiber gesetzter Unterbaum wird hier absichtlich wieder
+    // eingesetzt: Nur so lässt sich der cgroup-Nachweis auf einem Host mit
+    // echter Delegation führen (die übrigen Tests laufen ohne ihn).
+    if (ambientCgroupDir) {
+      process.env.BOB_CGROUP_DIR = ambientCgroupDir;
+      vi.resetModules();
+      ns = await import("../../lib/ns-isolation");
+    }
+    const availability = ns.cgroupAvailable();
+    // Ohne nutzbaren Unterbaum nicht prüfbar — aber **sichtbar** übersprungen und
+    // mit Grund. Früher kehrte der Test still zurück; mit einem nur teilweise
+    // delegierten Unterbaum „bestand" er sogar, weil ein fail-closed-Abbruch als
+    // Zählerstand 0 durchging.
+    if (!availability.available) {
+      ctx.skip(`cgroup-Limits nicht prüfbar: ${availability.reason}`);
+      return;
+    }
     const limits = {cpuMillicores: 1000, memoryMb: 48, storageMb: 8, timeoutMs: 20_000, processes: 16};
     const hog = await ns.runIsolated(
       ["node", "-e", 'const a=[];for(;;)a.push(Buffer.alloc(8*1024*1024))'],
