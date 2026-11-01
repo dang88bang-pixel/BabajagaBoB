@@ -65,7 +65,7 @@ if [ ! -x "$BB" ]; then
 fi
 
 # Mount-Punkte und Platzhalter müssen vor dem Read-only-Remount existieren.
-mkdir -p "$ROOTFS/proc" "$ROOTFS/dev" "$ROOTFS/work" "$ROOTFS/.bob"
+mkdir -p "$ROOTFS/proc" "$ROOTFS/dev" "$ROOTFS/work" "$ROOTFS/.bob" "$ROOTFS/.bob/cgroup"
 for node in null zero random urandom; do
   if [ ! -e "$ROOTFS/dev/$node" ]; then : > "$ROOTFS/dev/$node"; fi
 done
@@ -85,6 +85,22 @@ fi
 "$BB" mount --bind "$ROOTFS" "$ROOTFS"
 "$BB" mount -o remount,ro,bind "$ROOTFS"
 "$BB" mount --bind "$WORK" "$ROOTFS/work"
+
+# Selbstauskunft über Ressourcenlimits: Der cgroup-Knoten der Ausführung wird
+# read-only eingebunden, damit die Nutzlast ihre echten Limits (`memory.max`,
+# `pids.max`) lesen kann. Ist ein Pfad angekündigt, aber nicht vorhanden, wird
+# NICHTS ausgeführt (Exit 126) — ein Limit, das nicht nachweisbar ist, gilt nicht.
+if [ -n "${BOB_NS_SELF_CGROUP:-}" ]; then
+  if [ ! -d "$BOB_NS_SELF_CGROUP" ]; then
+    echo "ns-exec: angekündigter cgroup-Knoten fehlt: $BOB_NS_SELF_CGROUP" >&2
+    exit 126
+  fi
+  if ! "$BB" mount --bind "$BOB_NS_SELF_CGROUP" "$ROOTFS/.bob/cgroup"; then
+    echo "ns-exec: cgroup-Knoten konnte nicht eingebunden werden: $BOB_NS_SELF_CGROUP" >&2
+    exit 126
+  fi
+  "$BB" mount -o remount,ro,bind "$ROOTFS/.bob/cgroup" 2>/dev/null || true
+fi
 
 # Nur die benötigten Geräte (kein vollständiges /dev des Hosts).
 for node in null zero random urandom; do

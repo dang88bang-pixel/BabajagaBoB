@@ -19,7 +19,17 @@ Routen `app/api/persistence/route.ts`, `app/api/metrics/route.ts`,
   Voraussetzungen bei jeder Abfrage und liefert erst `NAMESPACES`, wenn Rootfs und
   `unshare`-Probe es hergeben (vorher blieb der Bericht bis zum Neustart auf
   `FILESYSTEM_ONLY` stehen und blockierte jede Ausführung).
-- Ressourcenlimits (kernel-seitig, optional aber empfohlen): `BOB_CGROUP_DIR` auf einen
+- Ressourcenlimits (**empfohlen, der einfachste Weg**): transienter systemd-Scope.
+  Einmalig ein enges sudoers-Recht hinterlegen —
+  `<benutzer> ALL=(root) NOPASSWD: /usr/bin/systemd-run --scope *` — und die Plattform mit
+  `BOB_SANDBOX_LAUNCHER=systemd-scope` starten (oder `bash scripts/dev-up.sh`, das die
+  Variable automatisch setzt). Der Scope braucht **kein** D-Bus und **keine**
+  cgroup-Delegation; `MemoryMax`, `TasksMax` und `CPUQuota` werden je Ausführung
+  durchgesetzt, die Nutzlast läuft per `setpriv` wieder als aufrufender Benutzer und kann
+  ihre Limits über `/.bob/cgroup` selbst lesen. Ein Probelauf beim Start prüft die Wirkung;
+  ist der Launcher nicht nutzbar, bleibt der Bericht bei `UNAVAILABLE` und limitierte
+  Ausführungen werden verweigert (fail closed). Details: `docs/RUNTIME.md` §2c.
+- Ressourcenlimits (Alternative): `BOB_CGROUP_DIR` auf einen
   **delegierten** cgroup-v2-Unterbaum zeigen lassen. Einrichtung und Start:
   `sudo BOB_CGROUP_DIR=/sys/fs/cgroup/bob bash scripts/setup-cgroup-delegation.sh <benutzer>`,
   danach die Plattform mit `bash scripts/cgroup-exec.sh npx next start …` starten (siehe
@@ -244,7 +254,10 @@ Ausführung mit Capability-Token, Verweigerungen (fremde Bindung, Shell-Programm
 widerrufenes Token, Lockdown), Evidence/Provenance/Audit-Kette, Metriken, Persistenz,
 Backups, Readiness und Queue. Ergebnis wird als Anzahl `PASS`/`FAIL` ausgegeben.
 
-Auf der Referenzinstanz mit delegiertem cgroup-Unterbaum wurden **174 Prüfungen / 0 Fehler** gemessen
+Auf der Referenzinstanz mit **systemd-Scope-Launcher** (`BOB_SANDBOX_LAUNCHER=systemd-scope`,
+`BOB_NS_ISOLATION=on`) wurden **177 Prüfungen / 0 Fehler** gemessen — inklusive
+Speicherlimit-Nachweis über HTTP (32 MiB innerhalb 64 MiB laufen, 512 MiB werden
+beendet). Vorher, mit delegiertem cgroup-Unterbaum, **174 Prüfungen / 0 Fehler** gemessen
 (`BOB_NS_ISOLATION=on`, `BOB_CGROUP_DIR=/sys/fs/cgroup/bob`, Kernel-Isolation `NAMESPACES`, `cgroup:
 ENFORCED`); ohne cgroup-Delegation entfallen drei Prüfungen. Zusätzlich weist
 `scripts/verify-rate-limit.sh` die Betriebsgrenze mit **Standardbudget** nach (siehe §3c):

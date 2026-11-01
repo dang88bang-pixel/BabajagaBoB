@@ -37,12 +37,16 @@ Recovery`
   verifizierten Snapshot **und** bestandene Regression, `LEARNED` verlangt `fix.verify`.
 - Angriffe werden blockiert **und** auditiert (fremdes Token, Shell-Programm,
   Shell-Metazeichen, fremde Sandbox-Bindung, Lockdown).
-- Nachweis: **63 Testdateien / 422 Tests** sowie die Live-Prüfungen
-  `scripts/verify-live.sh` (**174 / 0**), `scripts/audit-actions.mjs` (**525 / 0**),
-  `scripts/audit-api.sh` (**248 / 0**), `scripts/audit-ui.mjs` (**92 / 0**) und der
-  Grenznachweis `scripts/verify-rate-limit.sh` (**6 / 0**, Standardbudget, frische Instanz) — jeweils
-  auf der Instanz `:3100` mit Kernel-Isolation und cgroup-Limits; dazu der Abnahmeprüfer
-  `node scripts/acceptance.mjs --live` (**82 / 0**, 66/66 Routennachweise).
+- Computer Use läuft ausschließlich über Gate und Broker: Fähigkeit `computer:execute`,
+  Bindung an Task/Sandbox/Instanz, Treiberprozess mit `argv[]` und `shell:false`,
+  digestgebundene Evidenz je Lauf — ohne konfigurierten Treiber wird **nichts** als
+  ausgeführt gemeldet (fail closed). Ein echter Browser-/Desktop-Treiber fehlt weiterhin.
+- Nachweis (2026-11-01): **68 Testdateien / 440 Tests** (438 grün, 2 ausdrücklich
+  übersprungen: OCI ohne Docker-Daemon, cgroup ohne delegierten Unterbaum) sowie die Live-Prüfungen
+  `scripts/verify-live.sh` (**177 / 0**), `scripts/audit-actions.mjs` (**544 / 0**),
+  `scripts/audit-api.sh` (**251 / 0**), `scripts/audit-ui.mjs` (**93 / 0**) auf der Instanz
+  `:3100` mit gemessener Kernel-Isolation; dazu der Abnahmeprüfer
+  `node scripts/acceptance.mjs --live` (**87 / 0**, 71/71 Routennachweise).
 
 ## Dokumentation
 

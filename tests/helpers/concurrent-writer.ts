@@ -64,10 +64,26 @@ async function main() {
   }
 
   for (let i = 0; i < iterations; i += 1) {
-    counter.update(draft => {
-      draft.counter += 1;
-      draft.writers.push(`${workerId}#${i}`);
-    });
+    // Ein Writer ist ein *Client*: Muss er auf die exklusive Sperre warten, gibt
+    // der Store nach `STORE_CONFLICT_RETRIES` auf (StoreConflictError). Unter
+    // Last — z. B. wenn parallel viele Suiten auf zwei Kernen laufen — ist das
+    // legitime Rückstau-Backpressure und kein Datenverlust. Der Helfer versucht
+    // es deshalb erneut; verlorene Aktualisierungen (die eigentliche Probe)
+    // bleiben davon unberührt, denn ein erfolgreicher Schreibvorgang, der eine
+    // fremde Aktualisierung überschreibt, wirft keinen Konflikt.
+    let written = false;
+    for (let attempt = 1; !written; attempt += 1) {
+      try {
+        counter.update(draft => {
+          draft.counter += 1;
+          draft.writers.push(`${workerId}#${i}`);
+        });
+        written = true;
+      } catch (error) {
+        if ((error as {name?: string}).name !== "StoreConflictError" || attempt >= 20) throw error;
+        setTimeout(() => {}, 0);
+      }
+    }
   }
   process.stdout.write(`${workerId} update ${iterations}\n`);
 }

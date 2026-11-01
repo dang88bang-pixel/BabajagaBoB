@@ -405,7 +405,7 @@ const SOURCES: Partial<Record<SectionId, {url: string; path?: string[]; columns:
   ComputerUse: {
     url: "/api/computer-use",
     path: ["computers"],
-    note: "Browser-, Desktop- und CLI-Instanzen mit expliziter Autorisierung.",
+    note: "Browser-, Desktop- und CLI-Instanzen mit expliziter Autorisierung. Aktionen laufen ausschließlich über Gate und Broker; ohne konfigurierten Treiber (BOB_COMPUTER_DRIVER) wird nichts ausgeführt.",
     columns: [
       {key: "id", label: "Instanz"},
       {key: "name", label: "Name"},

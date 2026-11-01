@@ -103,13 +103,39 @@ SYSTEM-WORKER → Capability (delegiert von CREATOR) → Execution Gate → Brok
   Bindung der Sandbox, Fähigkeiten `task:execute`, `sandbox:run` und der Zweck
   (`regression:run`), genau eine Verwendung, TTL 2 Minuten.
 - Grundlage ist die Bootstrap-Kante `CREATOR → SYSTEM-WORKER`
-  (`capabilities: task:execute, sandbox:run, sandbox:snapshot, regression:run`). Fehlt sie, schlägt die
+  (`capabilities: task:execute, sandbox:run, sandbox:snapshot, regression:run, computer:execute`). Fehlt sie, schlägt die
   Ausstellung fehl und es wird nichts ausgeführt (fail closed).
 - Der Zweck erscheint im Domänenereignis (`purpose: "REGRESSION" | "SMOKE_TEST"`), damit im
   Ereignisstrom nachvollziehbar ist, **warum** ausgeführt wurde.
 - Rollen, die eigene Sandboxes betreiben, tragen `task:execute`: `BUILDER`, `SCIENTIST`, `QA`,
   `RECOVERY` (zuletzt ergänzt, weil der Broker die Fähigkeit sonst bei jedem legitimen Test-,
   Experiment- und Recovery-Lauf verweigert hätte). Die Broker-Prüfung selbst bleibt unverändert streng.
+
+### 3b. Computer Use über den Broker
+
+Ein Computer führt **nur** über den Broker aus (`executeComputerAuthorized`). Der Weg ist derselbe wie
+bei einer Prozessausführung, ergänzt um die Fähigkeit `computer:execute` und die Bindung an die
+**Instanz**:
+
+| Prüfung | Verweigerungscode |
+|---|---|
+| Aktion aus der geschlossenen Liste, Eingabe ≤ 8 KiB, Objekt | `COMPUTER_ACTION` / `COMPUTER_INPUT` |
+| Instanz existiert | `COMPUTER_BINDING` (`computer not found`) |
+| Instanz ist autorisiert (Discovery ≠ Autorisierung) | `COMPUTER_BINDING` (`not authorized`) |
+| Instanz gehört **dieser** Task (und, wenn gesetzt, dieser Sandbox) | `COMPUTER_BINDING` (`different task` / `different sandbox`) |
+| Zustand `ALLOCATED`/`EXECUTING`, Netzwerk ≠ `INTERNET` | `COMPUTER_BINDING` |
+| Aktion ist von der Fähigkeit der Instanz gedeckt | `COMPUTER_BINDING` (`not granted`) |
+| Treiber gesetzt, absoluter Pfad, Node-Modul, **keine** Shell | `COMPUTER_DRIVER` |
+| Capability mit `computer:execute` (plus `task:execute`, `sandbox:run`) | `TOKEN_VALIDATION` |
+
+- Alle Bindungsprüfungen laufen **vor** dem Verbrauch des Tokens: Eine falsch gebundene Anfrage
+  verbraucht keine Autorisierung (`uses` bleibt 0 — getestet).
+- Der Treiber ist ein Node-Modul, das **eine** Aktion als JSON über stdin erhält und das Ergebnis als
+  JSON auf stdout schreibt. Ausgeführt wird `node <treiber>` mit `argv[]` und `shell: false`,
+  reduzierter Umgebung, hartem Timeout (Prozessgruppe) und Ausgabegrenze.
+- Ohne `BOB_COMPUTER_DRIVER` wird **nichts** als ausgeführt gemeldet (`COMPUTER_DRIVER`, fail closed).
+- Nach dem Lauf ist die Instanz wieder `AVAILABLE` (Erfolg) bzw. `FAILED` (Fehler); je Lauf entsteht
+  Evidenz (`kind: COMPUTER_USE`) mit Digest, Audit und Provenance.
 
 ## 4. Approval-Pflicht (`lib/approvals.ts`, `lib/execution-gate.ts`)
 

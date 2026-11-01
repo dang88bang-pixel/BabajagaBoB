@@ -422,17 +422,42 @@ export function verifyCapabilitySecret(tokenId: string, secret: string): boolean
 }
 
 /**
+ * Zusätzliche Fähigkeiten, die ein Ausführungstoken tragen darf. Die Liste ist
+ * eine **geschlossene** Aufzählung: Was hier nicht steht, kann nicht über den
+ * Ausführungspfad angefordert werden. Platzhalter (`*`, `prefix:*`) sind
+ * ausdrücklich ausgeschlossen — sonst wäre die Aufzählung wirkungslos.
+ */
+export const EXECUTION_EXTRA_CAPABILITIES = ["computer:execute", "screenshot:write", "regression:run"] as const;
+
+function assertExecutionExtras(extras: string[], actor: string): void {
+  for (const capability of extras) {
+    if (!EXECUTION_EXTRA_CAPABILITIES.includes(capability as (typeof EXECUTION_EXTRA_CAPABILITIES)[number])) {
+      deny("CAPABILITY_SCOPE", `capability ${capability} is not available on the execution path`, actor, undefined, 400);
+    }
+  }
+}
+
+/**
  * System-Ausstellung für Worker-Ausführung. Nutzt denselben Delegationspfad wie
  * Agents: ohne aktive Delegation `CREATOR → SYSTEM-WORKER` schlägt sie fehl
  * (fail closed, Bootstrap erforderlich). Es gibt keine Hintertür.
+ *
+ * `additionalCapabilities` erweitert das Token nur um Fähigkeiten aus der
+ * geschlossenen Liste oben; die Delegationsprüfung in `issueCapabilityToken`
+ * gilt unverändert (kein Token ohne passende Kante).
  */
 export function ensureExecutionCapability(
   agentId: string,
   taskId: string,
   sandboxId: string,
   risk: Risk,
-  environment = "development"
+  environment = "development",
+  additionalCapabilities: string[] = []
 ): CapabilityToken {
+  const extras = [...new Set(additionalCapabilities)].filter(c => c !== "task:execute" && c !== "sandbox:run");
+  if (!Array.isArray(additionalCapabilities)) deny("CAPABILITY_SCOPE", "additional capabilities must be a list", agentId, undefined, 400);
+  assertExecutionExtras(extras, agentId);
+
   const payload = store.read();
   const existing = payload.tokens.find(
     t =>
@@ -443,6 +468,7 @@ export function ensureExecutionCapability(
       t.environment === environment &&
       t.capabilities.includes("task:execute") &&
       t.capabilities.includes("sandbox:run") &&
+      extras.every(capability => t.capabilities.includes(capability)) &&
       // Erschöpfte Token sind nicht wiederverwendbar: sonst würde der Broker den
       // nächsten Lauf als Replay verweigern, obwohl eine gültige Autorisierung
       // vorzuliegen scheint (genau eine Autorisierung = eine Ausführung).
@@ -457,7 +483,7 @@ export function ensureExecutionCapability(
       taskId,
       sandboxId,
       environment,
-      capabilities: ["task:execute", "sandbox:run"],
+      capabilities: ["task:execute", "sandbox:run", ...extras],
       risk,
       issuedBy: "SYSTEM-WORKER",
       issuedByKind: "SYSTEM",

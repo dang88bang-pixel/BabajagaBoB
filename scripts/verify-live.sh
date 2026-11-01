@@ -362,6 +362,11 @@ step "11. Kernel-Isolation der Sandbox real gemessen"
 # Messung - die Werte stammen aus /proc/self/status des isolierten Prozesses.
 ISOLATION_REPORT=$(api "$BASE/api/runtime" >/dev/null; cat "$BODY")
 printf "        /api/runtime.isolation = %s\n" "$(printf '%s' "$ISOLATION_REPORT" | jq -c '.isolation')"
+# Greifen Speicher-/Prozesslimits wirklich? Der Bericht nennt den Mechanismus
+# (`systemd-scope` oder `cgroup-delegation`); nur dann sind die Nachweise unten
+# sinnvoll, sonst bleibt es beim ehrlichen UNAVAILABLE.
+LIMITS_ENFORCED=$(printf '%s' "$ISOLATION_REPORT" | jq -r '.isolation.resourceLimits.cgroup // "UNAVAILABLE"')
+printf "        Limits-Mechanismus = %s (%s)\n" "$LIMITS_ENFORCED" "$(printf '%s' "$ISOLATION_REPORT" | jq -r '.isolation.resourceLimits.mechanism // "none"')"
 # Das Programm nutzt bewusst keine Shell-Metazeichen (der Broker verbietet sie),
 # sondern nur argv[] + shell:false. Gemessen wird /proc des isolierten Prozesses.
 PROBE_STDIO=$(cat <<'JS'
@@ -388,14 +393,39 @@ LIMIT_BODY=$(jq -n --arg tid "$ATID" --arg sid "$LSB" --arg tok "$LIMIT_TOK" --a
 assert_status "Schreibversuch ueber dem Dateilimit" 200 "$(agent_call_with "$LIMIT_TOK" "$LIMIT_SEC" /api/runtime "$LIMIT_BODY")"
 assert_json "Kernel bricht den Schreibvorgang ab (EFBIG)" '.stdout == "EFBIG"'
 assert_json "Der Lauf weist die durchgesetzten Limits aus" '(.resourceLimits.kernel | index("CPU_TIME")) != null and (.resourceLimits.kernel | index("FILE_SIZE")) != null'
-if [ -n "${BOB_CGROUP_DIR:-}" ]; then
-  assert_json "Der Lauf lief unter cgroup-Limits" '.resourceLimits.cgroup == "ENFORCED"'
+if [ "$LIMITS_ENFORCED" = "ENFORCED" ]; then
+  assert_json "Der Lauf lief unter kernel-seitigen Speicher-/Prozesslimits" '.resourceLimits.cgroup == "ENFORCED"'
 fi
 assert_status "Isolationsbericht nennt die durchgesetzten Limits" 200 "$(api "$BASE/api/runtime")"
 assert_json "Ressourcenlimits werden getrennt nach Mechanismus ausgewiesen" '(.isolation.resourceLimits.kernel | length) >= 2 and ((.isolation.resourceLimits.cgroup == "ENFORCED") or (.isolation.resourceLimits.cgroup == "UNAVAILABLE"))'
-if [ -n "${BOB_CGROUP_DIR:-}" ]; then
-  assert_json "cgroup-Limits sind aktiv (Speicher/Prozesse)" '.isolation.resourceLimits.cgroup == "ENFORCED"'
-  assert_json "cgroup-Garantien sind benannt" '([.isolation.enforced[]] | index("CGROUP_MEMORY_LIMIT")) != null and ([.isolation.enforced[]] | index("CGROUP_PIDS_LIMIT")) != null'
+if [ "$LIMITS_ENFORCED" = "ENFORCED" ]; then
+  assert_json "Speicher-/Prozesslimits sind aktiv" '.isolation.resourceLimits.cgroup == "ENFORCED"'
+  assert_json "Limit-Garantien sind benannt" '([.isolation.enforced[]] | index("CGROUP_MEMORY_LIMIT")) != null and ([.isolation.enforced[]] | index("CGROUP_PIDS_LIMIT")) != null'
+  assert_json "Mechanismus ist benannt" '(.isolation.resourceLimits.mechanism == "systemd-scope") or (.isolation.resourceLimits.mechanism == "cgroup-delegation")'
+
+  # Speicherlimit live: 64 MiB Limit, 512 MiB angefordert. Der Prozess muss vor
+  # dem Ende sterben - gemessen wird der Fortschritt im stdout, nicht ein
+  # behaupteter Exit-Code (die unshare-Kette meldet einen OOM-Kill als Exit 1).
+  MSB=$(api -X POST -d "{\"action\":\"create\",\"type\":\"test\",\"taskId\":\"$ATID\",\"agentId\":\"AG-BUILD\",\"risk\":\"LOW\",\"limits\":{\"cpuMillicores\":500,\"memoryMb\":64,\"storageMb\":8,\"timeoutMs\":20000,\"processes\":16}}" "$BASE/api/sandboxes" >/dev/null; jqv '.sandbox.sandboxId')
+  api -X POST -d "{\"action\":\"start\",\"sandboxId\":\"$MSB\"}" "$BASE/api/sandboxes" >/dev/null
+  MEM_TOK=$(api -X POST -d "{\"action\":\"issue\",\"input\":{\"subject\":\"AG-BUILD\",\"taskId\":\"$ATID\",\"sandboxId\":\"$MSB\",\"environment\":\"test\",\"capabilities\":[\"task:execute\",\"sandbox:run\"],\"risk\":\"LOW\",\"issuedBy\":\"CREATOR\",\"issuedByKind\":\"CREATOR\",\"expiresAt\":\"$EXPIRES\"}}" "$BASE/api/authority" >/dev/null; jqv '.token.id')
+  MEM_SEC=$(jqv '.secret')
+  # Ohne `;`, `<`, `>`, `$`: der Broker verbietet Shell-Metazeichen in argv
+  # (SHELL_METACHAR) - deshalb nur Ausdruecke, keine Schleifen-Syntax.
+  MEM_SMALL='process.stdout.write(String(Buffer.alloc(32*1024*1024,1).length))'
+  MEM_BIG='process.stdout.write(Buffer.concat(Array.from({length:64},function(){return Buffer.alloc(8388608,1)})).length+"FERTIG")'
+  MEM_TOK=$(api -X POST -d "{\"action\":\"issue\",\"input\":{\"subject\":\"AG-BUILD\",\"taskId\":\"$ATID\",\"sandboxId\":\"$MSB\",\"environment\":\"test\",\"capabilities\":[\"task:execute\",\"sandbox:run\"],\"risk\":\"LOW\",\"issuedBy\":\"CREATOR\",\"issuedByKind\":\"CREATOR\",\"expiresAt\":\"$EXPIRES\"}}" "$BASE/api/authority" >/dev/null; jqv '.token.id')
+  MEM_SEC=$(jqv '.secret')
+  # 1) 32 MiB unter 64 MiB Limit: muss gelingen (das Limit ist nutzbar, nicht nur eng).
+  MEM_OK_BODY=$(jq -n --arg tid "$ATID" --arg sid "$MSB" --arg tok "$MEM_TOK" --arg script "$MEM_SMALL" '{action:"execute",taskId:$tid,agentId:"AG-BUILD",sandboxId:$sid,capabilityTokenId:$tok,argv:["node","-e",$script]}')
+  assert_status "32 MiB im 64-MiB-Limit laufen durch" 200 "$(agent_call_with "$MEM_TOK" "$MEM_SEC" /api/runtime "$MEM_OK_BODY")"
+  assert_json "Speicher innerhalb des Limits ist nutzbar" '.stdout == "33554432"'
+  # 2) 512 MiB unter 64 MiB Limit: der Kernel beendet den Prozess.
+  MEM_TOK=$(api -X POST -d "{\"action\":\"issue\",\"input\":{\"subject\":\"AG-BUILD\",\"taskId\":\"$ATID\",\"sandboxId\":\"$MSB\",\"environment\":\"test\",\"capabilities\":[\"task:execute\",\"sandbox:run\"],\"risk\":\"LOW\",\"issuedBy\":\"CREATOR\",\"issuedByKind\":\"CREATOR\",\"expiresAt\":\"$EXPIRES\"}}" "$BASE/api/authority" >/dev/null; jqv '.token.id')
+  MEM_SEC=$(jqv '.secret')
+  MEM_BODY=$(jq -n --arg tid "$ATID" --arg sid "$MSB" --arg tok "$MEM_TOK" --arg script "$MEM_BIG" '{action:"execute",taskId:$tid,agentId:"AG-BUILD",sandboxId:$sid,capabilityTokenId:$tok,argv:["node","-e",$script]}')
+  assert_status "Sandbox mit 64 MiB Speicherlimit" 200 "$(agent_call_with "$MEM_TOK" "$MEM_SEC" /api/runtime "$MEM_BODY")"
+  assert_json "Speicherlimit beendet den Prozess vor dem Ende" '.stdout | test("FERTIG") | not'
 fi
 # Fail closed: ohne erzwungene Isolation darf gar nicht ausgefuehrt werden.
 assert_status "Isolationsbericht nennt die erzwungenen Garantien" 200 "$(api "$BASE/api/runtime")"

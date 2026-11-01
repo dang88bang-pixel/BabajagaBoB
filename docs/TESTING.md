@@ -1,8 +1,19 @@
 # Teststrategie und Testnachweis
 
-**Stand:** 2026-09-26
+**Stand:** 2026-11-01
 **Testrunner:** Vitest 3 (`vitest.config.ts`, Node ≥ 22)
-**Letzter verifizierter Lauf:** `npx vitest run` → **63 Dateien, 422 Tests, alle grün**
+**Letzter verifizierter Lauf (2026-11-01):** `npx vitest run` → **68 Dateien, 440 Tests** (438 grün, 2 ausdrücklich übersprungen:
+OCI ohne Docker-Daemon und cgroup-Nachweis ohne delegierten Unterbaum).
+Lint 0 Fehler / 12 Warnungen, `tsc --noEmit` fehlerfrei, `npm run build` erfolgreich.
+Live gegen `node server.mjs` auf `:3100` (frisches Storage, `BOB_NS_ISOLATION=on` mit gebautem
+Rootfs, cgroup **nicht** delegierbar, Speicher-/Prozesslimits über den transienten
+systemd-Scope `BOB_SANDBOX_LAUNCHER=systemd-scope` **live durchgesetzt**):
+`scripts/verify-live.sh` → **177 / 0**,
+`scripts/audit-actions.mjs` → **544 / 0**, `scripts/audit-api.sh` → **251 / 0**,
+`scripts/audit-ui.mjs` → **93 / 0**, `node scripts/acceptance.mjs --live` → **87 / 0**
+(70/70 Routen-Nachweise, mit Sitzung). Der statische Prüfer meldet **15 / 0**.
+
+Alter Kopf (2026-09-26, historisch): `npx vitest run` → **63 Dateien, 422 Tests, alle grün**
 (Unit 126, Security 135, Integration 122, Regression 15, UI 13, E2E 11); `./node_modules/.bin/tsc --noEmit` fehlerfrei; `npx eslint .` 0 Fehler / 11 Warnungen; `npm run build` erfolgreich.
 Zusätzlich laufen zwei Nachweisprüfer gegen den **echten** Dienst: `node scripts/fault-injection.mjs`
 (SIGKILL + Neustart) → **28/28 Prüfungen in 2 Absturzzyklen**, und `node scripts/sabotage.mjs`
@@ -22,6 +33,15 @@ Zusätzlich live gegen den Produktionsserver geprüft (`BOB_NS_ISOLATION=on` mit
 **frische** Instanz **ohne** `BOB_RATE_LIMIT_MAX`; die Geheimnisse kommen aus der Umgebung) → **6 / 0**:
 30 erlaubte Anmeldeversuche, der 31. wird mit `429` + `retry-after: 60` abgewiesen, der Fehlercode ist
 `RATE_LIMITED`, die Abweisung steht als `DENY` in der Audit-Kette und die Kette bleibt gültig.
+
+**Runde 2026-11-01 (Computer Use über den Broker, Prüfer korrigiert):** Der Test
+`tests/integration/computer-broker.test.ts` war **nie lauffähig** — er rief
+`executeComputerAuthorized` auf, das es nicht gab, ließ Bootstrap/Task/Sandbox weg und verlangte eine
+Delegation für `computer:execute`, die im Bootstrap fehlte. Statt den Test zu entfernen, wurde der
+fehlende Pfad gebaut (gemeinsame Broker-Autorisierung für Prozess- und Computer-Läufe, Treibervertrag,
+Evidenz) und der Test zu einer echten Suite mit sechs Fällen umgeschrieben; der Abnahmeprüfer prüft
+npm-Skripte jetzt gegen `package.json` statt gegen das Dateisystem (vorher konnte `npm run test:oci`
+nie „existieren"); der OCI-Test überspringt sich ohne Daemon **mit Begründung** statt zu scheitern.
 
 ## 1. Suiten und Abdeckung
 

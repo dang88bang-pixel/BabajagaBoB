@@ -1,6 +1,6 @@
 # Offene Punkte
 
-**Stand:** 2026-09-25
+**Stand:** 2026-11-01
 **Hinweis:** Die ursprüngliche Roadmap-Fassung dieser Datei (246 Zeilen mit 132
 unbearbeiteten Checkboxen) war ein Planungsdokument aus der Startphase und hat
 den Umsetzungsstand nicht mehr korrekt abgebildet. Sie wurde durch diese
@@ -30,13 +30,20 @@ Smoke-Test laufen als SYSTEM-WORKER über Gate, Broker und Evidenz).
 
 ## 2. Offen – als `PARTIAL` geführt
 
+**Alternativen zu allen offenen Punkten** sind in `docs/ALTERNATIVES_2026-11-01.md`
+gemessen und bewertet (Treiber, OCR, Desktop, OCI, cgroup-Limits, Betriebspunkte).
+Die cgroup-Lücke ist **geschlossen**: Speicher-, Prozess- und CPU-Limits setzt ein
+transienter systemd-Scope durch (`BOB_SANDBOX_LAUNCHER=systemd-scope`,
+`lib/sandbox-launcher.ts`, Nachweis `tests/integration/ns-scope-limits.test.ts`);
+Details und Online-Quellen in `docs/ALTERNATIVES_2026-11-01.md` §5a.
+
 | Punkt | Warum offen | Nächster Schritt |
 |---|---|---|
 | OCI-Runtime verifizieren | kein Container-Daemon in der Umgebung | Lauf mit Docker/Podman auf einem Host mit Daemon; Härtungsflags und Snapshot prüfen |
 | Egress-Allowlist | bewusst fail closed, bis ein kontrollierter Proxy existiert | Egress-Proxy + DNS-Pinning implementieren, dann `ALLOWLIST` freischalten |
 | Provider live verbinden | keine externen Verbindungen erlaubt (Netzwerk `DENY`) | mit Allowlist + Approval einen Adapter real anbinden und Telemetrie prüfen |
 | ~~Geräte-Discovery~~ | erledigt: `lib/device-enrollment.ts` + `scripts/discover-host.mjs` (Meldung mit Geheimnis, fail closed, nur Discovery/Heartbeat), Autorisierung bleibt Creator-Akt | offen: Netz-Scan (ARP/mDNS) und Attestierung sind `NOT_IMPLEMENTED`; Scheduling nach CPU/RAM/GPU/OS/Architektur/Capabilities ist jetzt implementiert und getestet |
-| Computer Use | kein Browser-/Desktop-Treiber angebunden | Playwright-/VNC-Treiber im Sandbox-Workspace, Aktionen über Broker |
+| Computer Use | **Ausführungspfad jetzt über den Broker** (Fähigkeit `computer:execute`, Bindung an Task/Sandbox/Instanz, Treibervertrag, Evidenz, fail closed ohne `BOB_COMPUTER_DRIVER`; `tests/integration/computer-broker.test.ts`, 6 Tests). Offen bleibt der **echte** Treiber — die Umgebung hat kein Playwright/Chromium/VNC | Playwright-/VNC-Treiber als Node-Modul hinter `BOB_COMPUTER_DRIVER` im Sandbox-Workspace anbinden und live nachweisen |
 | ~~Simulation/Visualisierung~~ | erledigt | Renderer `lib/visualization.ts` für alle sieben Arten (aus dem echten Zustand), Bildroute + Evidenzartefakt, `tests/integration/visualization.test.ts` |
 | Control-Center-UI | kein Browser in der Umgebung (geprüft: kein Chromium/Chrome/Firefox, kein Playwright-Cache; Download-Hosts gesperrt) | Browser-E2E bleibt `NOT_VERIFIED`; ersatzweise jsdom-Tests gegen echte Routen-Handler + `audit-ui.mjs` |
 | ~~Recovery-Tier-Ableitung~~ | erledigt | automatische, begründete Klassifikation in `lib/recovery-tier.ts` (Tests: `tests/unit/recovery-tier.test.ts`) |

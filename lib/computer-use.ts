@@ -31,5 +31,56 @@ export function authorizeComputer(id:string,authorized=true,actor="CREATOR"){con
   // beliebigen Actor in den Nachweis schreiben kann.
   if(actor!=="CREATOR")throw new Error("computer authorization requires Creator authority");x.authorized=authorized;persist();observe({type:"computer.authorized",message:`Computer ${id} ${authorized?"autorisiert":"Autorisierung entzogen"}`,status:"COMPLETED",actor,action:"computer.authorize",resource:id,decision:authorized?"ALLOW":"DENY",argumentsValue:{authorized}});return clone(x)}
 export function releaseComputer(id:string){const x=instances.find(i=>i.id===id);if(!x)throw new Error("computer not found");x.state="RELEASED";x.taskId=undefined;x.sandboxId=undefined;persist();return clone(x)}
+
+/**
+ * Beansprucht einen Computer für **eine** Ausführung (Abschnitt 21).
+ *
+ * Die Prüfungen liegen bewusst in der Domäne und nicht nur im Broker: auch ein
+ * interner Aufrufer kommt an einer Bindung nicht vorbei. Geprüft wird in dieser
+ * Reihenfolge (fail closed, ohne Zustandsänderung bei Verstoß):
+ *
+ *  1. Instanz existiert,
+ *  2. Instanz ist autorisiert (Discovery ≠ Autorisierung),
+ *  3. Instanz gehört **genau** dieser Task (keine Fremdnutzung) und, wenn
+ *     gesetzt, genau dieser Sandbox,
+ *  4. Instanz ist reserviert oder läuft bereits (nicht `AVAILABLE`/`RELEASED`),
+ *  5. Netzwerk ist nicht `INTERNET` (Default bleibt `DENY`),
+ *  6. die Aktion ist von der Computer-Fähigkeit gedeckt.
+ *
+ * Erst danach wechselt der Zustand nach `EXECUTING`. Ein Verstoß verändert
+ * nichts — der Nachweis entsteht als Verweigerung im Broker.
+ */
+export function assertComputerBinding(id:string,taskId:string,sandboxId:string|undefined,action:ComputerUseAction){
+  const x=instances.find(i=>i.id===id);
+  if(!x)throw new Error(`computer not found: ${id}`);
+  if(!x.authorized)throw new Error(`computer ${id} is not authorized`);
+  if(x.taskId!==taskId)throw new Error(`computer ${id} is allocated to a different task (${x.taskId??"none"})`);
+  if(x.sandboxId&&sandboxId&&x.sandboxId!==sandboxId)throw new Error(`computer ${id} is bound to a different sandbox (${x.sandboxId})`);
+  if(x.state!=="ALLOCATED"&&x.state!=="EXECUTING")throw new Error(`computer ${id} is not executable in state ${x.state}`);
+  if(x.network==="INTERNET")throw new Error(`computer ${id} uses INTERNET networking; the network policy is DENY`);
+  const granted=new Set(x.capabilities.flatMap(capability=>capability.actions));
+  if(!granted.has(action))throw new Error(`action ${action} is not granted by the capability of computer ${id}`);
+  return clone(x);
+}
+
+/** Setzt die geprüfte Bindung durch (`ALLOCATED` → `EXECUTING`). */
+export function claimComputerExecution(id:string,taskId:string,sandboxId:string|undefined,action:ComputerUseAction){
+  assertComputerBinding(id,taskId,sandboxId,action);
+  const x=instances.find(i=>i.id===id)!;
+  x.state="EXECUTING";persist();
+  observe({type:"computer.executing",message:`Computer ${x.id} führt ${action} aus`,status:"EXECUTING",actor:"AG-BROWSER",agentId:"AG-BROWSER",taskId:x.taskId,sandboxId:x.sandboxId,action:"computer.execute",resource:x.id,argumentsValue:{action}});
+  return clone(x);
+}
+
+/** Beendet eine Computer-Ausführung: Erfolg → `AVAILABLE`, Fehler → `FAILED`. */
+export function completeComputerExecution(id:string,ok:boolean){
+  const x=instances.find(i=>i.id===id);
+  if(!x)throw new Error(`computer not found: ${id}`);
+  x.state=ok?"AVAILABLE":"FAILED";
+  x.taskId=undefined;x.sandboxId=undefined;persist();
+  observe({type:ok?"computer.executed":"computer.failed",message:`Computer ${id} ${ok?"Ausführung beendet":"Ausführung fehlgeschlagen"}`,status:ok?"COMPLETED":"ERROR",actor:"AG-BROWSER",agentId:"AG-BROWSER",action:"computer.execute",resource:id,decision:ok?"ALLOW":"ERROR"});
+  return clone(x);
+}
+
 export function computerUseStoreReport(){return store.integrity()}
 export function listComputers(){return clone(instances)}

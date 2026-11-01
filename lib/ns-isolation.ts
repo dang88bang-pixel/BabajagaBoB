@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {spawn, spawnSync} from "node:child_process";
 import {storageRoot} from "./persistence/store";
+import {launcherPlan, launcherReport} from "./sandbox-launcher";
 import type {ExecutionResult} from "./runtime";
 
 /**
@@ -48,11 +49,15 @@ export type IsolationReport = {
    * Durchgesetzte Ressourcenlimits — getrennt nach Mechanismus, damit nichts
    * behauptet wird, was nicht gilt:
    *  - `kernel`: immer verfügbar (rlimits: CPU-Zeit, Dateigröße)
-   *  - `cgroup`: nur mit delegiertem cgroup-v2-Unterbaum (`BOB_CGROUP_DIR`)
+   *  - `cgroup`: mit delegiertem cgroup-v2-Unterbaum (`BOB_CGROUP_DIR`) **oder**
+   *    mit transientem systemd-Scope (`BOB_SANDBOX_LAUNCHER=systemd-scope`)
+   *  - `mechanism`: welcher der beiden Wege tatsächlich greift
    */
   resourceLimits: {
     kernel: string[];
     cgroup: "ENFORCED" | "UNAVAILABLE";
+    mechanism: "cgroup-delegation" | "systemd-scope" | "none";
+    launcher: {mode: string; available: boolean; reason?: string; detail?: string};
     detail: string;
   };
   reason?: string;
@@ -142,12 +147,21 @@ export function isolationReport(refresh = false): IsolationReport {
   const rootfs = nsRootfsPath();
   const capabilities: IsolationReport["capabilities"] = fs.existsSync("/usr/bin/setpriv") ? "BOUNDING_SET_EMPTY" : "INHERITABLE_AMBIENT_ONLY";
   const cgroup = cgroupAvailable();
+  // Zweiter, gleichwertiger Mechanismus: ein transienter systemd-Scope. Er wird
+  // nur geprüft, wenn er konfiguriert ist (Standard: aus) — sonst kostete jeder
+  // Bericht einen privilegierten Probeaufruf.
+  const launcher = launcherReport();
+  const limitsEnforced = cgroup.available || launcher.available;
   const resourceLimits: IsolationReport["resourceLimits"] = {
     kernel: ["CPU_TIME", "FILE_SIZE"],
-    cgroup: cgroup.available ? "ENFORCED" : "UNAVAILABLE",
+    cgroup: limitsEnforced ? "ENFORCED" : "UNAVAILABLE",
+    mechanism: cgroup.available ? "cgroup-delegation" : launcher.available ? "systemd-scope" : "none",
+    launcher: {mode: launcher.mode, available: launcher.available, reason: launcher.reason, detail: launcher.detail},
     detail: cgroup.available
       ? `cgroup v2 aktiv (${cgroupRoot()}): Speicher- und Prozesslimit werden je Ausführung kernel-seitig durchgesetzt`
-      : `cgroup v2 nicht verfügbar (${cgroup.reason}); Speicher- und Prozesslimits sind nicht kernel-seitig durchsetzbar (NOT_IMPLEMENTED), CPU-Zeit und Dateigröße sind es`
+      : launcher.available
+        ? `Speicher-, Prozess- und CPU-Limit werden je Ausführung durch einen transienten systemd-Scope durchgesetzt (${launcher.detail}); eine Delegation von cgroup-Unterbäumen ist nicht nötig`
+        : `weder cgroup-Delegation (${cgroup.reason}) noch systemd-Scope (${launcher.reason}) verfügbar; Speicher- und Prozesslimits sind nicht kernel-seitig durchsetzbar (BLOCKED im Host), CPU-Zeit und Dateigröße sind es`
   };
   if (requested === "off") {
     cachedReport = {
@@ -191,7 +205,7 @@ export function isolationReport(refresh = false): IsolationReport {
       capabilities === "BOUNDING_SET_EMPTY" ? "CAPABILITY_BOUNDING_SET_EMPTY" : "CAPABILITY_INHERITABLE_CLEARED",
       "CPU_TIME_LIMIT",
       "FILE_SIZE_LIMIT",
-      ...(cgroup.available ? ["CGROUP_MEMORY_LIMIT", "CGROUP_PIDS_LIMIT"] : [])
+      ...(limitsEnforced ? ["CGROUP_MEMORY_LIMIT", "CGROUP_PIDS_LIMIT"] : [])
     ],
     capabilities,
     rootfs,
@@ -234,18 +248,101 @@ export function cgroupRoot(): string | null {
   return dir && dir.length > 0 ? dir : null;
 }
 
+/**
+ * Ergebnis der cgroup-Prüfung je Wurzel (der Beitrittstest startet einen kurzen
+ * Kindprozess und wird deshalb nicht bei jeder Anfrage wiederholt). Ein Wechsel
+ * von `BOB_CGROUP_DIR` erzeugt einen neuen Schlüssel.
+ */
+const cgroupProbes = new Map<string, {available: boolean; reason?: string}>();
+
+const CGROUP2_SUPER_MAGIC = 0x63677270;
+
+/**
+ * Ist der Pfad wirklich ein cgroup-v2-Dateisystem?
+ *
+ * Ein gewöhnliches Verzeichnis mit einer Datei namens `cgroup.procs` sieht für
+ * Schreibprüfungen wie ein delegierter Unterbaum aus — es setzt aber **nichts**
+ * durch. Ohne diese Prüfung hätte der Bericht Speicher-/Prozesslimits als
+ * erzwungen ausgegeben, obwohl nur in eine Datei geschrieben wurde.
+ */
+function isCgroup2Filesystem(root: string): boolean {
+  try {
+    return fs.statfsSync(root).type === CGROUP2_SUPER_MAGIC;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Kann dieser Prozess einem Kind-cgroup beitreten?
+ *
+ * Schreibrechte auf `cgroup.procs` genügen nicht: Der Kernel verlangt für das
+ * Verschieben eines Prozesses Privilegien im cgroup-Namespace. Bei bloßer
+ * Datei-Delegation (Eigentümer = Benutzer) endet der Beitritt mit EACCES, und
+ * `ns-exec.sh` bricht dann fail closed mit Exit 126 ab. Genau dieser Fall ist
+ * aufgetreten: Der Bericht führte `CGROUP_MEMORY_LIMIT`/`CGROUP_PIDS_LIMIT` in
+ * `enforced[]`, während **jeder** Lauf scheiterte.
+ *
+ * Deshalb wird der Beitritt einmal real geprüft (kurzer Kindprozess, der sich
+ * selbst in das Probe-cgroup schreibt und wieder verschwindet).
+ */
+function cgroupJoinWorks(root: string): {available: boolean; reason?: string} {
+  const probeDir = path.join(root, `bob-probe-${process.pid}-${Date.now().toString(36)}`);
+  try {
+    fs.mkdirSync(probeDir, {recursive: true, mode: 0o755});
+  } catch (error) {
+    return {available: false, reason: `cgroup-Probe konnte nicht angelegt werden: ${root} (${error instanceof Error ? error.message : String(error)})`};
+  }
+  const procs = path.join(probeDir, "cgroup.procs");
+  try {
+    const child = spawnSync(
+      process.execPath,
+      ["-e", `require("node:fs").writeFileSync(${JSON.stringify(procs)}, String(process.pid))`],
+      {timeout: 5_000, encoding: "utf8", env: {...process.env, PATH: "/usr/bin:/bin"}}
+    );
+    if (child.status !== 0) {
+      const lines = (child.stderr ?? "").trim().split("\n").filter(line => line.trim().length > 0);
+      const relevant = lines.find(line => /EACCES|EPERM|ENOENT|Error/.test(line)) ?? lines[0] ?? `exit ${child.status ?? "null"}`;
+      const detail = relevant.trim().slice(0, 200);
+      return {
+        available: false,
+        reason: `cgroup-Beitritt nicht möglich (${detail}); Delegation ohne Privilegien — Speicher- und Prozesslimits sind nicht durchsetzbar`
+      };
+    }
+    return {available: true};
+  } finally {
+    try {
+      fs.rmdirSync(probeDir);
+    } catch {
+      /* Aufräumen ist Best-effort; ein liegenbleibendes Probe-cgroup setzt nichts durch. */
+    }
+  }
+}
+
 export function cgroupAvailable(): {available: boolean; reason?: string} {
   const root = cgroupRoot();
   if (!root) return {available: false, reason: "kein delegierter cgroup-Unterbaum gesetzt (BOB_CGROUP_DIR)"};
+  const cached = cgroupProbes.get(root);
+  if (cached) return cached;
   if (!fs.existsSync(path.join(root, "cgroup.procs"))) return {available: false, reason: `cgroup.procs fehlt in ${root}`};
+  if (!isCgroup2Filesystem(root)) {
+    return {available: false, reason: `${root} ist kein cgroup-v2-Dateisystem; ein Verzeichnis allein setzt keine Limits durch`};
+  }
   try {
-    for (const file of ["cgroup.procs", "cgroup.subtree_control", "memory.max"]) {
+    for (const file of ["cgroup.procs", "cgroup.subtree_control", "memory.max", "pids.max"]) {
       fs.accessSync(path.join(root, file), fs.constants.W_OK);
     }
   } catch (error) {
     return {available: false, reason: `cgroup-Unterbaum nicht beschreibbar: ${root} (${error instanceof Error ? error.message : String(error)})`};
   }
-  return {available: true};
+  const probed = cgroupJoinWorks(root);
+  cgroupProbes.set(root, probed);
+  return probed;
+}
+
+/** Nur für Tests/Live-Prüfer: zwischengespeichertes cgroup-Ergebnis verwerfen. */
+export function resetCgroupProbe(): void {
+  cgroupProbes.clear();
 }
 
 /** CPU-Zeitlimit in Sekunden: Millicores über die maximale Laufzeit. */
@@ -327,8 +424,13 @@ export async function runIsolated(argv: string[], options: IsolationRunOptions):
     options.workspace,
     ...argv
   ];
+  // Ressourcenlimits: Ohne delegierbaren cgroup-Unterbaum übernimmt ein
+  // transienter systemd-Scope (MemoryMax/TasksMax/CPUQuota) die Durchsetzung —
+  // privilegiert angelegt, Nutzlast per setpriv wieder unprivilegiert. Ist der
+  // Launcher konfiguriert, aber nicht nutzbar, wird **nichts** ausgeführt.
+  const plan = launcherPlan([unshare, ...args], options.limits, options.sandboxId, env);
   return new Promise<ExecutionResult>((resolve, reject) => {
-    const child = spawn(unshare, args, {
+    const child = spawn(plan.command, plan.args, {
       cwd: options.workspace,
       shell: false,
       detached: true,
@@ -379,11 +481,13 @@ export async function runIsolated(argv: string[], options: IsolationRunOptions):
             ? `execution timed out after ${timeout}ms`
             : code === 0
               ? "execution completed (kernel-isolated)"
-              : `execution failed with exit code ${code}`,
+              : plan.label === "SYSTEMD_SCOPE" && /sigprocmask unblock failed|Killed/i.test(stderr)
+                ? "execution terminated inside the resource-limited scope (signal death; unshare reports exit 1 instead of 137)"
+                : `execution failed with exit code ${code}`,
         isolation: "NAMESPACES",
         resourceLimits: {
           kernel: ["CPU_TIME", "FILE_SIZE"],
-          cgroup: cgroupDir ? "ENFORCED" : "UNAVAILABLE"
+          cgroup: cgroupDir || plan.label === "SYSTEMD_SCOPE" ? "ENFORCED" : "UNAVAILABLE"
         }
       });
     });
